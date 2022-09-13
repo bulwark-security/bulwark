@@ -1,0 +1,14 @@
+[package]
+name = "bulwark-core"
+version = "0.1.0"
+authors = ["Bob Aman <bob@sporkmonger.com>"]
+edition = "2018"
+
+[dependencies]
+num = "0.4"
+validator = { version = "0.12", features = ["derive"] }
+approx = "0.4"
+wasmer = "1.0.2"
+wasmer-compiler-cranelift = "1.0.2"
+wasmer-engine-jit = "1.0.2"
+wasmer-types = "1.0.2"
