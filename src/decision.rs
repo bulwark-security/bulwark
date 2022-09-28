@@ -27,20 +27,20 @@ fn validate_sum(decision: &Decision) -> Result<(), ValidationError> {
 impl Decision {
     // Pignistic reassigns unknown mass evenly to accept and restrict.
     pub fn pignistic(&self) -> Decision {
-        return Decision {
+        Decision {
             accept: self.accept + self.unknown / 2.0,
             restrict: self.restrict + self.unknown / 2.0,
             unknown: 0.0,
-        };
+        }
     }
 
     pub fn accepted(&self) -> bool {
         let p = self.pignistic();
-        return p.accept >= p.restrict;
+        p.accept >= p.restrict
     }
 
     pub fn clamp(&self) -> Decision {
-        return self.clamp_min_unknown(0.0);
+        self.clamp_min_unknown(0.0)
     }
 
     pub fn clamp_min_unknown(&self, min: f64) -> Decision {
@@ -67,16 +67,16 @@ impl Decision {
             unknown = min
         }
 
-        return Decision {
-            accept: accept,
-            restrict: restrict,
-            unknown: unknown,
-        };
+        Decision {
+            accept,
+            restrict,
+            unknown,
+        }
     }
 
     pub fn fill_unknown(&self) -> Decision {
         let sum = self.accept + self.restrict + self.unknown;
-        return Decision {
+        Decision {
             accept: self.accept,
             restrict: self.restrict,
             unknown: if sum < 1.0 {
@@ -84,11 +84,11 @@ impl Decision {
             } else {
                 self.unknown
             },
-        };
+        }
     }
 
     pub fn scale(&self) -> Decision {
-        return self.scale_min_unknown(0.0);
+        self.scale_min_unknown(0.0)
     }
 
     pub fn scale_min_unknown(&self, min: f64) -> Decision {
@@ -96,9 +96,9 @@ impl Decision {
         let mut sum = d.accept + d.restrict + d.unknown;
 
         if sum > 0.0 {
-            d.accept = d.accept / sum;
-            d.restrict = d.restrict / sum;
-            d.unknown = d.unknown / sum
+            d.accept /= sum;
+            d.restrict /= sum;
+            d.unknown /= sum
         }
         if d.unknown < min {
             d.unknown = min
@@ -109,16 +109,16 @@ impl Decision {
             d.accept = sum * (d.accept / denominator);
             d.restrict = sum * (d.restrict / denominator)
         }
-        return d;
+        d
     }
 
     pub fn weight(&self, factor: f64) -> Decision {
-        return Decision {
+        Decision {
             accept: self.accept * factor,
             restrict: self.restrict * factor,
             unknown: 0.0,
         }
-        .scale();
+        .scale()
     }
 }
 
@@ -127,7 +127,7 @@ impl Decision {
 fn pairwise_combine(left: Decision, right: Decision) -> Decision {
     // The mass assigned to the null hypothesis due to non-intersection.
     let nullh = left.accept * right.restrict + left.restrict * right.accept;
-    let d = Decision {
+    Decision {
         // These are essentially an unrolled loop over the power set.
         // Each focal element from the left is multiplied by each on the right
         // and then appended to the intersection.
@@ -142,8 +142,7 @@ fn pairwise_combine(left: Decision, right: Decision) -> Decision {
             + left.unknown * right.restrict)
             / (1.0 - nullh),
         unknown: (left.unknown * right.unknown) / (1.0 - nullh),
-    };
-    return d;
+    }
 }
 
 // combine takes the Murphy average of a set of decisions,
@@ -175,7 +174,7 @@ pub fn combine(decisions: &[Decision]) -> Decision {
     for _ in 0..decisions.len() {
         d = pairwise_combine(d, avg_d)
     }
-    return d;
+    d
 }
 
 #[cfg(test)]
