@@ -4,8 +4,6 @@ mod decisions;
 #[macro_use]
 extern crate approx;
 
-pub use decisions::{Decision};
+pub use decisions::Decision;
 
-pub struct Arbiter {
-
-}
+pub struct Arbiter {}
