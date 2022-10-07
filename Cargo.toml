@@ -6,3 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bulwark-ext-filter = { path = "lib/ext-filter" }
+
+[workspace]
+members = ["lib/core", "lib/ext-filter", "lib/wasm-host", "lib/wasm-sdk"]
