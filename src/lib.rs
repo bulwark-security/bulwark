@@ -1,10 +1,10 @@
 mod bundle;
-mod component;
 mod decision;
+mod errors;
 
 pub use bundle::*;
-pub use component::*;
 pub use decision::*;
+pub use errors::*;
 
 #[allow(unused_imports)]
 #[macro_use]
