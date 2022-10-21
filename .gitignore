@@ -6,3 +6,4 @@
 .idea
 .gdb_history
 /lib/core/Cargo.lock
+/lib/wask-sdk/Cargo.lock

@@ -6,3 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bulwark-wasm-sdk = { path = "../wasm-sdk" }
+wasmer = { version = "3.0.0-beta.2", features = ["sys"] }
+wasmer-compiler-cranelift = "3.0.0-beta.2"
+wasmer-types = "3.0.0-beta.2"
+thiserror = "1.0.37"
