@@ -1,6 +1,6 @@
 use std::io;
 use thiserror::Error;
-use wasmer::{CompileError, InstantiationError};
+use wasmer::{CompileError, ExportError, InstantiationError, RuntimeError};
 
 #[derive(Error, Debug)]
 pub enum PluginLoadError {
@@ -13,4 +13,12 @@ pub enum PluginLoadError {
     Instantiation(#[from] InstantiationError),
     #[error("Plugin was missing required parameter")]
     Build(),
+}
+
+#[derive(Error, Debug)]
+pub enum AllocationError {
+    #[error("WebAssembly failed to export: {0}")]
+    Compile(#[from] ExportError),
+    #[error("WebAssembly failed to run: {0}")]
+    Runtime(#[from] RuntimeError),
 }
