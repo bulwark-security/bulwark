@@ -3,23 +3,11 @@ name = "bulwark-wasm-sdk"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-wee-alloc = ["wee_alloc"]
-
 [dependencies]
-hashbrown = "0.12"
 log = "0.4"
-wee_alloc = { version = "0.4", optional = true }
 
 [dev-dependencies]
 cfg-if = "1.0"
-chrono = { version = "0.4", default-features = false, features = [
-    "clock",
-    "std",
-] }
-
-[target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dev-dependencies]
-getrandom = "0.2"
 
 [profile.release]
 lto = true
@@ -27,13 +15,3 @@ opt-level = 3
 codegen-units = 1
 panic = "abort"
 strip = "debuginfo"
-
-[[example]]
-name = "evil_param"
-path = "examples/evil_param.rs"
-crate-type = ["cdylib"]
-
-[[example]]
-name = "dont_know"
-path = "examples/dont_know.rs"
-crate-type = ["cdylib"]
