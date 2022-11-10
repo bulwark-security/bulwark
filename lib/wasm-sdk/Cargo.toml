@@ -2,9 +2,11 @@
 name = "bulwark-wasm-sdk"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 [dependencies]
 log = "0.4"
+wit-bindgen-guest-rust = { git = "https://github.com/bytecodealliance/wit-bindgen.git", rev = "1b2abcaf289e200dd92af644774de4f94e5cd31a" }
 
 [dev-dependencies]
 cfg-if = "1.0"

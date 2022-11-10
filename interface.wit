@@ -1,0 +1,12 @@
+record request {
+  method: string,
+}
+record decision {
+  accept: float64,
+  restrict: float64,
+  unknown: float64,
+}
+get-request: func() -> request
+set-decision: func(d: decision)
+
+
