@@ -2,12 +2,16 @@
 name = "bulwark-cli"
 version = "0.1.0"
 edition = "2021"
-build = "build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bulwark-ext-filter = { path = "lib/ext-filter" }
+bulwark-ext-filter = { path = "crates/ext-filter" }
 
 [workspace]
-members = ["lib/core", "lib/ext-filter", "lib/wasm-host", "lib/wasm-sdk"]
+members = [
+    "crates/core",
+    "crates/ext-filter",
+    "crates/wasm-host",
+    "crates/wasm-sdk",
+]
