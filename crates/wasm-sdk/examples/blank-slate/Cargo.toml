@@ -5,4 +5,12 @@ edition = "2021"
 publish = false
 
 [dependencies]
+wit-bindgen-rust = { git = "https://github.com/bytecodealliance/wit-bindgen.git", rev = "cb871cfa1ee460b51eb1d144b175b9aab9c50aba" } # 0.2.0, aka wit-bindgen-guest-rust
 bulwark-wasm-sdk = { path = "../.." }
+
+[profile.release]
+lto = true
+opt-level = 3
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"

@@ -9,9 +9,11 @@ edition = "2021"
 anyhow = "1.0.66"
 bulwark-wasm-sdk = { path = "../wasm-sdk" }
 thiserror = "1.0.37"
-wasi-common = { git = "https://github.com/bytecodealliance/wasmtime" }
-wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", features = [
-    "component-model",
-] }
-wasmtime-wasi = { git = "https://github.com/bytecodealliance/wasmtime" }
-wit-bindgen-host-wasmtime-rust = { git = "https://github.com/bytecodealliance/wit-bindgen", rev = "1b2abcaf289e200dd92af644774de4f94e5cd31a" }
+wasi-common = "0.39.1"
+wasmtime = "0.39.1"
+wasmtime-wasi = "0.39.1"
+wasmtime-types = "0.39.1"
+wit-bindgen-wasmtime = { git = "https://github.com/bytecodealliance/wit-bindgen", rev = "cb871cfa1ee460b51eb1d144b175b9aab9c50aba" } # 0.2.0, aka wit-bindgen-host-wasmtime-rust
+
+[dev-dependencies]
+wasi-cap-std-sync = "0.39.1"

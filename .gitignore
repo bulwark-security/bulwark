@@ -4,6 +4,6 @@
 **/.vscode
 .idea
 .gdb_history
-/lib/core/Cargo.lock
-/lib/wask-sdk/Cargo.lock
-lib/wasm-sdk/examples/Cargo.lock
+/crates/core/Cargo.lock
+/crates/wask-sdk/Cargo.lock
+/crates/wasm-sdk/examples/Cargo.lock

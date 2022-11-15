@@ -1,7 +1,4 @@
-// wit_bindgen_rust::import!("../bulwark-interface.wit");
+// TODO: the host/guest wit files seem to be why the latest version switched to one generate macro?
 
-// TODO: macros are cool but seem pretty hard to work with currently; switch to code generation and build.rs
-
-mod bindings;
-
-pub use bindings::*;
+wit_bindgen_rust::import!("../../bulwark-host.wit");
+//wit_bindgen_rust::export!("../../bulwark-guest.wit");

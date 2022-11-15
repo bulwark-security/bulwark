@@ -1,6 +1,6 @@
-use bulwark_wasm_sdk::interface;
+wit_bindgen_rust::import!("../../../../bulwark-host.wit");
 
 fn main() {
-    let request = interface::get_request();
+    let request = bulwark_host::get_request();
     println!("Hello world. Method: {}", request.method);
 }
