@@ -223,7 +223,7 @@ name = "bulwark-wasm-sdk"
 version = "0.1.0"
 dependencies = [
  "cfg-if",
- "log",
+ "http",
  "wit-bindgen-rust",
 ]
 

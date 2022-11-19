@@ -1,14 +1,12 @@
 [package]
-name = "bulwark-wasm-sdk"
+name = "bulwark-evil-bit"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
 [dependencies]
-http = "0.2"
 wit-bindgen-rust = { git = "https://github.com/bytecodealliance/wit-bindgen.git", rev = "cb871cfa1ee460b51eb1d144b175b9aab9c50aba" } # 0.2.0, aka wit-bindgen-guest-rust
-
-[dev-dependencies]
-cfg-if = "1.0"
+bulwark-wasm-sdk = { path = "../.." }
 
 [profile.release]
 lto = true

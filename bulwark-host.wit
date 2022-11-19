@@ -1,12 +1,23 @@
-record request {
+// TODO: should these strings all be list<u8>?
+record request-interface {
   method: string,
+  uri: string,
+  version: string,
+  headers: list<header-interface>,
+  chunk: list<u8>,
+  chunk-start: u64,
+  chunk-length: u64,
+  end-of-stream: bool,
 }
-record decision {
+record header-interface {
+  name: string,
+  value: string,
+}
+record decision-interface {
   accept: float64,
   restrict: float64,
   unknown: float64,
+  tags: list<string>,
 }
-get-request: func() -> request
-set-decision: func(d: decision)
-
-
+get-request: func() -> request-interface
+set-decision: func(decision: decision-interface)

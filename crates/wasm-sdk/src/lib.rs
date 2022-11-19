@@ -1,4 +1,3 @@
-// TODO: the host/guest wit files seem to be why the latest version switched to one generate macro?
+mod host_calls;
 
-wit_bindgen_rust::import!("../../bulwark-host.wit");
-//wit_bindgen_rust::export!("../../bulwark-guest.wit");
+pub use host_calls::*;

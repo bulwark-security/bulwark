@@ -1,6 +1,11 @@
-wit_bindgen_rust::import!("../../../../bulwark-host.wit");
+use bulwark_wasm_sdk::*;
 
 fn main() {
-    let request = bulwark_host::get_request();
-    println!("Hello world. Method: {}", request.method);
+    let _request = get_request();
+    set_decision(Decision {
+        accept: 0.0,
+        restrict: 0.0,
+        unknown: 1.0,
+        tags: &[],
+    });
 }

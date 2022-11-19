@@ -1,16 +1,13 @@
 wit_bindgen_wasmtime::export!("../../bulwark-host.wit");
 
-use crate::{
-    bulwark_host::{Decision, Request},
-    PluginExecutionError, PluginInstantiationError, PluginLoadError,
-};
+use crate::{PluginExecutionError, PluginInstantiationError, PluginLoadError};
 use std::path::Path;
 use wasmtime::{Config, Engine, Instance, Linker, Module, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
 pub struct RequestContext {
     wasi: WasiCtx,
-    request: Request,
+    request: bulwark_host::RequestInterface,
     accept: f64,
     restrict: f64,
     unknown: f64,
@@ -53,20 +50,20 @@ impl Plugin {
     }
 }
 
-pub struct PluginInstance {
-    plugin: Plugin,
+pub struct PluginInstance<'a> {
+    plugin: &'a Plugin,
     linker: Linker<RequestContext>,
     store: Store<RequestContext>,
     instance: Instance,
 }
 
-impl PluginInstance {
-    fn new(plugin: Plugin, request: Request) -> Result<PluginInstance, PluginInstantiationError> {
+impl PluginInstance<'_> {
+    fn new(
+        plugin: &Plugin,
+        request: bulwark_host::RequestInterface,
+    ) -> Result<PluginInstance, PluginInstantiationError> {
         let mut linker: Linker<RequestContext> = Linker::new(&plugin.engine);
-        wasmtime_wasi::add_to_linker(&mut linker, |s| {
-            println!("getting wasi context");
-            &mut s.wasi
-        })?;
+        wasmtime_wasi::add_to_linker(&mut linker, |s| &mut s.wasi)?;
 
         let wasi = WasiCtxBuilder::new()
             .inherit_stdio()
@@ -81,18 +78,9 @@ impl PluginInstance {
             tags: vec![],
         };
         let mut store = Store::new(&plugin.engine, request_context);
-        bulwark_host::add_to_linker(&mut linker, |ctx: &mut RequestContext| {
-            println!("getting request context");
-            ctx
-        })?;
-
-        // TODO: don't think this is needed?
-        //linker.module(&mut store, "", &plugin.module)?;
+        bulwark_host::add_to_linker(&mut linker, |ctx: &mut RequestContext| ctx)?;
 
         let instance = linker.instantiate(&mut store, &plugin.module)?;
-
-        let start = instance.get_func(&mut store, "_start").unwrap();
-        start.call(&mut store, &[], &mut [])?;
 
         Ok(PluginInstance {
             plugin,
@@ -102,90 +90,131 @@ impl PluginInstance {
         })
     }
 
-    fn on_request_decision(&self) -> Result<Decision, PluginExecutionError> {
-        Ok(Decision {
-            accept: 0.0,
-            restrict: 0.0,
-            unknown: 1.0,
+    // TODO: traits for decision?
+
+    fn start(&mut self) -> Result<bulwark_host::DecisionInterface, PluginExecutionError> {
+        let start = self.instance.get_func(&mut self.store, "_start").unwrap();
+        start.call(&mut self.store, &[], &mut [])?;
+
+        let ctx = self.store.data();
+
+        Ok(bulwark_host::DecisionInterface {
+            accept: ctx.accept,
+            restrict: ctx.restrict,
+            unknown: ctx.unknown,
+            tags: ctx.tags.iter().map(|s| s.as_str()).collect(),
         })
+    }
+
+    fn has_request_decision_handler(&self) -> bool {
+        false
     }
 }
 
 impl bulwark_host::BulwarkHost for RequestContext {
-    fn set_decision(&mut self, decision: Decision) {
-        println!("set_decision called");
+    fn set_decision(&mut self, decision: bulwark_host::DecisionInterface) {
         self.accept = decision.accept;
         self.restrict = decision.restrict;
         self.unknown = decision.unknown;
+        self.tags = decision
+            .tags
+            .iter()
+            .map(|s| String::from(*s))
+            .collect::<Vec<String>>();
+
         // TODO: validate, probably via trait?
     }
 
-    fn get_request(&mut self) -> Request {
-        println!("get_request called");
-        Request {
-            method: self.request.method.clone(),
-        }
+    fn get_request(&mut self) -> bulwark_host::RequestInterface {
+        self.request.clone()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wasi_cap_std_sync::{ambient_authority, Dir, WasiCtxBuilder};
-
-    // TODO:
-    // include_bytes!
-    // cargo build --package bulwark-wasm-sdk --lib --verbose --target wasm32-unknown-unknown --example evil_param
-
-    // fn default_wasi() -> WasiCtx {
-    //     let mut ctx = WasiCtxBuilder::new().inherit_stdio();
-    //     ctx = ctx
-    //         .preopened_dir(
-    //             Dir::open_ambient_dir("./target", ambient_authority()).unwrap(),
-    //             "cache",
-    //         )
-    //         .unwrap();
-
-    //     ctx.build()
-    // }
 
     #[test]
     fn test_wasm_execution() -> Result<(), Box<dyn std::error::Error>> {
         let wasm_bytes = include_bytes!("../test/bulwark-blank-slate.wasm");
         let plugin = Plugin::from_bytes(wasm_bytes)?;
-        let plugin_instance = PluginInstance::new(
-            plugin,
-            Request {
-                method: String::from("PUT"),
+        let mut plugin_instance = PluginInstance::new(
+            &plugin,
+            bulwark_host::RequestInterface {
+                method: String::from("GET"),
+                uri: String::from("/"),
+                version: String::from("HTTP/1.1"),
+                chunk: "".as_bytes().to_vec(),
+                headers: vec![],
+                chunk_start: 0,
+                chunk_length: 0,
+                end_of_stream: true,
             },
         )?;
+        let decision = plugin_instance.start()?;
+        assert_eq!(0.0, decision.accept);
+        assert_eq!(0.0, decision.restrict);
+        assert_eq!(1.0, decision.unknown);
+        assert_eq!(0, decision.tags.len());
 
-        // let create = || {
-        //     crate::instantiate(
-        //         wasm,
-        //         |linker| {
-        //             imports::add_to_linker(
-        //                 linker,
-        //                 |cx: &mut crate::Context<MyImports>| -> &mut MyImports { &mut cx.imports },
-        //             )
-        //         },
-        //         |store, module, linker| Exports::instantiate(store, module, linker),
-        //     )
-        // };
+        Ok(())
+    }
 
-        // let (exports, mut store) = create()?;
+    #[test]
+    fn test_wasm_logic() -> Result<(), Box<dyn std::error::Error>> {
+        let wasm_bytes = include_bytes!("../test/bulwark-evil-bit.wasm");
+        let plugin = std::sync::Arc::new(Plugin::from_bytes(wasm_bytes)?);
 
-        // interface::add_to_linker(
-        //     linker,
-        //     |cx: &mut crate::Context<MyInterface>| -> &mut MyInterface { &mut cx.imports },
-        // );
+        let mut typical_plugin_instance = PluginInstance::new(
+            &plugin,
+            bulwark_host::RequestInterface {
+                method: String::from("POST"),
+                uri: String::from("/example"),
+                version: String::from("HTTP/1.1"),
+                chunk: "{\"number\": 42}".as_bytes().to_vec(),
+                headers: vec![bulwark_host::HeaderInterface {
+                    name: String::from("Content-Type"),
+                    value: String::from("application/json"),
+                }],
+                chunk_start: 0,
+                chunk_length: 14,
+                end_of_stream: true,
+            },
+        )?;
+        let typical_decision = typical_plugin_instance.start()?;
+        assert_eq!(0.0, typical_decision.accept);
+        assert_eq!(0.0, typical_decision.restrict);
+        assert_eq!(1.0, typical_decision.unknown);
+        assert_eq!(0, typical_decision.tags.len());
 
-        // let (bindings, instance) = Bindings::instantiate(store, module, linker)?;
-
-        // linker
-        //     .get_default(&mut store, "")?
-        //     .typed::<(), (), _>(&store)?
-        //     .call(&mut store, ())?;
+        let mut evil_plugin_instance = PluginInstance::new(
+            &plugin,
+            bulwark_host::RequestInterface {
+                method: String::from("POST"),
+                uri: String::from("/example"),
+                version: String::from("HTTP/1.1"),
+                chunk: "{\"number\": 42}".as_bytes().to_vec(),
+                headers: vec![
+                    bulwark_host::HeaderInterface {
+                        name: String::from("Content-Type"),
+                        value: String::from("application/json"),
+                    },
+                    bulwark_host::HeaderInterface {
+                        name: String::from("Evil"),
+                        value: String::from("true"),
+                    },
+                ],
+                chunk_start: 0,
+                chunk_length: 14,
+                end_of_stream: true,
+            },
+        )?;
+        let evil_decision = evil_plugin_instance.start()?;
+        assert_eq!(0.0, evil_decision.accept);
+        assert_eq!(1.0, evil_decision.restrict);
+        assert_eq!(0.0, evil_decision.unknown);
+        assert_eq!(1, evil_decision.tags.len());
+        assert_eq!("evil", evil_decision.tags[0]);
 
         Ok(())
     }
