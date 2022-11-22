@@ -6,6 +6,6 @@ fn main() {
         accept: 0.0,
         restrict: 0.0,
         unknown: 1.0,
-        tags: &[],
     });
+    set_tags(&[]);
 }

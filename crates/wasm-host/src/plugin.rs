@@ -102,7 +102,7 @@ impl PluginInstance<'_> {
             accept: ctx.accept,
             restrict: ctx.restrict,
             unknown: ctx.unknown,
-            tags: ctx.tags.iter().map(|s| s.as_str()).collect(),
+            // tags: ctx.tags.iter().map(|s| s.as_str()).collect(),
         })
     }
 
@@ -112,21 +112,28 @@ impl PluginInstance<'_> {
 }
 
 impl bulwark_host::BulwarkHost for RequestContext {
+    fn get_request(&mut self) -> bulwark_host::RequestInterface {
+        self.request.clone()
+    }
+
     fn set_decision(&mut self, decision: bulwark_host::DecisionInterface) {
         self.accept = decision.accept;
         self.restrict = decision.restrict;
         self.unknown = decision.unknown;
-        self.tags = decision
-            .tags
-            .iter()
-            .map(|s| String::from(*s))
-            .collect::<Vec<String>>();
+        // self.tags = decision
+        //     .tags
+        //     .iter()
+        //     .map(|s| String::from(*s))
+        //     .collect::<Vec<String>>();
 
         // TODO: validate, probably via trait?
     }
 
-    fn get_request(&mut self) -> bulwark_host::RequestInterface {
-        self.request.clone()
+    fn set_tags(&mut self, tags: Vec<&str>) {
+        self.tags = tags
+            .iter()
+            .map(|s| String::from(*s))
+            .collect::<Vec<String>>();
     }
 }
 
@@ -155,7 +162,6 @@ mod tests {
         assert_eq!(0.0, decision.accept);
         assert_eq!(0.0, decision.restrict);
         assert_eq!(1.0, decision.unknown);
-        assert_eq!(0, decision.tags.len());
 
         Ok(())
     }
@@ -185,7 +191,6 @@ mod tests {
         assert_eq!(0.0, typical_decision.accept);
         assert_eq!(0.0, typical_decision.restrict);
         assert_eq!(1.0, typical_decision.unknown);
-        assert_eq!(0, typical_decision.tags.len());
 
         let mut evil_plugin_instance = PluginInstance::new(
             &plugin,
@@ -213,8 +218,6 @@ mod tests {
         assert_eq!(0.0, evil_decision.accept);
         assert_eq!(1.0, evil_decision.restrict);
         assert_eq!(0.0, evil_decision.unknown);
-        assert_eq!(1, evil_decision.tags.len());
-        assert_eq!("evil", evil_decision.tags[0]);
 
         Ok(())
     }

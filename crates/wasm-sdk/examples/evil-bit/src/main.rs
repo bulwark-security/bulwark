@@ -9,8 +9,8 @@ fn main() {
                 accept: 0.0,
                 restrict: 1.0,
                 unknown: 0.0,
-                tags: &["evil"],
             });
+            set_tags(&["evil"]);
             return;
         }
     }
@@ -18,6 +18,5 @@ fn main() {
         accept: 0.0,
         restrict: 0.0,
         unknown: 1.0,
-        tags: &[],
     });
 }

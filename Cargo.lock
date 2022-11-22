@@ -222,8 +222,10 @@ dependencies = [
 name = "bulwark-wasm-sdk"
 version = "0.1.0"
 dependencies = [
+ "approx",
  "cfg-if",
  "http",
+ "validator",
  "wit-bindgen-rust",
 ]
 

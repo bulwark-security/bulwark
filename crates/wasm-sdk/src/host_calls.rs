@@ -4,10 +4,12 @@ wit_bindgen_rust::import!("../../bulwark-host.wit");
 
 use std::str::FromStr;
 
-pub use bulwark_host::set_decision;
-pub use bulwark_host::DecisionInterface as Decision;
-use http::HeaderMap;
+pub use crate::Decision;
+pub use bulwark_host::set_tags; // TODO: use BTreeSet for merging sorted tag lists
 pub use http::{Extensions, Method, Uri, Version};
+use validator::{Validate, ValidationErrors};
+
+use self::bulwark_host::DecisionInterface;
 
 pub type Request = http::Request<RequestChunk>;
 
@@ -38,4 +40,16 @@ pub fn get_request() -> Request {
             end_of_stream: raw_request.end_of_stream,
         })
         .unwrap()
+}
+
+// TODO: get_response
+
+pub fn set_decision(decision: Decision) -> Result<(), ValidationErrors> {
+    decision.validate()?;
+    bulwark_host::set_decision(DecisionInterface {
+        accept: decision.accept,
+        restrict: decision.restrict,
+        unknown: decision.unknown,
+    });
+    Ok(())
 }

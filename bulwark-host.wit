@@ -17,7 +17,7 @@ record decision-interface {
   accept: float64,
   restrict: float64,
   unknown: float64,
-  tags: list<string>,
 }
 get-request: func() -> request-interface
 set-decision: func(decision: decision-interface)
+set-tags: func(tags: list<string>)

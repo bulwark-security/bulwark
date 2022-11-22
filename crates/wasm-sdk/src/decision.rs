@@ -127,6 +127,7 @@ impl Decision {
 fn pairwise_combine(left: Decision, right: Decision) -> Decision {
     // The mass assigned to the null hypothesis due to non-intersection.
     let nullh = left.accept * right.restrict + left.restrict * right.accept;
+
     Decision {
         // These are essentially an unrolled loop over the power set.
         // Each focal element from the left is multiplied by each on the right
@@ -159,7 +160,7 @@ pub fn combine(decisions: &[Decision]) -> Decision {
     for m in decisions {
         sum_a += m.accept;
         sum_d += m.restrict;
-        sum_u += m.unknown
+        sum_u += m.unknown;
     }
     let avg_d = Decision {
         accept: sum_a / decisions.len() as f64,
@@ -206,7 +207,7 @@ mod tests {
         Decision {
             accept: 0.0,
             restrict: 0.0,
-            unknown: 0.0
+            unknown: 0.0,
         },
         false,
         accept = 0.0,
@@ -219,7 +220,7 @@ mod tests {
         Decision {
             accept: 0.25,
             restrict: 0.25,
-            unknown: 0.50
+            unknown: 0.50,
         },
         true,
         accept = 0.25,
@@ -232,7 +233,7 @@ mod tests {
         Decision {
             accept: -0.25,
             restrict: 0.75,
-            unknown: 0.50
+            unknown: 0.50,
         },
         false,
         accept = -0.25,
@@ -245,7 +246,7 @@ mod tests {
         Decision {
             accept: 0.25,
             restrict: 0.25,
-            unknown: 0.50
+            unknown: 0.50,
         }
         .pignistic(),
         true,
@@ -283,7 +284,7 @@ mod tests {
         Decision {
             accept: 0.0,
             restrict: 0.0,
-            unknown: 0.0
+            unknown: 0.0,
         }
         .clamp(),
         false,
@@ -297,7 +298,7 @@ mod tests {
         Decision {
             accept: 0.50,
             restrict: 0.50,
-            unknown: 0.50
+            unknown: 0.50,
         }
         .clamp(),
         false,
@@ -311,7 +312,7 @@ mod tests {
         Decision {
             accept: 1.0,
             restrict: 1.0,
-            unknown: 1.0
+            unknown: 1.0,
         }
         .clamp(),
         false,
@@ -325,7 +326,7 @@ mod tests {
         Decision {
             accept: -1.0,
             restrict: -1.0,
-            unknown: -1.0
+            unknown: -1.0,
         }
         .clamp(),
         false,
@@ -339,7 +340,7 @@ mod tests {
         Decision {
             accept: 2.0,
             restrict: 2.0,
-            unknown: 2.0
+            unknown: 2.0,
         }
         .clamp(),
         false,
@@ -353,7 +354,7 @@ mod tests {
         Decision {
             accept: 0.0,
             restrict: 0.0,
-            unknown: 0.0
+            unknown: 0.0,
         }
         .scale(),
         true,
@@ -367,7 +368,7 @@ mod tests {
         Decision {
             accept: 0.0,
             restrict: 0.0,
-            unknown: 1.0
+            unknown: 1.0,
         }
         .scale(),
         true,
@@ -381,7 +382,7 @@ mod tests {
         Decision {
             accept: -1.0,
             restrict: -1.0,
-            unknown: -1.0
+            unknown: -1.0,
         }
         .scale(),
         true,
@@ -395,7 +396,7 @@ mod tests {
         Decision {
             accept: 2.0,
             restrict: 2.0,
-            unknown: 2.0
+            unknown: 2.0,
         }
         .scale(),
         true,
@@ -409,7 +410,7 @@ mod tests {
         Decision {
             accept: 0.0,
             restrict: 0.0,
-            unknown: 0.0
+            unknown: 0.0,
         }
         .weight(0.0),
         true,
@@ -423,7 +424,7 @@ mod tests {
         Decision {
             accept: 0.0,
             restrict: 0.0,
-            unknown: 0.0
+            unknown: 0.0,
         }
         .weight(0.0),
         true,
@@ -437,7 +438,7 @@ mod tests {
         Decision {
             accept: 0.0,
             restrict: 0.0,
-            unknown: 1.0
+            unknown: 1.0,
         }
         .weight(0.0),
         true,
@@ -451,7 +452,7 @@ mod tests {
         Decision {
             accept: 0.0,
             restrict: 0.0,
-            unknown: 1.0
+            unknown: 1.0,
         }
         .weight(1.0),
         true,
@@ -465,7 +466,7 @@ mod tests {
         Decision {
             accept: -1.0,
             restrict: -1.0,
-            unknown: -1.0
+            unknown: -1.0,
         }
         .weight(1.0),
         true,
@@ -479,7 +480,7 @@ mod tests {
         Decision {
             accept: 2.0,
             restrict: 2.0,
-            unknown: 2.0
+            unknown: 2.0,
         }
         .weight(1.0),
         true,
@@ -493,7 +494,7 @@ mod tests {
         Decision {
             accept: 2.0,
             restrict: 2.0,
-            unknown: 2.0
+            unknown: 2.0,
         }
         .weight(0.125),
         true,
@@ -507,7 +508,7 @@ mod tests {
         Decision {
             accept: 0.125,
             restrict: 0.125,
-            unknown: 0.75
+            unknown: 0.75,
         }
         .weight(2.0),
         true,
@@ -522,12 +523,12 @@ mod tests {
             Decision {
                 accept: 0.25,
                 restrict: 0.5,
-                unknown: 0.25
+                unknown: 0.25,
             },
             Decision {
                 accept: 0.25,
                 restrict: 0.1,
-                unknown: 0.65
+                unknown: 0.65,
             }
         ),
         true,
@@ -542,12 +543,12 @@ mod tests {
             Decision {
                 accept: 0.25,
                 restrict: 0.5,
-                unknown: 0.25
+                unknown: 0.25,
             },
             Decision {
                 accept: 0.0,
                 restrict: 0.0,
-                unknown: 1.0
+                unknown: 1.0,
             }
         ),
         true,
@@ -562,12 +563,12 @@ mod tests {
             Decision {
                 accept: 0.25,
                 restrict: 0.5,
-                unknown: 0.25
+                unknown: 0.25,
             },
             Decision {
                 accept: 1.0,
                 restrict: 0.0,
-                unknown: 0.0
+                unknown: 0.0,
             }
         ),
         true,
@@ -582,12 +583,12 @@ mod tests {
             Decision {
                 accept: 0.35,
                 restrict: 0.20,
-                unknown: 0.45
+                unknown: 0.45,
             },
             Decision {
                 accept: 0.0,
                 restrict: 0.0,
-                unknown: 1.0
+                unknown: 1.0,
             }
         ]),
         true,
@@ -602,12 +603,12 @@ mod tests {
             Decision {
                 accept: 1.0,
                 restrict: 0.0,
-                unknown: 0.0
+                unknown: 0.0,
             },
             Decision {
                 accept: 0.0,
                 restrict: 1.0,
-                unknown: 0.0
+                unknown: 0.0,
             }
         ]),
         true,
