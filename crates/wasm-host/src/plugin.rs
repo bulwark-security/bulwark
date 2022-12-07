@@ -2,8 +2,36 @@ wit_bindgen_wasmtime::export!("../../bulwark-host.wit");
 
 use crate::{PluginExecutionError, PluginInstantiationError, PluginLoadError};
 use std::path::Path;
+use std::{convert::From, sync::Arc};
 use wasmtime::{Config, Engine, Instance, Linker, Module, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
+
+impl From<bulwark_wasm_sdk::Request> for bulwark_host::RequestInterface {
+    fn from(request: bulwark_wasm_sdk::Request) -> Self {
+        bulwark_host::RequestInterface {
+            method: request.method().to_string(),
+            uri: request.uri().to_string(),
+            // version doesn't implement display for some reason
+            version: format!("{:?}", request.version()),
+            headers: request
+                .headers()
+                .iter()
+                .map(|(name, value)| {
+                    bulwark_host::HeaderInterface {
+                        name: name.to_string(),
+                        // TODO: header values might not be valid unicode
+                        value: String::from(value.to_str().unwrap()),
+                    }
+                })
+                .collect(),
+            chunk_start: request.body().start,
+            chunk_length: request.body().size,
+            end_of_stream: request.body().end_of_stream,
+            // TODO: figure out how to avoid the copy
+            chunk: request.body().content.clone(),
+        }
+    }
+}
 
 pub struct RequestContext {
     wasi: WasiCtx,
@@ -14,6 +42,7 @@ pub struct RequestContext {
     tags: Vec<String>,
 }
 // Owns a single detection plugin and provides the interface between WASM host and guest.
+#[derive(Clone)]
 pub struct Plugin {
     engine: Engine,
     module: Module,
@@ -50,18 +79,19 @@ impl Plugin {
     }
 }
 
-pub struct PluginInstance<'a> {
-    plugin: &'a Plugin,
+pub struct PluginInstance {
+    plugin: Arc<Plugin>,
     linker: Linker<RequestContext>,
     store: Store<RequestContext>,
     instance: Instance,
 }
 
-impl PluginInstance<'_> {
-    fn new(
-        plugin: &Plugin,
-        request: bulwark_host::RequestInterface,
+impl PluginInstance {
+    pub fn new(
+        plugin: Arc<Plugin>,
+        request: bulwark_wasm_sdk::Request,
     ) -> Result<PluginInstance, PluginInstantiationError> {
+        // convert from normal request struct to wasm request interface
         let mut linker: Linker<RequestContext> = Linker::new(&plugin.engine);
         wasmtime_wasi::add_to_linker(&mut linker, |s| &mut s.wasi)?;
 
@@ -71,7 +101,7 @@ impl PluginInstance<'_> {
             .build();
         let request_context = RequestContext {
             wasi,
-            request,
+            request: bulwark_host::RequestInterface::from(request),
             accept: 0.0,
             restrict: 0.0,
             unknown: 1.0,
@@ -92,7 +122,7 @@ impl PluginInstance<'_> {
 
     // TODO: traits for decision?
 
-    fn start(&mut self) -> Result<bulwark_host::DecisionInterface, PluginExecutionError> {
+    pub fn start(&mut self) -> Result<bulwark_host::DecisionInterface, PluginExecutionError> {
         let start = self.instance.get_func(&mut self.store, "_start").unwrap();
         start.call(&mut self.store, &[], &mut [])?;
 
@@ -146,17 +176,17 @@ mod tests {
         let wasm_bytes = include_bytes!("../test/bulwark-blank-slate.wasm");
         let plugin = Plugin::from_bytes(wasm_bytes)?;
         let mut plugin_instance = PluginInstance::new(
-            &plugin,
-            bulwark_host::RequestInterface {
-                method: String::from("GET"),
-                uri: String::from("/"),
-                version: String::from("HTTP/1.1"),
-                chunk: "".as_bytes().to_vec(),
-                headers: vec![],
-                chunk_start: 0,
-                chunk_length: 0,
-                end_of_stream: true,
-            },
+            Arc::new(plugin),
+            http::Request::builder()
+                .method("GET")
+                .uri("/")
+                .version(http::Version::HTTP_11)
+                .body(bulwark_wasm_sdk::RequestChunk {
+                    content: vec![],
+                    start: 0,
+                    size: 0,
+                    end_of_stream: true,
+                })?,
         )?;
         let decision = plugin_instance.start()?;
         assert_eq!(0.0, decision.accept);
@@ -172,20 +202,18 @@ mod tests {
         let plugin = std::sync::Arc::new(Plugin::from_bytes(wasm_bytes)?);
 
         let mut typical_plugin_instance = PluginInstance::new(
-            &plugin,
-            bulwark_host::RequestInterface {
-                method: String::from("POST"),
-                uri: String::from("/example"),
-                version: String::from("HTTP/1.1"),
-                chunk: "{\"number\": 42}".as_bytes().to_vec(),
-                headers: vec![bulwark_host::HeaderInterface {
-                    name: String::from("Content-Type"),
-                    value: String::from("application/json"),
-                }],
-                chunk_start: 0,
-                chunk_length: 14,
-                end_of_stream: true,
-            },
+            plugin.clone(),
+            http::Request::builder()
+                .method("POST")
+                .uri("/example")
+                .version(http::Version::HTTP_11)
+                .header("Content-Type", "application/json")
+                .body(bulwark_wasm_sdk::RequestChunk {
+                    content: "{\"number\": 42}".as_bytes().to_vec(),
+                    start: 0,
+                    size: 14,
+                    end_of_stream: true,
+                })?,
         )?;
         let typical_decision = typical_plugin_instance.start()?;
         assert_eq!(0.0, typical_decision.accept);
@@ -193,26 +221,19 @@ mod tests {
         assert_eq!(1.0, typical_decision.unknown);
 
         let mut evil_plugin_instance = PluginInstance::new(
-            &plugin,
-            bulwark_host::RequestInterface {
-                method: String::from("POST"),
-                uri: String::from("/example"),
-                version: String::from("HTTP/1.1"),
-                chunk: "{\"number\": 42}".as_bytes().to_vec(),
-                headers: vec![
-                    bulwark_host::HeaderInterface {
-                        name: String::from("Content-Type"),
-                        value: String::from("application/json"),
-                    },
-                    bulwark_host::HeaderInterface {
-                        name: String::from("Evil"),
-                        value: String::from("true"),
-                    },
-                ],
-                chunk_start: 0,
-                chunk_length: 14,
-                end_of_stream: true,
-            },
+            plugin,
+            http::Request::builder()
+                .method("POST")
+                .uri("/example")
+                .version(http::Version::HTTP_11)
+                .header("Content-Type", "application/json")
+                .header("Evil", "true")
+                .body(bulwark_wasm_sdk::RequestChunk {
+                    content: "{\"number\": 42}".as_bytes().to_vec(),
+                    start: 0,
+                    size: 14,
+                    end_of_stream: true,
+                })?,
         )?;
         let evil_decision = evil_plugin_instance.start()?;
         assert_eq!(0.0, evil_decision.accept);

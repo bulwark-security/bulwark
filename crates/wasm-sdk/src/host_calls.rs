@@ -14,11 +14,13 @@ use self::bulwark_host::DecisionInterface;
 pub type Request = http::Request<RequestChunk>;
 
 pub struct RequestChunk {
-    end_of_stream: bool,
-    size: u64,
-    start: u64,
-    content: Vec<u8>,
+    pub end_of_stream: bool,
+    pub size: u64,
+    pub start: u64,
+    pub content: Vec<u8>,
 }
+
+// TODO: might need either get_remote_addr or an extension on the request for non-forwarded IP address
 
 pub fn get_request() -> Request {
     let raw_request: bulwark_host::RequestInterface = bulwark_host::get_request();
@@ -28,7 +30,7 @@ pub fn get_request() -> Request {
     let mut request = http::Request::builder()
         .method(method)
         .uri(raw_request.uri)
-        .version(http::Version::HTTP_11);
+        .version(http::Version::HTTP_11); // TODO: don't hard-code version
     for header in raw_request.headers {
         request = request.header(header.name, header.value);
     }

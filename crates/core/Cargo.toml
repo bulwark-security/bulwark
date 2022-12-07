@@ -8,7 +8,5 @@ edition = "2021"
 num = "0.4"
 validator = { version = "0.12", features = ["derive"] }
 approx = "0.4"
-wasmer = "3.0.0-beta.2"
-wasmer-compiler-cranelift = "3.0.0-beta.2"
-wasmer-types = "3.0.0-beta.2"
 thiserror = "1.0.37"
+bulwark-wasm-host = { path = "../wasm-host" }

@@ -1,12 +1,12 @@
 [package]
 name = "bulwark-ext-filter"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 bulwark-core = { path = "../core" }
 bulwark-wasm-host = { path = "../wasm-host" }
-base64 = "0.13.0"
+bulwark-wasm-sdk = { path = "../wasm-sdk" }
 bytes = "1"
 clap = { version = "3.0.14", features = ["derive"] }
 envoy-control-plane = { version = "0.4.0", features = ["grpc"] }
@@ -16,9 +16,9 @@ prost = "0.9"
 prost-wkt = "=0.3.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tonic = "0.6.2"
-wasmer = "3.0.0-beta"
-wasmer-compiler-cranelift = "3.0.0-beta"
-wasmer-types = "3.0.0-beta"
+http = "0.2"
+anyhow = "1.0.66"
+thiserror = "1.0.37"
 
 [build-dependencies]
 prost-wkt-build = "=0.3.0"
