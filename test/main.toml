@@ -1,0 +1,15 @@
+[config]
+port = 10002
+
+[[include]]
+path = "include.toml"
+
+[[plugin]]
+ref = "evil-bit"
+path = "bulwark-evil-bit.wasm"
+config = {}
+
+[[resource]]
+prefix = "/"
+plugins = ["evil-bit", "starter-preset"]
+timeout = 25

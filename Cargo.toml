@@ -7,11 +7,10 @@ edition = "2021"
 
 [dependencies]
 bulwark-ext-filter = { path = "crates/ext-filter" }
+serde = { version = "1.0.149", features = ["std", "serde_derive"] }
+toml = { version = "0.5.9", features = ["preserve_order"] }
+anyhow = "1.0.66"
+thiserror = "1.0.37"
 
 [workspace]
-members = [
-    "crates/core",
-    "crates/ext-filter",
-    "crates/wasm-host",
-    "crates/wasm-sdk",
-]
+members = ["crates/ext-filter", "crates/wasm-host", "crates/wasm-sdk"]

@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bulwark-core = { path = "../core" }
 bulwark-wasm-host = { path = "../wasm-host" }
 bulwark-wasm-sdk = { path = "../wasm-sdk" }
 bytes = "1"
