@@ -6,6 +6,8 @@ use validator::{Validate, ValidationError};
 // the Decision type to be Copy-able and we avoid unnecessary cloning
 // that would otherwise need to be done when operating on a Decision.
 
+// TODO: implement From traits for converting back and forth from Decisions and DecisionInterface types
+
 #[derive(Debug, Validate, Copy, Clone)]
 #[validate(schema(function = "validate_sum", skip_on_field_errors = false))]
 pub struct Decision {

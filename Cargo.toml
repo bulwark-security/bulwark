@@ -7,10 +7,25 @@ edition = "2021"
 
 [dependencies]
 bulwark-ext-filter = { path = "crates/ext-filter" }
-serde = { version = "1.0.149", features = ["std", "serde_derive"] }
-toml = { version = "0.5.9", features = ["preserve_order"] }
+bulwark-config = { path = "crates/config" }
 anyhow = "1.0.66"
 thiserror = "1.0.37"
+clap = { version = "4.0.29", features = ["derive"] }
+clap_complete = "4.0.6"
+# TODO: used for debug currently, remove later
+serde = { version = "1.0.149", features = ["std", "serde_derive"] }
+toml = { version = "0.5.9", features = ["preserve_order"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+envoy-control-plane = { version = "0.4.0", features = ["grpc"] }
+tonic = "0.6.2"
+
+[build-dependencies]
+clap_mangen = "0.2.5"
 
 [workspace]
-members = ["crates/ext-filter", "crates/wasm-host", "crates/wasm-sdk"]
+members = [
+    "crates/config",
+    "crates/ext-filter",
+    "crates/wasm-host",
+    "crates/wasm-sdk",
+]

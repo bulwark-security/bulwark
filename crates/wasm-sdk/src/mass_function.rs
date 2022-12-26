@@ -121,6 +121,13 @@ where
         )
     }
 
+    fn find_min<'a, I>(vals: I) -> Option<&'a u32>
+    where
+        I: IntoIterator<Item = &'a u32>,
+    {
+        vals.into_iter().min()
+    }
+
     // combine takes the Murphy average of a set of decisions,
     // returning a new decision as the result.
     //
@@ -128,22 +135,28 @@ where
     // all mass functions to create a new mass function. This new mass function
     // is then combined conjunctively with itself N times where N is the total
     // number of functions that were averaged together.
-    fn combine(decisions: &[Self]) -> Self {
+    fn combine<'a, I>(decisions: I) -> Self
+    where
+        Self: 'a,
+        I: IntoIterator<Item = &'a Self>,
+    {
         let mut sum_a = 0.0;
         let mut sum_d = 0.0;
         let mut sum_u = 0.0;
+        let mut length: usize = 0;
         for m in decisions {
             sum_a += m.accept();
             sum_d += m.restrict();
             sum_u += m.unknown();
+            length += 1;
         }
         let avg_d = Self::new(
-            sum_a / decisions.len() as f64,
-            sum_d / decisions.len() as f64,
-            sum_u / decisions.len() as f64,
+            sum_a / length as f64,
+            sum_d / length as f64,
+            sum_u / length as f64,
         );
         let mut d = Self::new(0.0, 0.0, 1.0);
-        for _ in 0..decisions.len() {
+        for _ in 0..length {
             d = Self::pairwise_combine(&d, &avg_d);
         }
         d
