@@ -25,7 +25,7 @@ use {
     },
     tokio::sync::RwLock,
     tonic::{Request, Response, Status, Streaming},
-    tracing::{error, info, instrument},
+    tracing::{debug, error, info, instrument, trace, Instrument},
 };
 
 type ExternalProcessorStream =
@@ -50,7 +50,11 @@ impl BulwarkProcessor {
                 let mut plugins: PluginList = Vec::with_capacity(plugin_configs.len());
                 for plugin_config in plugin_configs {
                     // TODO: pass in the plugin config
-                    info!(plugin_path = plugin_config.path, message = "loading plugin");
+                    debug!(
+                        plugin_path = plugin_config.path,
+                        message = "loading plugin",
+                        resource = resource.route
+                    );
                     let plugin = Plugin::from_file(plugin_config.path)?;
                     plugins.push(Arc::new(plugin));
                 }
@@ -83,26 +87,41 @@ impl ExternalProcessor for BulwarkProcessor {
             let http_req = Arc::new(http_req);
             let router = self.router.clone();
 
+            info!(
+                message = "request processed",
+                method = http_req.method().to_string(),
+                uri = http_req.uri().to_string(),
+                user_agent = http_req
+                    .headers()
+                    .get("User-Agent")
+                    .map(|ua: &http::HeaderValue| ua.to_str().unwrap_or_default())
+            );
+
+            let child_span = tracing::debug_span!("routing request");
             let (sender, receiver) = futures::channel::mpsc::unbounded();
-            tokio::task::spawn(async move {
-                let http_req = http_req.clone();
-                let router = router.read().await;
-                let route_result = router.at(http_req.uri().path());
-                match route_result {
-                    Ok(route_match) => {
-                        // TODO: may want to expose params to logging after redaction
-                        let plugins = route_match.value;
-                        let combined =
-                            execute_plugins(plugins, http_req.clone(), route_match.params).await;
-                        handle_decision(sender, stream, combined, vec![]).await;
-                    }
-                    Err(err) => {
-                        // TODO: figure out how to handle trailing slash errors, silent failure is probably undesirable
-                        error!(uri = http_req.uri().to_string(), message = "match error");
-                        panic!("match error");
-                    }
-                };
-            });
+            tokio::task::spawn(
+                async move {
+                    let http_req = http_req.clone();
+                    let router = router.read().await;
+                    let route_result = router.at(http_req.uri().path());
+                    match route_result {
+                        Ok(route_match) => {
+                            // TODO: may want to expose params to logging after redaction
+                            let plugins = route_match.value;
+                            let combined =
+                                execute_plugins(plugins, http_req.clone(), route_match.params)
+                                    .await;
+                            handle_decision(sender, stream, combined, vec![]).await;
+                        }
+                        Err(err) => {
+                            // TODO: figure out how to handle trailing slash errors, silent failure is probably undesirable
+                            error!(uri = http_req.uri().to_string(), message = "match error");
+                            panic!("match error");
+                        }
+                    };
+                }
+                .instrument(child_span.or_current()),
+            );
             return Ok(Response::new(Box::pin(receiver)));
         }
         // By default, just close the stream.
@@ -110,6 +129,7 @@ impl ExternalProcessor for BulwarkProcessor {
     }
 }
 
+#[instrument(level = "trace", skip(plugins, http_req, params))]
 async fn execute_plugins<'k, 'v>(
     plugins: &PluginList,
     http_req: Arc<bulwark_wasm_sdk::Request>,
@@ -123,20 +143,24 @@ async fn execute_plugins<'k, 'v>(
         let mut plugin_instance = plugin_instance_result.unwrap();
         let decisions = decisions.clone();
 
-        joins.push(tokio::task::spawn(async move {
-            let decision_result = plugin_instance.start();
-            // TODO: avoid unwrap
-            let decision = decision_result.unwrap();
-            let mut decisions = decisions.lock().unwrap();
-            decisions.push(decision);
-            info!(
-                message = "plugin decision result",
-                plugin = plugin_instance.plugin_name(),
-                accept = decision.accept,
-                restrict = decision.restrict,
-                unknown = decision.unknown
-            );
-        }));
+        let child_span =
+            tracing::debug_span!("executing plugin", plugin = plugin_instance.plugin_name());
+        joins.push(tokio::task::spawn(
+            async move {
+                let decision_result = plugin_instance.start();
+                // TODO: avoid unwrap
+                let decision = decision_result.unwrap();
+                let mut decisions = decisions.lock().unwrap();
+                decisions.push(decision);
+                debug!(
+                    message = "plugin decision result",
+                    accept = decision.accept,
+                    restrict = decision.restrict,
+                    unknown = decision.unknown
+                );
+            }
+            .instrument(child_span.or_current()),
+        ));
     }
     for join in joins {
         join.await.ok();
@@ -215,11 +239,11 @@ async fn handle_decision(
     if decision.accepted(0.5) {
         let result = allow_request(&sender, decision, tags).await;
         // TODO: must perform error handling on sender results, sending can definitely fail
-        info!(message = "send result", result = result.is_ok());
+        debug!(message = "send result", result = result.is_ok());
     } else {
         let result = block_request(&sender, decision, tags).await;
         // TODO: must perform error handling on sender results, sending can definitely fail
-        info!(message = "send result", result = result.is_ok());
+        debug!(message = "send result", result = result.is_ok());
         return;
     }
 
