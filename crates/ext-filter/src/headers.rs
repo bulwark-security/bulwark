@@ -8,7 +8,7 @@ use sfv::{
 // TODO: capture the entire outcome: accepted/suspicious/restricted + threshold values
 // TODO: should this error for invalid Decision values?
 
-pub fn serialize_decision_sfv(decision: Decision) -> String {
+pub(crate) fn serialize_decision_sfv(decision: Decision) -> String {
     let accept_value = Item::new(BareItem::Decimal(
         Decimal::from_f64(decision.accept()).unwrap(),
     ));
@@ -29,7 +29,7 @@ pub fn serialize_decision_sfv(decision: Decision) -> String {
 
 // TODO: return a Result because error handling is necessary here
 
-pub fn serialize_tags_sfv(tags: Vec<String>) -> String {
+pub(crate) fn serialize_tags_sfv(tags: Vec<String>) -> String {
     let list: List = tags
         .iter()
         .map(|tag| ListEntry::from(Item::new(BareItem::Token(tag.to_string()))))

@@ -1,31 +1,31 @@
-use crate::FilterProcessingError;
-use crate::{serialize_decision_sfv, serialize_tags_sfv};
-use bulwark_config::Config;
-use bulwark_wasm_host::{Plugin, PluginInstance, PluginLoadError};
-use bulwark_wasm_sdk::{Decision, MassFunction};
-use envoy_control_plane::envoy::config::cluster::v3::Filter;
-use envoy_control_plane::envoy::r#type::v3::HttpStatus;
-use envoy_control_plane::envoy::service::ext_proc::v3::ImmediateResponse;
-use futures::channel::mpsc::SendError;
-use matchit::Router;
-use std::{
-    path::PathBuf,
-    str::FromStr,
-    sync::{Arc, Mutex},
-};
 use {
+    crate::{serialize_decision_sfv, serialize_tags_sfv, FilterProcessingError},
+    bulwark_config::Config,
+    bulwark_wasm_host::{Plugin, PluginInstance, PluginLoadError},
+    bulwark_wasm_sdk::{Decision, MassFunction},
     envoy_control_plane::envoy::{
         config::core::v3::{HeaderMap, HeaderValue, HeaderValueOption},
+        r#type::v3::HttpStatus,
         service::ext_proc::v3::{
             external_processor_server::ExternalProcessor, processing_request, processing_response,
-            CommonResponse, HeaderMutation, HeadersResponse, HttpHeaders, ProcessingRequest,
-            ProcessingResponse,
+            CommonResponse, HeaderMutation, HeadersResponse, HttpHeaders, ImmediateResponse,
+            ProcessingRequest, ProcessingResponse,
         },
     },
-    futures::{channel::mpsc::UnboundedSender, SinkExt, Stream},
-    std::{pin::Pin, str},
+    futures::{
+        channel::mpsc::{SendError, UnboundedSender},
+        SinkExt, Stream,
+    },
+    matchit::Router,
+    std::{
+        pin::Pin,
+        str,
+        str::FromStr,
+        sync::{Arc, Mutex},
+    },
     tokio::sync::RwLock,
     tonic::{Request, Response, Status, Streaming},
+    tracing::{error, info, instrument},
 };
 
 type ExternalProcessorStream =
@@ -42,6 +42,7 @@ pub struct BulwarkProcessor {
 
 impl BulwarkProcessor {
     pub fn new(config: Config) -> Result<Self, PluginLoadError> {
+        // TODO: return an init error not a plugin load error
         let mut router: Router<PluginList> = Router::new();
         if let Some(resources) = config.resources.as_ref() {
             for resource in resources {
@@ -49,7 +50,7 @@ impl BulwarkProcessor {
                 let mut plugins: PluginList = Vec::with_capacity(plugin_configs.len());
                 for plugin_config in plugin_configs {
                     // TODO: pass in the plugin config
-                    println!("loading: {}", plugin_config.path);
+                    info!(plugin_path = plugin_config.path, message = "loading plugin");
                     let plugin = Plugin::from_file(plugin_config.path)?;
                     plugins.push(Arc::new(plugin));
                 }
@@ -69,6 +70,7 @@ impl BulwarkProcessor {
 impl ExternalProcessor for BulwarkProcessor {
     type ProcessStream = ExternalProcessorStream;
 
+    #[instrument(skip(self, request))]
     async fn process(
         &self,
         request: Request<Streaming<ProcessingRequest>>,
@@ -88,7 +90,7 @@ impl ExternalProcessor for BulwarkProcessor {
                 let route_result = router.at(http_req.uri().path());
                 match route_result {
                     Ok(route_match) => {
-                        println!("params: {:?}", route_match.params);
+                        // TODO: may want to expose params to logging after redaction
                         let plugins = route_match.value;
                         let combined =
                             execute_plugins(plugins, http_req.clone(), route_match.params).await;
@@ -96,7 +98,7 @@ impl ExternalProcessor for BulwarkProcessor {
                     }
                     Err(err) => {
                         // TODO: figure out how to handle trailing slash errors, silent failure is probably undesirable
-                        println!("uri: {}", http_req.uri());
+                        error!(uri = http_req.uri().to_string(), message = "match error");
                         panic!("match error");
                     }
                 };
@@ -127,9 +129,12 @@ async fn execute_plugins<'k, 'v>(
             let decision = decision_result.unwrap();
             let mut decisions = decisions.lock().unwrap();
             decisions.push(decision);
-            println!(
-                "accept: {} restrict: {} unknown: {}",
-                decision.accept, decision.restrict, decision.unknown
+            info!(
+                message = "plugin decision result",
+                plugin = plugin_instance.plugin_name(),
+                accept = decision.accept,
+                restrict = decision.restrict,
+                unknown = decision.unknown
             );
         }));
     }
@@ -144,9 +149,15 @@ async fn execute_plugins<'k, 'v>(
             .iter()
             .map(|di| Decision::new(di.accept, di.restrict, di.unknown))
             .collect();
-        println!("decisions returned: {}", decision_vec.len());
     }
-    Decision::combine(&decision_vec)
+    let decision = Decision::combine(&decision_vec);
+    info!(
+        message = "decision combined",
+        accept = decision.accept,
+        restrict = decision.restrict,
+        unknown = decision.unknown
+    );
+    decision
 }
 
 // Add a header to the response.
@@ -204,11 +215,11 @@ async fn handle_decision(
     if decision.accepted(0.5) {
         let result = allow_request(&sender, decision, tags).await;
         // TODO: must perform error handling on sender results, sending can definitely fail
-        println!("send result ok? {}", result.is_ok());
+        info!(message = "send result", result = result.is_ok());
     } else {
         let result = block_request(&sender, decision, tags).await;
         // TODO: must perform error handling on sender results, sending can definitely fail
-        println!("send result ok? {}", result.is_ok());
+        info!(message = "send result", result = result.is_ok());
         return;
     }
 

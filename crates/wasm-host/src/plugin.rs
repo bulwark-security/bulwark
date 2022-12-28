@@ -64,27 +64,29 @@ pub struct RequestContext {
 // Owns a single detection plugin and provides the interface between WASM host and guest.
 #[derive(Clone)]
 pub struct Plugin {
+    name: String,
     engine: Engine,
     module: Module,
-    // TODO: plugins need to carry configuration and maybe their name around
+    // TODO: plugins need to carry configuration and their name around
 }
 
 impl Plugin {
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, PluginLoadError> {
-        Self::from_module(|engine| -> Result<Module, PluginLoadError> {
+    pub fn from_bytes(name: String, bytes: &[u8]) -> Result<Self, PluginLoadError> {
+        Self::from_module(name, |engine| -> Result<Module, PluginLoadError> {
             let module = Module::from_binary(engine, bytes)?;
             Ok(module)
         })
     }
 
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, PluginLoadError> {
-        Self::from_module(|engine| -> Result<Module, PluginLoadError> {
+        let name = path.as_ref().display().to_string();
+        Self::from_module(name, |engine| -> Result<Module, PluginLoadError> {
             let module = Module::from_file(engine, &path)?;
             Ok(module)
         })
     }
 
-    fn from_module<F>(mut get_module: F) -> Result<Self, PluginLoadError>
+    fn from_module<F>(name: String, mut get_module: F) -> Result<Self, PluginLoadError>
     where
         F: FnMut(&Engine) -> Result<Module, PluginLoadError>,
     {
@@ -96,7 +98,11 @@ impl Plugin {
         let engine = Engine::new(&config)?;
         let module = get_module(&engine)?;
 
-        Ok(Plugin { engine, module })
+        Ok(Plugin {
+            name,
+            engine,
+            module,
+        })
     }
 }
 
@@ -139,6 +145,10 @@ impl PluginInstance {
             store,
             instance,
         })
+    }
+
+    pub fn plugin_name(&self) -> String {
+        self.plugin.name.clone()
     }
 
     // TODO: traits for decision?
@@ -195,7 +205,7 @@ mod tests {
     #[test]
     fn test_wasm_execution() -> Result<(), Box<dyn std::error::Error>> {
         let wasm_bytes = include_bytes!("../test/bulwark-blank-slate.wasm");
-        let plugin = Plugin::from_bytes(wasm_bytes)?;
+        let plugin = Plugin::from_bytes("bulwark-blank-slate.wasm".to_string(), wasm_bytes)?;
         let mut plugin_instance = PluginInstance::new(
             Arc::new(plugin),
             Arc::new(
@@ -222,7 +232,10 @@ mod tests {
     #[test]
     fn test_wasm_logic() -> Result<(), Box<dyn std::error::Error>> {
         let wasm_bytes = include_bytes!("../test/bulwark-evil-bit.wasm");
-        let plugin = std::sync::Arc::new(Plugin::from_bytes(wasm_bytes)?);
+        let plugin = std::sync::Arc::new(Plugin::from_bytes(
+            "bulwark-evil-bit.wasm".to_string(),
+            wasm_bytes,
+        )?);
 
         let mut typical_plugin_instance = PluginInstance::new(
             plugin.clone(),
