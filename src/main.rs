@@ -8,6 +8,7 @@ use {
     tonic::transport::Server,
 };
 
+use color_eyre::eyre::Result;
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_forest::ForestLayer;
 use tracing_log::LogTracer;
@@ -47,11 +48,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cli = Cli::parse();
 
+    color_eyre::install()?;
+
     LogTracer::init().expect("log tracer init failed");
 
     let subscriber = Registry::default()
         .with(ForestLayer::default())
-        .with(EnvFilter::new("DEBUG"))
+        .with(EnvFilter::new("WARN"))
         .with(JsonStorageLayer);
     tracing::subscriber::set_global_default(subscriber).unwrap();
 

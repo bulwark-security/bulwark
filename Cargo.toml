@@ -26,6 +26,7 @@ tracing-forest = { version = "0.1.5", features = ["tokio"] }
 tracing-appender = "0.2.2"
 tracing-futures = { version = "0.2.5", features = ["tokio"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
+color-eyre = "0.6.2"
 
 [build-dependencies]
 clap_mangen = "0.2.5"

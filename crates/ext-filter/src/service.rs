@@ -1,3 +1,5 @@
+use tokio::time::error::Elapsed;
+
 use {
     crate::{serialize_decision_sfv, serialize_tags_sfv, FilterProcessingError},
     bulwark_config::Config,
@@ -22,10 +24,11 @@ use {
         str,
         str::FromStr,
         sync::{Arc, Mutex},
+        time::Duration,
     },
-    tokio::sync::RwLock,
+    tokio::{sync::RwLock, task::JoinSet, time::timeout},
     tonic::{Request, Response, Status, Streaming},
-    tracing::{debug, error, info, instrument, trace, Instrument},
+    tracing::{debug, error, info, instrument, trace, warn, Instrument},
 };
 
 type ExternalProcessorStream =
@@ -104,13 +107,19 @@ impl ExternalProcessor for BulwarkProcessor {
                     let http_req = http_req.clone();
                     let router = router.read().await;
                     let route_result = router.at(http_req.uri().path());
+                    // TODO: router needs to point to a struct that bundles the plugin set and associated config like timeout duration
+                    let timeout_duration = Duration::from_micros(200);
                     match route_result {
                         Ok(route_match) => {
                             // TODO: may want to expose params to logging after redaction
                             let plugins = route_match.value;
-                            let combined =
-                                execute_plugins(plugins, http_req.clone(), route_match.params)
-                                    .await;
+                            let combined = execute_plugins(
+                                plugins,
+                                timeout_duration,
+                                http_req.clone(),
+                                route_match.params,
+                            )
+                            .await;
                             handle_decision(sender, stream, combined, vec![]).await;
                         }
                         Err(err) => {
@@ -129,13 +138,13 @@ impl ExternalProcessor for BulwarkProcessor {
     }
 }
 
-#[instrument(level = "trace", skip(plugins, http_req, params))]
 async fn execute_plugins<'k, 'v>(
     plugins: &PluginList,
+    timeout_duration: std::time::Duration,
     http_req: Arc<bulwark_wasm_sdk::Request>,
     params: matchit::Params<'k, 'v>,
 ) -> Decision {
-    let mut joins = Vec::with_capacity(plugins.len());
+    let mut tasks = JoinSet::new();
     let decisions = Arc::new(Mutex::new(Vec::with_capacity(plugins.len())));
     for plugin in plugins {
         // TODO: actually use the params values
@@ -145,8 +154,8 @@ async fn execute_plugins<'k, 'v>(
 
         let child_span =
             tracing::debug_span!("executing plugin", plugin = plugin_instance.plugin_name());
-        joins.push(tokio::task::spawn(
-            async move {
+        tasks.spawn(
+            timeout(timeout_duration, async move {
                 let decision_result = plugin_instance.start();
                 // TODO: avoid unwrap
                 let decision = decision_result.unwrap();
@@ -158,12 +167,25 @@ async fn execute_plugins<'k, 'v>(
                     restrict = decision.restrict,
                     unknown = decision.unknown
                 );
-            }
+            })
             .instrument(child_span.or_current()),
-        ));
+        );
     }
-    for join in joins {
-        join.await.ok();
+    // hand execution off to the plugins
+    tokio::task::yield_now().await;
+    while let Some(r) = tasks.join_next().await {
+        match r {
+            Ok(Ok(_)) => {}
+            Ok(Err(_)) => {
+                warn!(message = "timeout waiting on plugin execution");
+            }
+            Err(e) => {
+                warn!(
+                    message = "join error on plugin execution",
+                    error_message = e.to_string(),
+                );
+            }
+        }
     }
     let decision_vec: Vec<Decision>;
     {
@@ -179,7 +201,8 @@ async fn execute_plugins<'k, 'v>(
         message = "decision combined",
         accept = decision.accept,
         restrict = decision.restrict,
-        unknown = decision.unknown
+        unknown = decision.unknown,
+        count = decision_vec.len(),
     );
     decision
 }
