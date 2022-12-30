@@ -178,6 +178,7 @@ async fn execute_plugins<'k, 'v>(
             Ok(Ok(_)) => {}
             Ok(Err(_)) => {
                 warn!(message = "timeout waiting on plugin execution");
+                // TODO: confirm that we haven't leaked a task on timeout; plugins may not halt
             }
             Err(e) => {
                 warn!(
