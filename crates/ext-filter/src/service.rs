@@ -1,7 +1,7 @@
 use {
     crate::{serialize_decision_sfv, serialize_tags_sfv, FilterProcessingError},
     bulwark_config::Config,
-    bulwark_wasm_host::{Plugin, PluginInstance, PluginLoadError},
+    bulwark_wasm_host::{DecisionComponents, Plugin, PluginInstance, PluginLoadError},
     bulwark_wasm_sdk::{Decision, MassFunction},
     envoy_control_plane::envoy::{
         config::core::v3::{HeaderMap, HeaderValue, HeaderValueOption},
@@ -34,18 +34,24 @@ type ExternalProcessorStream =
     Pin<Box<dyn Stream<Item = Result<ProcessingResponse, Status>> + Send>>;
 type PluginList = Vec<Arc<Plugin>>;
 
+struct RouteTarget {
+    value: String,
+    plugins: PluginList,
+    timeout: Option<u64>,
+}
+
 // TODO: BulwarkProcessor::new should take a config root as a param, compile all the plugins and build a radix tree router that maps to them
 
 #[derive(Clone)]
 pub struct BulwarkProcessor {
     // TODO: may need to have a plugin registry at some point
-    router: Arc<RwLock<Router<PluginList>>>,
+    router: Arc<RwLock<Router<RouteTarget>>>,
 }
 
 impl BulwarkProcessor {
     pub fn new(config: Config) -> Result<Self, PluginLoadError> {
         // TODO: return an init error not a plugin load error
-        let mut router: Router<PluginList> = Router::new();
+        let mut router: Router<RouteTarget> = Router::new();
         if let Some(resources) = config.resources.as_ref() {
             for resource in resources {
                 let plugin_configs = resource.resolve_plugins(&config);
@@ -60,7 +66,14 @@ impl BulwarkProcessor {
                     let plugin = Plugin::from_file(plugin_config.path)?;
                     plugins.push(Arc::new(plugin));
                 }
-                router.insert(resource.route.clone(), plugins);
+                router.insert(
+                    resource.route.clone(),
+                    RouteTarget {
+                        value: resource.route.clone(),
+                        timeout: resource.timeout,
+                        plugins,
+                    },
+                );
             }
         } else {
             // TODO: error handling
@@ -111,15 +124,15 @@ impl ExternalProcessor for BulwarkProcessor {
                     match route_result {
                         Ok(route_match) => {
                             // TODO: may want to expose params to logging after redaction
-                            let plugins = route_match.value;
+                            let route_target = route_match.value;
                             let combined = execute_plugins(
-                                plugins,
+                                &route_target.plugins,
                                 timeout_duration,
                                 http_req.clone(),
                                 route_match.params,
                             )
                             .await;
-                            handle_decision(sender, stream, combined, vec![]).await;
+                            handle_decision(sender, stream, combined.decision, combined.tags).await;
                         }
                         Err(err) => {
                             // TODO: figure out how to handle trailing slash errors, silent failure is probably undesirable
@@ -142,7 +155,7 @@ async fn execute_plugins<'k, 'v>(
     timeout_duration: std::time::Duration,
     http_req: Arc<bulwark_wasm_sdk::Request>,
     params: matchit::Params<'k, 'v>,
-) -> Decision {
+) -> DecisionComponents {
     let mut tasks = JoinSet::new();
     let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugins.len())));
     for plugin in plugins {
@@ -211,7 +224,10 @@ async fn execute_plugins<'k, 'v>(
         tags = format!("{:?}", tags),
         count = decision_vec.len(),
     );
-    decision
+    DecisionComponents {
+        decision,
+        tags: tags.into_iter().collect(),
+    }
 }
 
 // Add a header to the response.
