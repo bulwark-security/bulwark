@@ -1,5 +1,3 @@
-use tokio::time::error::Elapsed;
-
 use {
     crate::{serialize_decision_sfv, serialize_tags_sfv, FilterProcessingError},
     bulwark_config::Config,
@@ -20,6 +18,7 @@ use {
     },
     matchit::Router,
     std::{
+        collections::HashSet,
         pin::Pin,
         str,
         str::FromStr,
@@ -145,12 +144,12 @@ async fn execute_plugins<'k, 'v>(
     params: matchit::Params<'k, 'v>,
 ) -> Decision {
     let mut tasks = JoinSet::new();
-    let decisions = Arc::new(Mutex::new(Vec::with_capacity(plugins.len())));
+    let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugins.len())));
     for plugin in plugins {
         // TODO: actually use the params values
         let plugin_instance_result = PluginInstance::new(plugin.clone(), http_req.clone());
         let mut plugin_instance = plugin_instance_result.unwrap();
-        let decisions = decisions.clone();
+        let decision_components = decision_components.clone();
 
         let child_span =
             tracing::debug_span!("executing plugin", plugin = plugin_instance.plugin_name());
@@ -158,15 +157,18 @@ async fn execute_plugins<'k, 'v>(
             timeout(timeout_duration, async move {
                 let decision_result = plugin_instance.start();
                 // TODO: avoid unwrap
-                let decision = decision_result.unwrap();
-                let mut decisions = decisions.lock().unwrap();
-                decisions.push(decision);
-                debug!(
-                    message = "plugin decision result",
-                    accept = decision.accept,
-                    restrict = decision.restrict,
-                    unknown = decision.unknown
-                );
+                let decision_component = decision_result.unwrap();
+                {
+                    let decision = &decision_component.decision;
+                    debug!(
+                        message = "plugin decision result",
+                        accept = decision.accept,
+                        restrict = decision.restrict,
+                        unknown = decision.unknown
+                    );
+                }
+                let mut decision_components = decision_components.lock().unwrap();
+                decision_components.push(decision_component);
             })
             .instrument(child_span.or_current()),
         );
@@ -189,20 +191,24 @@ async fn execute_plugins<'k, 'v>(
         }
     }
     let decision_vec: Vec<Decision>;
+    let tags: HashSet<String>;
     {
-        // TODO: plugin results should maybe return a Decision, not DecisionInterface
-        let decision_interfaces = decisions.lock().unwrap();
-        decision_vec = decision_interfaces
+        let decision_components = decision_components.lock().unwrap();
+        decision_vec = decision_components.iter().map(|dc| dc.decision).collect();
+        tags = decision_components
             .iter()
-            .map(|di| Decision::new(di.accept, di.restrict, di.unknown))
+            .flat_map(|dc| dc.tags.clone())
             .collect();
     }
     let decision = Decision::combine(&decision_vec);
+
     info!(
         message = "decision combined",
         accept = decision.accept,
         restrict = decision.restrict,
         unknown = decision.unknown,
+        // TODO: is it possible to pass a meaningful tracing::Value here instead of formating to string?
+        tags = format!("{:?}", tags),
         count = decision_vec.len(),
     );
     decision

@@ -52,6 +52,11 @@ impl From<Decision> for DecisionInterface {
     }
 }
 
+pub struct DecisionComponents {
+    pub decision: Decision,
+    pub tags: Vec<String>,
+}
+
 pub struct RequestContext {
     wasi: WasiCtx,
     request: bulwark_host::RequestInterface,
@@ -153,17 +158,19 @@ impl PluginInstance {
 
     // TODO: traits for decision?
 
-    pub fn start(&mut self) -> Result<bulwark_host::DecisionInterface, PluginExecutionError> {
+    pub fn start(&mut self) -> Result<DecisionComponents, PluginExecutionError> {
         let start = self.instance.get_func(&mut self.store, "_start").unwrap();
         start.call(&mut self.store, &[], &mut [])?;
 
         let ctx = self.store.data();
 
-        Ok(bulwark_host::DecisionInterface {
-            accept: ctx.accept,
-            restrict: ctx.restrict,
-            unknown: ctx.unknown,
-            // tags: ctx.tags.iter().map(|s| s.as_str()).collect(),
+        Ok(DecisionComponents {
+            decision: Decision {
+                accept: ctx.accept,
+                restrict: ctx.restrict,
+                unknown: ctx.unknown,
+            },
+            tags: ctx.tags.clone(),
         })
     }
 
@@ -221,10 +228,11 @@ mod tests {
                     })?,
             ),
         )?;
-        let decision = plugin_instance.start()?;
-        assert_eq!(0.0, decision.accept);
-        assert_eq!(0.0, decision.restrict);
-        assert_eq!(1.0, decision.unknown);
+        let decision_components = plugin_instance.start()?;
+        assert_eq!(decision_components.decision.accept, 0.0);
+        assert_eq!(decision_components.decision.restrict, 0.0);
+        assert_eq!(decision_components.decision.unknown, 1.0);
+        assert_eq!(decision_components.tags, vec![""; 0]);
 
         Ok(())
     }
@@ -254,9 +262,10 @@ mod tests {
             ),
         )?;
         let typical_decision = typical_plugin_instance.start()?;
-        assert_eq!(0.0, typical_decision.accept);
-        assert_eq!(0.0, typical_decision.restrict);
-        assert_eq!(1.0, typical_decision.unknown);
+        assert_eq!(typical_decision.decision.accept, 0.0);
+        assert_eq!(typical_decision.decision.restrict, 0.0);
+        assert_eq!(typical_decision.decision.unknown, 1.0);
+        assert_eq!(typical_decision.tags, vec![""; 0]);
 
         let mut evil_plugin_instance = PluginInstance::new(
             plugin,
@@ -276,9 +285,10 @@ mod tests {
             ),
         )?;
         let evil_decision = evil_plugin_instance.start()?;
-        assert_eq!(0.0, evil_decision.accept);
-        assert_eq!(1.0, evil_decision.restrict);
-        assert_eq!(0.0, evil_decision.unknown);
+        assert_eq!(evil_decision.decision.accept, 0.0);
+        assert_eq!(evil_decision.decision.restrict, 1.0);
+        assert_eq!(evil_decision.decision.unknown, 0.0);
+        assert_eq!(evil_decision.tags, vec!["evil"]);
 
         Ok(())
     }

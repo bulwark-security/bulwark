@@ -54,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let subscriber = Registry::default()
         .with(ForestLayer::default())
-        .with(EnvFilter::new("WARN"))
+        .with(EnvFilter::new("DEBUG"))
         .with(JsonStorageLayer);
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
