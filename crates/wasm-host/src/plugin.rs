@@ -1,11 +1,17 @@
+// TODO: switch to wasmtime::component::bindgen!
 wit_bindgen_wasmtime::export!("../../bulwark-host.wit");
 
 use crate::{PluginExecutionError, PluginInstantiationError, PluginLoadError};
 use bulwark_wasm_sdk::{Decision, MassFunction};
+use r2d2_redis::RedisConnectionManager;
 use std::path::Path;
 use std::{convert::From, sync::Arc};
 use wasmtime::{Config, Engine, Instance, Linker, Module, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
+
+extern crate r2d2_redis;
+extern crate redis;
+use r2d2_redis::redis::Commands;
 
 use self::bulwark_host::DecisionInterface;
 
@@ -14,7 +20,6 @@ impl From<Arc<bulwark_wasm_sdk::Request>> for bulwark_host::RequestInterface {
         bulwark_host::RequestInterface {
             method: request.method().to_string(),
             uri: request.uri().to_string(),
-            // version doesn't implement display for some reason
             version: format!("{:?}", request.version()),
             headers: request
                 .headers()
@@ -60,6 +65,7 @@ pub struct DecisionComponents {
 pub struct RequestContext {
     wasi: WasiCtx,
     request: bulwark_host::RequestInterface,
+    redis_pool: Option<Arc<r2d2::Pool<RedisConnectionManager>>>,
     accept: f64,
     restrict: f64,
     unknown: f64,
@@ -121,6 +127,7 @@ pub struct PluginInstance {
 impl PluginInstance {
     pub fn new(
         plugin: Arc<Plugin>,
+        redis_pool: Option<Arc<r2d2::Pool<RedisConnectionManager>>>,
         request: Arc<bulwark_wasm_sdk::Request>,
     ) -> Result<PluginInstance, PluginInstantiationError> {
         // convert from normal request struct to wasm request interface
@@ -133,6 +140,7 @@ impl PluginInstance {
             .build();
         let request_context = RequestContext {
             wasi,
+            redis_pool,
             request: bulwark_host::RequestInterface::from(request),
             accept: 0.0,
             restrict: 0.0,
@@ -203,6 +211,36 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .map(|s| String::from(*s))
             .collect::<Vec<String>>();
     }
+
+    fn get_remote_state(&mut self, key: &str) -> Vec<u8> {
+        let pool = self.redis_pool.clone().unwrap();
+        let mut conn = pool.get().unwrap();
+        conn.get(key).unwrap()
+    }
+
+    fn set_remote_state(&mut self, key: &str, value: &[u8]) {
+        let pool = self.redis_pool.clone().unwrap();
+        let mut conn = pool.get().unwrap();
+        conn.set(key, value.to_vec()).unwrap()
+    }
+
+    fn increment_remote_state(&mut self, key: &str) -> i64 {
+        let pool = self.redis_pool.clone().unwrap();
+        let mut conn = pool.get().unwrap();
+        conn.incr(key, 1).unwrap()
+    }
+
+    fn increment_remote_state_by(&mut self, key: &str, delta: i64) -> i64 {
+        let pool = self.redis_pool.clone().unwrap();
+        let mut conn = pool.get().unwrap();
+        conn.incr(key, delta).unwrap()
+    }
+
+    fn set_remote_ttl(&mut self, key: &str, ttl: i64) {
+        let pool = self.redis_pool.clone().unwrap();
+        let mut conn = pool.get().unwrap();
+        conn.expire(key, ttl.try_into().unwrap()).unwrap()
+    }
 }
 
 #[cfg(test)]
@@ -215,6 +253,7 @@ mod tests {
         let plugin = Plugin::from_bytes("bulwark-blank-slate.wasm".to_string(), wasm_bytes)?;
         let mut plugin_instance = PluginInstance::new(
             Arc::new(plugin),
+            None,
             Arc::new(
                 http::Request::builder()
                     .method("GET")
@@ -247,6 +286,7 @@ mod tests {
 
         let mut typical_plugin_instance = PluginInstance::new(
             plugin.clone(),
+            None,
             Arc::new(
                 http::Request::builder()
                     .method("POST")
@@ -269,6 +309,7 @@ mod tests {
 
         let mut evil_plugin_instance = PluginInstance::new(
             plugin,
+            None,
             Arc::new(
                 http::Request::builder()
                     .method("POST")

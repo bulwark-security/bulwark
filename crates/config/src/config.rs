@@ -49,6 +49,7 @@ impl Config {
 #[derive(Serialize, Deserialize)]
 pub struct Service {
     pub port: Option<u16>,
+    pub remote_state: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -68,7 +69,6 @@ pub struct Preset {
     #[serde(rename(serialize = "ref", deserialize = "ref"))]
     pub reference: String,
     pub plugins: Vec<Reference>,
-    pub timeout: Option<u64>,
 }
 
 impl Preset {

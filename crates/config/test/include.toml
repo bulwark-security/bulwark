@@ -6,4 +6,3 @@ config = {}
 [[preset]]
 ref = "starter-preset"
 plugins = ["blank-slate"]
-timeout = 100

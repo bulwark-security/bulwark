@@ -1,5 +1,6 @@
 [service]
 port = 10002
+remote_state = "redis://127.0.0.1:6379"
 
 [[include]]
 path = "include.toml"
@@ -9,88 +10,12 @@ ref = "evil-bit"
 path = "bulwark-evil-bit.wasm"
 config = {}
 
-[[plugin]]
-ref = "evil-bit-2"
-path = "bulwark-evil-bit.wasm"
-config = {}
-
-[[plugin]]
-ref = "evil-bit-3"
-path = "bulwark-evil-bit.wasm"
-config = {}
-
-[[plugin]]
-ref = "evil-bit-4"
-path = "bulwark-evil-bit.wasm"
-config = {}
-
-[[plugin]]
-ref = "evil-bit-5"
-path = "bulwark-evil-bit.wasm"
-config = {}
-
-[[plugin]]
-ref = "evil-bit-6"
-path = "bulwark-evil-bit.wasm"
-config = {}
-
-[[plugin]]
-ref = "evil-bit-7"
-path = "bulwark-evil-bit.wasm"
-config = {}
-
-[[plugin]]
-ref = "evil-bit-8"
-path = "bulwark-evil-bit.wasm"
-config = {}
-
-[[plugin]]
-ref = "evil-bit-9"
-path = "bulwark-evil-bit.wasm"
-config = {}
-
-[[plugin]]
-ref = "evil-bit-10"
-path = "bulwark-evil-bit.wasm"
-config = {}
-
-[[plugin]]
-ref = "evil-bit-11"
-path = "bulwark-evil-bit.wasm"
-config = {}
-
 [[resource]]
 route = "/"
-plugins = [
-    "evil-bit",
-    "evil-bit-2",
-    "evil-bit-3",
-    "evil-bit-4",
-    "evil-bit-5",
-    "evil-bit-6",
-    "evil-bit-7",
-    "evil-bit-8",
-    "evil-bit-9",
-    "evil-bit-10",
-    "evil-bit-11",
-    "starter-preset",
-]
+plugins = ["evil-bit", "starter-preset"]
 timeout = 25
 
 [[resource]]
 route = "/*params"
-plugins = [
-    "evil-bit",
-    "evil-bit-2",
-    "evil-bit-3",
-    "evil-bit-4",
-    "evil-bit-5",
-    "evil-bit-6",
-    "evil-bit-7",
-    "evil-bit-8",
-    "evil-bit-9",
-    "evil-bit-10",
-    "evil-bit-11",
-    "starter-preset",
-]
+plugins = ["evil-bit", "starter-preset"]
 timeout = 25

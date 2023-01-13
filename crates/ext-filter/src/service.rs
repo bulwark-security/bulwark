@@ -30,6 +30,9 @@ use {
     tracing::{debug, error, info, instrument, trace, warn, Instrument},
 };
 
+extern crate r2d2_redis;
+use r2d2_redis::{r2d2, RedisConnectionManager};
+
 type ExternalProcessorStream =
     Pin<Box<dyn Stream<Item = Result<ProcessingResponse, Status>> + Send>>;
 type PluginList = Vec<Arc<Plugin>>;
@@ -46,10 +49,25 @@ struct RouteTarget {
 pub struct BulwarkProcessor {
     // TODO: may need to have a plugin registry at some point
     router: Arc<RwLock<Router<RouteTarget>>>,
+    redis_pool: Option<Arc<r2d2::Pool<RedisConnectionManager>>>,
 }
 
 impl BulwarkProcessor {
     pub fn new(config: Config) -> Result<Self, PluginLoadError> {
+        let redis_pool = if let Some(service) = config.service.as_ref() {
+            if let Some(remote_state_addr) = service.remote_state.as_ref() {
+                let manager = RedisConnectionManager::new(remote_state_addr.as_str()).unwrap();
+                // TODO: make pool size configurable
+                Some(Arc::new(
+                    r2d2::Pool::builder().max_size(16).build(manager).unwrap(),
+                ))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         // TODO: return an init error not a plugin load error
         let mut router: Router<RouteTarget> = Router::new();
         if let Some(resources) = config.resources.as_ref() {
@@ -81,6 +99,7 @@ impl BulwarkProcessor {
         }
         Ok(Self {
             router: Arc::new(RwLock::new(router)),
+            redis_pool,
         })
     }
 }
@@ -99,6 +118,7 @@ impl ExternalProcessor for BulwarkProcessor {
             // println!("request method: {}", http_req.method().as_str());
             // println!("request path: {}", http_req.uri());
 
+            let redis_pool = self.redis_pool.clone();
             let http_req = Arc::new(http_req);
             let router = self.router.clone();
 
@@ -128,6 +148,7 @@ impl ExternalProcessor for BulwarkProcessor {
                             let combined = execute_plugins(
                                 &route_target.plugins,
                                 timeout_duration,
+                                redis_pool.clone(),
                                 http_req.clone(),
                                 route_match.params,
                             )
@@ -153,6 +174,7 @@ impl ExternalProcessor for BulwarkProcessor {
 async fn execute_plugins<'k, 'v>(
     plugins: &PluginList,
     timeout_duration: std::time::Duration,
+    redis_pool: Option<Arc<r2d2::Pool<RedisConnectionManager>>>,
     http_req: Arc<bulwark_wasm_sdk::Request>,
     params: matchit::Params<'k, 'v>,
 ) -> DecisionComponents {
@@ -160,7 +182,8 @@ async fn execute_plugins<'k, 'v>(
     let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugins.len())));
     for plugin in plugins {
         // TODO: actually use the params values
-        let plugin_instance_result = PluginInstance::new(plugin.clone(), http_req.clone());
+        let plugin_instance_result =
+            PluginInstance::new(plugin.clone(), redis_pool.clone(), http_req.clone());
         let mut plugin_instance = plugin_instance_result.unwrap();
         let decision_components = decision_components.clone();
 
@@ -234,6 +257,7 @@ async fn execute_plugins<'k, 'v>(
 async fn prepare_request(
     stream: &mut Streaming<ProcessingRequest>,
 ) -> Result<bulwark_wasm_sdk::Request, FilterProcessingError> {
+    // TODO: determine client IP address, pass it through as an extension
     if let Some(header_msg) = get_request_headers(stream).await {
         let authority = get_header_value(&header_msg.headers, ":authority").ok_or_else(|| {
             FilterProcessingError::Error(anyhow::anyhow!("Missing HTTP authority"))

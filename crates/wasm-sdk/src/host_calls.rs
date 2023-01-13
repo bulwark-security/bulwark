@@ -1,10 +1,16 @@
 // TODO: the host/guest wit files seem to be why the latest version switched to one generate macro?
 
+// TODO: switch to wasmtime::component::bindgen!
 wit_bindgen_rust::import!("../../bulwark-host.wit");
 
 use std::str::FromStr;
 
 pub use crate::Decision;
+pub use bulwark_host::get_remote_state;
+pub use bulwark_host::increment_remote_state;
+pub use bulwark_host::increment_remote_state_by;
+pub use bulwark_host::set_remote_state;
+pub use bulwark_host::set_remote_ttl;
 pub use bulwark_host::set_tags; // TODO: use BTreeSet for merging sorted tag lists
 pub use http::{Extensions, Method, Uri, Version};
 use validator::{Validate, ValidationErrors};

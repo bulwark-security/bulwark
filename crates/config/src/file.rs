@@ -19,6 +19,7 @@ struct Config {
 #[derive(Serialize, Deserialize)]
 struct Service {
     port: Option<u16>,
+    remote_state: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -39,7 +40,6 @@ struct Preset {
     #[serde(rename(serialize = "ref", deserialize = "ref"))]
     reference: String,
     plugins: Vec<String>,
-    timeout: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -183,10 +183,10 @@ where
     };
     // Transfer to the public config type, checking reference enums
     Ok(crate::config::Config {
-        service: root
-            .service
-            .as_ref()
-            .map(|service| crate::config::Service { port: service.port }),
+        service: root.service.as_ref().map(|service| crate::config::Service {
+            port: service.port,
+            remote_state: service.remote_state.clone(),
+        }),
         plugins: root.plugins.as_ref().map(|plugins| {
             plugins
                 .iter()
@@ -203,7 +203,6 @@ where
                 .map(|preset| crate::config::Preset {
                     reference: preset.reference.clone(),
                     plugins: preset.plugins.iter().map(resolve_reference).collect(),
-                    timeout: preset.timeout,
                 })
                 .collect()
         }),
@@ -242,7 +241,6 @@ mod tests {
         [[preset]]
         ref = "custom"
         plugins = ["evil-bit"]
-        timeout = 25
 
         [[resource]]
         route = "/"
@@ -281,10 +279,6 @@ mod tests {
         assert_eq!(
             root.presets.as_ref().unwrap().get(0).unwrap().plugins,
             vec!["evil-bit"]
-        );
-        assert_eq!(
-            root.presets.as_ref().unwrap().get(0).unwrap().timeout,
-            Some(25)
         );
 
         assert_eq!(root.resources.as_ref().unwrap().len(), 1);
@@ -329,10 +323,6 @@ mod tests {
         assert_eq!(
             root.presets.as_ref().unwrap().get(0).unwrap().plugins,
             vec![crate::config::Reference::Plugin("blank-slate".to_string())]
-        );
-        assert_eq!(
-            root.presets.as_ref().unwrap().get(0).unwrap().timeout,
-            Some(100)
         );
 
         assert_eq!(root.resources.as_ref().unwrap().len(), 1);
