@@ -6,7 +6,9 @@ wit_bindgen_rust::import!("../../bulwark-host.wit");
 use std::str::FromStr;
 
 pub use crate::Decision;
+pub use bulwark_host::check_rate_limit;
 pub use bulwark_host::get_remote_state;
+pub use bulwark_host::increment_rate_limit;
 pub use bulwark_host::increment_remote_state;
 pub use bulwark_host::increment_remote_state_by;
 pub use bulwark_host::set_remote_state;

@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn test_load_config() -> Result<(), Box<dyn std::error::Error>> {
-        let root: crate::config::Config = load_config("test/main.toml")?;
+        let root: crate::config::Config = load_config("tests/main.toml")?;
 
         assert_eq!(root.service.as_ref().unwrap().port, Some(10002));
 

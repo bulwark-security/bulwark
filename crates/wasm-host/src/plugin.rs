@@ -3,15 +3,15 @@ wit_bindgen_wasmtime::export!("../../bulwark-host.wit");
 
 use crate::{PluginExecutionError, PluginInstantiationError, PluginLoadError};
 use bulwark_wasm_sdk::{Decision, MassFunction};
-use r2d2_redis::RedisConnectionManager;
+use chrono::Utc;
+use redis::Commands;
+use std::ops::DerefMut;
 use std::path::Path;
 use std::{convert::From, sync::Arc};
 use wasmtime::{Config, Engine, Instance, Linker, Module, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
-extern crate r2d2_redis;
 extern crate redis;
-use r2d2_redis::redis::Commands;
 
 use self::bulwark_host::DecisionInterface;
 
@@ -62,10 +62,64 @@ pub struct DecisionComponents {
     pub tags: Vec<String>,
 }
 
+pub struct RedisInfo {
+    pub pool: r2d2::Pool<redis::Client>,
+    pub registry: ScriptRegistry,
+}
+
+pub struct ScriptRegistry {
+    increment_rate_limit: redis::Script,
+    check_rate_limit: redis::Script,
+}
+
+impl Default for ScriptRegistry {
+    fn default() -> ScriptRegistry {
+        ScriptRegistry {
+            increment_rate_limit: redis::Script::new(
+                r#"
+                local counter_key = "rl:" .. KEYS[1]
+                local increment_delta = tonumber(ARGV[1])
+                local expiration_window = tonumber(ARGV[2])
+                local timestamp = tonumber(ARGV[3])
+                local expiration_key = counter_key .. ":ex"
+                local expiration = tonumber(redis.call("get", expiration_key))
+                local next_expiration = timestamp + expiration_window
+                if not expiration or timestamp > expiration then
+                    redis.call("set", expiration_key, next_expiration)
+                    redis.call("set", counter_key, 0)
+                    redis.call("expireat", expiration_key, next_expiration + 1)
+                    redis.call("expireat", counter_key, next_expiration + 1)
+                    expiration = next_expiration
+                end
+                local attempts = redis.call("incrby", counter_key, increment_delta)
+                return { attempts, expiration }
+                "#,
+            ),
+            check_rate_limit: redis::Script::new(
+                r#"
+                local counter_key = "rl:" .. KEYS[1]
+                local expiration_key = counter_key .. ":exp"
+                local timestamp = tonumber(ARGV[1])
+                local attempts = tonumber(redis.call("get", counter_key))
+                local expiration = nil
+                if attempts then
+                    expiration = tonumber(redis.call("get", expiration_key))
+                    if not expiration or timestamp > expiration then
+                        attempts = nil
+                        expiration = nil
+                    end
+                end
+                return { attempts, expiration }
+                "#,
+            ),
+        }
+    }
+}
+
 pub struct RequestContext {
     wasi: WasiCtx,
     request: bulwark_host::RequestInterface,
-    redis_pool: Option<Arc<r2d2::Pool<RedisConnectionManager>>>,
+    redis_info: Option<Arc<RedisInfo>>,
     accept: f64,
     restrict: f64,
     unknown: f64,
@@ -82,6 +136,13 @@ pub struct Plugin {
 }
 
 impl Plugin {
+    pub fn from_wat(name: String, wat: &str) -> Result<Self, PluginLoadError> {
+        Self::from_module(name, |engine| -> Result<Module, PluginLoadError> {
+            let module = Module::new(engine, wat.as_bytes())?;
+            Ok(module)
+        })
+    }
+
     pub fn from_bytes(name: String, bytes: &[u8]) -> Result<Self, PluginLoadError> {
         Self::from_module(name, |engine| -> Result<Module, PluginLoadError> {
             let module = Module::from_binary(engine, bytes)?;
@@ -127,7 +188,7 @@ pub struct PluginInstance {
 impl PluginInstance {
     pub fn new(
         plugin: Arc<Plugin>,
-        redis_pool: Option<Arc<r2d2::Pool<RedisConnectionManager>>>,
+        redis_info: Option<Arc<RedisInfo>>,
         request: Arc<bulwark_wasm_sdk::Request>,
     ) -> Result<PluginInstance, PluginInstantiationError> {
         // convert from normal request struct to wasm request interface
@@ -140,7 +201,7 @@ impl PluginInstance {
             .build();
         let request_context = RequestContext {
             wasi,
-            redis_pool,
+            redis_info,
             request: bulwark_host::RequestInterface::from(request),
             accept: 0.0,
             restrict: 0.0,
@@ -213,33 +274,74 @@ impl bulwark_host::BulwarkHost for RequestContext {
     }
 
     fn get_remote_state(&mut self, key: &str) -> Vec<u8> {
-        let pool = self.redis_pool.clone().unwrap();
+        let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
         conn.get(key).unwrap()
     }
 
     fn set_remote_state(&mut self, key: &str, value: &[u8]) {
-        let pool = self.redis_pool.clone().unwrap();
+        let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
         conn.set(key, value.to_vec()).unwrap()
     }
 
     fn increment_remote_state(&mut self, key: &str) -> i64 {
-        let pool = self.redis_pool.clone().unwrap();
+        let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
         conn.incr(key, 1).unwrap()
     }
 
     fn increment_remote_state_by(&mut self, key: &str, delta: i64) -> i64 {
-        let pool = self.redis_pool.clone().unwrap();
+        let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
         conn.incr(key, delta).unwrap()
     }
 
     fn set_remote_ttl(&mut self, key: &str, ttl: i64) {
-        let pool = self.redis_pool.clone().unwrap();
+        let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
         conn.expire(key, ttl.try_into().unwrap()).unwrap()
+    }
+
+    fn increment_rate_limit(
+        &mut self,
+        key: &str,
+        delta: i64,
+        window: i64,
+    ) -> bulwark_host::RateInterface {
+        let redis_info = self.redis_info.clone().unwrap();
+        let mut conn = redis_info.pool.get().unwrap();
+        let dt = Utc::now();
+        let timestamp: i64 = dt.timestamp();
+        let script = redis_info.registry.increment_rate_limit.clone();
+        let (attempts, expiration) = script
+            .key(key)
+            .arg(delta)
+            .arg(window)
+            .arg(timestamp)
+            .invoke::<(i64, i64)>(conn.deref_mut())
+            .unwrap();
+        bulwark_host::RateInterface {
+            attempts,
+            expiration,
+        }
+    }
+
+    fn check_rate_limit(&mut self, key: &str) -> bulwark_host::RateInterface {
+        let redis_info = self.redis_info.clone().unwrap();
+        let mut conn = redis_info.pool.get().unwrap();
+        let dt = Utc::now();
+        let timestamp: i64 = dt.timestamp();
+        let script = redis_info.registry.check_rate_limit.clone();
+        let (attempts, expiration) = script
+            .key(key)
+            .arg(timestamp)
+            .invoke::<(i64, i64)>(conn.deref_mut())
+            .unwrap();
+        bulwark_host::RateInterface {
+            attempts,
+            expiration,
+        }
     }
 }
 
@@ -249,7 +351,7 @@ mod tests {
 
     #[test]
     fn test_wasm_execution() -> Result<(), Box<dyn std::error::Error>> {
-        let wasm_bytes = include_bytes!("../test/bulwark-blank-slate.wasm");
+        let wasm_bytes = include_bytes!("../tests/bulwark-blank-slate.wasm");
         let plugin = Plugin::from_bytes("bulwark-blank-slate.wasm".to_string(), wasm_bytes)?;
         let mut plugin_instance = PluginInstance::new(
             Arc::new(plugin),
@@ -278,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_wasm_logic() -> Result<(), Box<dyn std::error::Error>> {
-        let wasm_bytes = include_bytes!("../test/bulwark-evil-bit.wasm");
+        let wasm_bytes = include_bytes!("../tests/bulwark-evil-bit.wasm");
         let plugin = std::sync::Arc::new(Plugin::from_bytes(
             "bulwark-evil-bit.wasm".to_string(),
             wasm_bytes,

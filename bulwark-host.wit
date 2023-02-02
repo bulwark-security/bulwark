@@ -18,6 +18,10 @@ record decision-interface {
   restrict: float64,
   unknown: float64,
 }
+record rate-interface {
+  attempts: s64,
+  expiration: s64,
+}
 
 get-request: func() -> request-interface
 
@@ -29,3 +33,6 @@ set-remote-state: func(key: string, value: list<u8>)
 increment-remote-state: func(key: string) -> s64
 increment-remote-state-by: func(key: string, delta: s64) -> s64
 set-remote-ttl: func(key: string, ttl: s64)
+
+increment-rate-limit: func(key: string, delta: s64, window: s64) -> rate-interface
+check-rate-limit: func(key: string) -> rate-interface

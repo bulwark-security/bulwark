@@ -30,8 +30,9 @@ use {
     tracing::{debug, error, info, instrument, trace, warn, Instrument},
 };
 
-extern crate r2d2_redis;
-use r2d2_redis::{r2d2, RedisConnectionManager};
+extern crate redis;
+
+use bulwark_wasm_host::{RedisInfo, ScriptRegistry};
 
 type ExternalProcessorStream =
     Pin<Box<dyn Stream<Item = Result<ProcessingResponse, Status>> + Send>>;
@@ -49,18 +50,21 @@ struct RouteTarget {
 pub struct BulwarkProcessor {
     // TODO: may need to have a plugin registry at some point
     router: Arc<RwLock<Router<RouteTarget>>>,
-    redis_pool: Option<Arc<r2d2::Pool<RedisConnectionManager>>>,
+    redis_info: Option<Arc<RedisInfo>>,
 }
 
 impl BulwarkProcessor {
     pub fn new(config: Config) -> Result<Self, PluginLoadError> {
-        let redis_pool = if let Some(service) = config.service.as_ref() {
+        let redis_info = if let Some(service) = config.service.as_ref() {
             if let Some(remote_state_addr) = service.remote_state.as_ref() {
-                let manager = RedisConnectionManager::new(remote_state_addr.as_str()).unwrap();
+                // TODO: better error handling instead of unwrap/panic
+                let client = redis::Client::open(remote_state_addr.as_str()).unwrap();
                 // TODO: make pool size configurable
-                Some(Arc::new(
-                    r2d2::Pool::builder().max_size(16).build(manager).unwrap(),
-                ))
+                Some(Arc::new(RedisInfo {
+                    // TODO: better error handling instead of unwrap/panic
+                    pool: r2d2::Pool::builder().max_size(16).build(client).unwrap(),
+                    registry: ScriptRegistry::default(),
+                }))
             } else {
                 None
             }
@@ -99,7 +103,7 @@ impl BulwarkProcessor {
         }
         Ok(Self {
             router: Arc::new(RwLock::new(router)),
-            redis_pool,
+            redis_info,
         })
     }
 }
@@ -118,7 +122,7 @@ impl ExternalProcessor for BulwarkProcessor {
             // println!("request method: {}", http_req.method().as_str());
             // println!("request path: {}", http_req.uri());
 
-            let redis_pool = self.redis_pool.clone();
+            let redis_info = self.redis_info.clone();
             let http_req = Arc::new(http_req);
             let router = self.router.clone();
 
@@ -148,7 +152,7 @@ impl ExternalProcessor for BulwarkProcessor {
                             let combined = execute_plugins(
                                 &route_target.plugins,
                                 timeout_duration,
-                                redis_pool.clone(),
+                                redis_info.clone(),
                                 http_req.clone(),
                                 route_match.params,
                             )
@@ -174,7 +178,7 @@ impl ExternalProcessor for BulwarkProcessor {
 async fn execute_plugins<'k, 'v>(
     plugins: &PluginList,
     timeout_duration: std::time::Duration,
-    redis_pool: Option<Arc<r2d2::Pool<RedisConnectionManager>>>,
+    redis_info: Option<Arc<RedisInfo>>,
     http_req: Arc<bulwark_wasm_sdk::Request>,
     params: matchit::Params<'k, 'v>,
 ) -> DecisionComponents {
@@ -183,7 +187,7 @@ async fn execute_plugins<'k, 'v>(
     for plugin in plugins {
         // TODO: actually use the params values
         let plugin_instance_result =
-            PluginInstance::new(plugin.clone(), redis_pool.clone(), http_req.clone());
+            PluginInstance::new(plugin.clone(), redis_info.clone(), http_req.clone());
         let mut plugin_instance = plugin_instance_result.unwrap();
         let decision_components = decision_components.clone();
 
