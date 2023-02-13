@@ -176,6 +176,8 @@ impl Default for ScriptRegistry {
 
 pub struct RequestContext {
     wasi: WasiCtx,
+    plugin_reference: String,
+    config: Arc<Vec<u8>>,
     request: bulwark_host::RequestInterface,
     redis_info: Option<Arc<RedisInfo>>,
     accept: f64,
@@ -187,49 +189,58 @@ pub struct RequestContext {
 // Owns a single detection plugin and provides the interface between WASM host and guest.
 #[derive(Clone)]
 pub struct Plugin {
-    name: String,
+    reference: String,
+    config: Arc<Vec<u8>>,
     engine: Engine,
     module: Module,
-    // TODO: plugins need to carry configuration and their name around
 }
 
 impl Plugin {
-    pub fn from_wat(name: String, wat: &str) -> Result<Self, PluginLoadError> {
-        Self::from_module(name, |engine| -> Result<Module, PluginLoadError> {
+    pub fn from_wat(name: String, wat: &str, config: Vec<u8>) -> Result<Self, PluginLoadError> {
+        Self::from_module(name, config, |engine| -> Result<Module, PluginLoadError> {
             let module = Module::new(engine, wat.as_bytes())?;
             Ok(module)
         })
     }
 
-    pub fn from_bytes(name: String, bytes: &[u8]) -> Result<Self, PluginLoadError> {
-        Self::from_module(name, |engine| -> Result<Module, PluginLoadError> {
+    pub fn from_bytes(
+        name: String,
+        bytes: &[u8],
+        config: Vec<u8>,
+    ) -> Result<Self, PluginLoadError> {
+        Self::from_module(name, config, |engine| -> Result<Module, PluginLoadError> {
             let module = Module::from_binary(engine, bytes)?;
             Ok(module)
         })
     }
 
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, PluginLoadError> {
+    pub fn from_file(path: impl AsRef<Path>, config: Vec<u8>) -> Result<Self, PluginLoadError> {
         let name = path.as_ref().display().to_string();
-        Self::from_module(name, |engine| -> Result<Module, PluginLoadError> {
+        Self::from_module(name, config, |engine| -> Result<Module, PluginLoadError> {
             let module = Module::from_file(engine, &path)?;
             Ok(module)
         })
     }
 
-    fn from_module<F>(name: String, mut get_module: F) -> Result<Self, PluginLoadError>
+    fn from_module<F>(
+        reference: String,
+        config: Vec<u8>,
+        mut get_module: F,
+    ) -> Result<Self, PluginLoadError>
     where
         F: FnMut(&Engine) -> Result<Module, PluginLoadError>,
     {
-        let mut config = Config::new();
-        config.wasm_backtrace_details(wasmtime::WasmBacktraceDetails::Enable);
-        config.wasm_multi_memory(true);
+        let mut wasm_config = Config::new();
+        wasm_config.wasm_backtrace_details(wasmtime::WasmBacktraceDetails::Enable);
+        wasm_config.wasm_multi_memory(true);
         //config.wasm_module_linking(true);
 
-        let engine = Engine::new(&config)?;
+        let engine = Engine::new(&wasm_config)?;
         let module = get_module(&engine)?;
 
         Ok(Plugin {
-            name,
+            reference,
+            config: Arc::new(config),
             engine,
             module,
         })
@@ -260,6 +271,8 @@ impl PluginInstance {
         let request_context = RequestContext {
             wasi,
             redis_info,
+            plugin_reference: plugin.reference.clone(),
+            config: plugin.config.clone(),
             request: bulwark_host::RequestInterface::from(request),
             accept: 0.0,
             restrict: 0.0,
@@ -279,8 +292,8 @@ impl PluginInstance {
         })
     }
 
-    pub fn plugin_name(&self) -> String {
-        self.plugin.name.clone()
+    pub fn plugin_reference(&self) -> String {
+        self.plugin.reference.clone()
     }
 
     // TODO: traits for decision?
@@ -307,6 +320,10 @@ impl PluginInstance {
 }
 
 impl bulwark_host::BulwarkHost for RequestContext {
+    fn get_config(&mut self) -> Vec<u8> {
+        self.config.to_vec()
+    }
+
     fn get_request(&mut self) -> bulwark_host::RequestInterface {
         self.request.clone()
     }
@@ -475,7 +492,8 @@ mod tests {
     #[test]
     fn test_wasm_execution() -> Result<(), Box<dyn std::error::Error>> {
         let wasm_bytes = include_bytes!("../tests/bulwark-blank-slate.wasm");
-        let plugin = Plugin::from_bytes("bulwark-blank-slate.wasm".to_string(), wasm_bytes)?;
+        let plugin =
+            Plugin::from_bytes("bulwark-blank-slate.wasm".to_string(), wasm_bytes, vec![])?;
         let mut plugin_instance = PluginInstance::new(
             Arc::new(plugin),
             None,
@@ -507,6 +525,7 @@ mod tests {
         let plugin = std::sync::Arc::new(Plugin::from_bytes(
             "bulwark-evil-bit.wasm".to_string(),
             wasm_bytes,
+            vec![],
         )?);
 
         let mut typical_plugin_instance = PluginInstance::new(

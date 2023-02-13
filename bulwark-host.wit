@@ -31,6 +31,8 @@ record breaker-interface {
   expiration: s64,
 }
 
+get-config: func() -> list<u8>
+
 get-request: func() -> request-interface
 
 set-decision: func(decision: decision-interface)

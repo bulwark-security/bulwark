@@ -30,6 +30,13 @@ pub struct RequestChunk {
 
 // TODO: might need either get_remote_addr or an extension on the request for non-forwarded IP address
 
+pub use serde_json::Value;
+
+pub fn get_config() -> serde_json::Value {
+    let raw_config = bulwark_host::get_config();
+    serde_json::from_slice(&raw_config).unwrap()
+}
+
 pub fn get_request() -> Request {
     let raw_request: bulwark_host::RequestInterface = bulwark_host::get_request();
     let chunk: Vec<u8> = raw_request.chunk;

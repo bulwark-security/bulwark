@@ -226,7 +226,9 @@ name = "bulwark-config"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "serde",
+ "serde_json",
  "thiserror",
  "toml",
 ]
@@ -285,6 +287,7 @@ dependencies = [
  "approx",
  "cfg-if 1.0.0",
  "http",
+ "serde_json",
  "validator",
  "wit-bindgen-rust",
 ]

@@ -78,14 +78,17 @@ impl BulwarkProcessor {
             for resource in resources {
                 let plugin_configs = resource.resolve_plugins(&config);
                 let mut plugins: PluginList = Vec::with_capacity(plugin_configs.len());
-                for plugin_config in plugin_configs {
+                for plugin_config in &plugin_configs {
                     // TODO: pass in the plugin config
                     debug!(
                         plugin_path = plugin_config.path,
                         message = "loading plugin",
                         resource = resource.route
                     );
-                    let plugin = Plugin::from_file(plugin_config.path)?;
+                    let plugin = Plugin::from_file(
+                        plugin_config.path.clone(),
+                        plugin_config.config_as_json(),
+                    )?;
                     plugins.push(Arc::new(plugin));
                 }
                 router.insert(
@@ -191,8 +194,10 @@ async fn execute_plugins<'k, 'v>(
         let mut plugin_instance = plugin_instance_result.unwrap();
         let decision_components = decision_components.clone();
 
-        let child_span =
-            tracing::debug_span!("executing plugin", plugin = plugin_instance.plugin_name());
+        let child_span = tracing::debug_span!(
+            "executing plugin",
+            plugin = plugin_instance.plugin_reference()
+        );
         tasks.spawn(
             timeout(timeout_duration, async move {
                 let decision_result = plugin_instance.start();
