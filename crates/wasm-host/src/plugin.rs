@@ -70,11 +70,14 @@ pub struct RedisInfo {
 pub struct ScriptRegistry {
     increment_rate_limit: redis::Script,
     check_rate_limit: redis::Script,
+    increment_breaker: redis::Script,
+    check_breaker: redis::Script,
 }
 
 impl Default for ScriptRegistry {
     fn default() -> ScriptRegistry {
         ScriptRegistry {
+            // TODO: handle overflow errors by expiring everything on overflow and returning nil?
             increment_rate_limit: redis::Script::new(
                 r#"
                 local counter_key = "rl:" .. KEYS[1]
@@ -110,6 +113,61 @@ impl Default for ScriptRegistry {
                     end
                 end
                 return { attempts, expiration }
+                "#,
+            ),
+            increment_breaker: redis::Script::new(
+                r#"
+                local generation_key = "bk:g:" .. KEYS[1]
+                local success_key = "bk:s:" .. KEYS[1]
+                local failure_key = "bk:f:" .. KEYS[1]
+                local consec_success_key = "bk:cs:" .. KEYS[1]
+                local consec_failure_key = "bk:cf:" .. KEYS[1]
+                local success_delta = tonumber(ARGV[1])
+                local failure_delta = tonumber(ARGV[2])
+                local expiration_window = tonumber(ARGV[3])
+                local timestamp = tonumber(ARGV[4])
+                local expiration = timestamp + expiration_window
+                local generation = redis.call("incrby", generation_key, 1)
+                local successes = 0
+                local failures = 0
+                local consec_successes = 0
+                local consec_failures = 0
+                if success_delta > 0 then
+                    successes = redis.call("incrby", success_key, success_delta)
+                    failures = tonumber(redis.call("get", failure_key))
+                    consec_successes = redis.call("incrby", consec_success_key, success_delta)
+                    consec_failures = redis.call("set", consec_failure_key, 0)
+                else
+                    successes = tonumber(redis.call("get", success_key))
+                    failures = redis.call("incrby", failure_key, failure_delta)
+                    consec_successes = redis.call("set", consec_success_key, 0)
+                    consec_failures = redis.call("incrby", consec_failure_key, failure_delta)
+                end
+                redis.call("expireat", generation_key, expiration + 1)
+                redis.call("expireat", success_key, expiration + 1)
+                redis.call("expireat", failure_key, expiration + 1)
+                redis.call("expireat", consec_success_key, expiration + 1)
+                redis.call("expireat", consec_failure_key, expiration + 1)
+                return { generation, successes, failures, consec_successes, consec_failures, expiration }
+                "#,
+            ),
+            check_breaker: redis::Script::new(
+                r#"
+                local generation_key = "bk:g:" .. KEYS[1]
+                local success_key = "bk:s:" .. KEYS[1]
+                local failure_key = "bk:f:" .. KEYS[1]
+                local consec_success_key = "bk:cs:" .. KEYS[1]
+                local consec_failure_key = "bk:cf:" .. KEYS[1]
+                local generation = tonumber(redis.call("get", generation_key))
+                if not generation then
+                    return { nil, nil, nil, nil, nil, nil }
+                end
+                local successes = tonumber(redis.call("get", success_key))
+                local failures = tonumber(redis.call("get", failure_key))
+                local consec_successes = tonumber(redis.call("get", consec_success_key))
+                local consec_failures = tonumber(redis.call("get", consec_failure_key))
+                local expiration = tonumber(redis.call("expiretime", success_key)) - 1
+                return { generation, successes, failures, consec_successes, consec_failures, expiration }
                 "#,
             ),
         }
@@ -340,6 +398,71 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .unwrap();
         bulwark_host::RateInterface {
             attempts,
+            expiration,
+        }
+    }
+
+    fn increment_breaker(
+        &mut self,
+        key: &str,
+        success_delta: i64,
+        failure_delta: i64,
+        window: i64,
+    ) -> bulwark_host::BreakerInterface {
+        let redis_info = self.redis_info.clone().unwrap();
+        let mut conn = redis_info.pool.get().unwrap();
+        let dt = Utc::now();
+        let timestamp: i64 = dt.timestamp();
+        let script = redis_info.registry.increment_breaker.clone();
+        let (
+            generation,
+            successes,
+            failures,
+            consecutive_successes,
+            consecutive_failures,
+            expiration,
+        ) = script
+            .key(key)
+            .arg(success_delta)
+            .arg(failure_delta)
+            .arg(window)
+            .arg(timestamp)
+            .invoke::<(i64, i64, i64, i64, i64, i64)>(conn.deref_mut())
+            .unwrap();
+        bulwark_host::BreakerInterface {
+            generation,
+            successes,
+            failures,
+            consecutive_successes,
+            consecutive_failures,
+            expiration,
+        }
+    }
+
+    fn check_breaker(&mut self, key: &str) -> bulwark_host::BreakerInterface {
+        let redis_info = self.redis_info.clone().unwrap();
+        let mut conn = redis_info.pool.get().unwrap();
+        let dt = Utc::now();
+        let timestamp: i64 = dt.timestamp();
+        let script = redis_info.registry.check_breaker.clone();
+        let (
+            generation,
+            successes,
+            failures,
+            consecutive_successes,
+            consecutive_failures,
+            expiration,
+        ) = script
+            .key(key)
+            .arg(timestamp)
+            .invoke::<(i64, i64, i64, i64, i64, i64)>(conn.deref_mut())
+            .unwrap();
+        bulwark_host::BreakerInterface {
+            generation,
+            successes,
+            failures,
+            consecutive_successes,
+            consecutive_failures,
             expiration,
         }
     }

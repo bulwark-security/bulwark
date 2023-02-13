@@ -22,6 +22,14 @@ record rate-interface {
   attempts: s64,
   expiration: s64,
 }
+record breaker-interface {
+  generation: s64,
+  successes: s64,
+  failures: s64,
+  consecutive-successes: s64,
+  consecutive-failures: s64,
+  expiration: s64,
+}
 
 get-request: func() -> request-interface
 
@@ -36,3 +44,5 @@ set-remote-ttl: func(key: string, ttl: s64)
 
 increment-rate-limit: func(key: string, delta: s64, window: s64) -> rate-interface
 check-rate-limit: func(key: string) -> rate-interface
+increment-breaker: func(key: string, success-delta: s64, failure-delta: s64, window: s64) -> breaker-interface
+check-breaker: func(key: string) -> breaker-interface
