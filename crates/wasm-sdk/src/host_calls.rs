@@ -37,6 +37,16 @@ pub fn get_config() -> serde_json::Value {
     serde_json::from_slice(&raw_config).unwrap()
 }
 
+pub fn get_config_value(key: &str) -> Option<serde_json::Value> {
+    // TODO: this should return a result
+    let raw_config = bulwark_host::get_config();
+    let object: serde_json::Value = serde_json::from_slice(&raw_config).unwrap();
+    match object {
+        Value::Object(v) => v.get(&key.to_string()).cloned(),
+        _ => panic!("unexpected config value"),
+    }
+}
+
 pub fn get_request() -> Request {
     let raw_request: bulwark_host::RequestInterface = bulwark_host::get_request();
     let chunk: Vec<u8> = raw_request.chunk;
