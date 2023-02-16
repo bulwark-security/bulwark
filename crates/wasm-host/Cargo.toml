@@ -23,6 +23,8 @@ redis = { version = "0.22.1", features = [
 ] }
 r2d2 = "0.8.10"
 chrono = "0.4.23"
+serde = { version = "1.0.149", features = ["std", "serde_derive"] }
+serde_json = "1.0.93"
 
 [dev-dependencies]
 wasi-cap-std-sync = "0.39.1"

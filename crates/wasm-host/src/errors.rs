@@ -13,6 +13,8 @@ pub enum PluginInstantiationError {
     #[error(transparent)]
     Error(#[from] anyhow::Error),
     #[error(transparent)]
+    ContextInstantiation(#[from] ContextInstantiationError),
+    #[error(transparent)]
     StringArray(#[from] StringArrayError),
 }
 
@@ -20,6 +22,12 @@ pub enum PluginInstantiationError {
 pub enum PluginExecutionError {
     #[error(transparent)]
     Error(#[from] anyhow::Error),
+    #[error(transparent)]
+    StringArray(#[from] StringArrayError),
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum ContextInstantiationError {
     #[error(transparent)]
     StringArray(#[from] StringArrayError),
 }

@@ -270,6 +270,8 @@ dependencies = [
  "http",
  "r2d2",
  "redis",
+ "serde",
+ "serde_json",
  "thiserror",
  "wasi-cap-std-sync",
  "wasi-common",

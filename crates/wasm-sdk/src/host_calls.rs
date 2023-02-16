@@ -30,7 +30,7 @@ pub struct RequestChunk {
 
 // TODO: might need either get_remote_addr or an extension on the request for non-forwarded IP address
 
-pub use serde_json::Value;
+pub use serde_json::{Map, Value};
 
 pub fn get_config() -> serde_json::Value {
     let raw_config = bulwark_host::get_config();
@@ -45,6 +45,19 @@ pub fn get_config_value(key: &str) -> Option<serde_json::Value> {
         Value::Object(v) => v.get(&key.to_string()).cloned(),
         _ => panic!("unexpected config value"),
     }
+}
+
+pub fn get_context_value(key: &str) -> serde_json::Value {
+    // TODO: this should return a result
+    let raw_value = bulwark_host::get_context_value(key);
+    let value: serde_json::Value = serde_json::from_slice(&raw_value).unwrap();
+    value
+}
+
+pub fn set_context_value(key: &str, value: serde_json::Value) {
+    // TODO: this should return a result
+    let json = serde_json::to_vec(&value).unwrap();
+    bulwark_host::set_context_value(key, &json);
 }
 
 pub fn get_request() -> Request {

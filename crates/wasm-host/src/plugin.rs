@@ -1,13 +1,18 @@
 // TODO: switch to wasmtime::component::bindgen!
 wit_bindgen_wasmtime::export!("../../bulwark-host.wit");
 
-use crate::{PluginExecutionError, PluginInstantiationError, PluginLoadError};
+use crate::{
+    ContextInstantiationError, PluginExecutionError, PluginInstantiationError, PluginLoadError,
+};
 use bulwark_wasm_sdk::{Decision, MassFunction};
 use chrono::Utc;
 use redis::Commands;
 use std::ops::DerefMut;
 use std::path::Path;
-use std::{convert::From, sync::Arc};
+use std::{
+    convert::From,
+    sync::{Arc, Mutex},
+};
 use wasmtime::{Config, Engine, Instance, Linker, Module, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
@@ -178,12 +183,39 @@ pub struct RequestContext {
     wasi: WasiCtx,
     plugin_reference: String,
     config: Arc<Vec<u8>>,
+    context: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>,
     request: bulwark_host::RequestInterface,
     redis_info: Option<Arc<RedisInfo>>,
     accept: f64,
     restrict: f64,
     unknown: f64,
     tags: Vec<String>,
+}
+
+impl RequestContext {
+    pub fn new(
+        plugin: Arc<Plugin>,
+        redis_info: Option<Arc<RedisInfo>>,
+        request: Arc<bulwark_wasm_sdk::Request>,
+    ) -> Result<RequestContext, ContextInstantiationError> {
+        let wasi = WasiCtxBuilder::new()
+            .inherit_stdio()
+            .inherit_args()?
+            .build();
+
+        Ok(RequestContext {
+            wasi,
+            redis_info,
+            plugin_reference: plugin.reference.clone(),
+            config: plugin.config.clone(),
+            context: Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new())),
+            request: bulwark_host::RequestInterface::from(request),
+            accept: 0.0,
+            restrict: 0.0,
+            unknown: 1.0,
+            tags: vec![],
+        })
+    }
 }
 
 // Owns a single detection plugin and provides the interface between WASM host and guest.
@@ -264,21 +296,8 @@ impl PluginInstance {
         let mut linker: Linker<RequestContext> = Linker::new(&plugin.engine);
         wasmtime_wasi::add_to_linker(&mut linker, |s| &mut s.wasi)?;
 
-        let wasi = WasiCtxBuilder::new()
-            .inherit_stdio()
-            .inherit_args()?
-            .build();
-        let request_context = RequestContext {
-            wasi,
-            redis_info,
-            plugin_reference: plugin.reference.clone(),
-            config: plugin.config.clone(),
-            request: bulwark_host::RequestInterface::from(request),
-            accept: 0.0,
-            restrict: 0.0,
-            unknown: 1.0,
-            tags: vec![],
-        };
+        let request_context = RequestContext::new(plugin.clone(), redis_info, request)?;
+
         let mut store = Store::new(&plugin.engine, request_context);
         bulwark_host::add_to_linker(&mut linker, |ctx: &mut RequestContext| ctx)?;
 
@@ -322,6 +341,18 @@ impl PluginInstance {
 impl bulwark_host::BulwarkHost for RequestContext {
     fn get_config(&mut self) -> Vec<u8> {
         self.config.to_vec()
+    }
+
+    fn get_context_value(&mut self, key: &str) -> Vec<u8> {
+        let context = self.context.lock().unwrap();
+        let value = context.get(key).unwrap_or(&bulwark_wasm_sdk::Value::Null);
+        serde_json::to_vec(value).unwrap()
+    }
+
+    fn set_context_value(&mut self, key: &str, value: &[u8]) {
+        let mut context = self.context.lock().unwrap();
+        let value: bulwark_wasm_sdk::Value = serde_json::from_slice(value).unwrap();
+        context.insert(key.to_string(), value);
     }
 
     fn get_request(&mut self) -> bulwark_host::RequestInterface {

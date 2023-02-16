@@ -32,6 +32,8 @@ record breaker-interface {
 }
 
 get-config: func() -> list<u8>
+get-context-value: func(key: string)-> list<u8>
+set-context-value: func(key: string, value: list<u8>)
 
 get-request: func() -> request-interface
 
