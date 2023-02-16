@@ -315,27 +315,36 @@ mod tests {
             toml::map::Map::new()
         );
 
-        assert_eq!(root.presets.as_ref().unwrap().len(), 1);
+        assert_eq!(root.presets.as_ref().unwrap().len(), 2);
         assert_eq!(
             root.presets.as_ref().unwrap().get(0).unwrap().reference,
+            "default"
+        );
+        assert_eq!(
+            root.presets.as_ref().unwrap().get(1).unwrap().reference,
             "starter-preset"
         );
         assert_eq!(
             root.presets.as_ref().unwrap().get(0).unwrap().plugins,
-            vec![crate::config::Reference::Plugin("blank-slate".to_string())]
-        );
-
-        assert_eq!(root.resources.as_ref().unwrap().len(), 1);
-        assert_eq!(
-            root.resources.as_ref().unwrap().get(0).unwrap().route,
-            "/*params"
-        );
-        assert_eq!(
-            root.resources.as_ref().unwrap().get(0).unwrap().plugins,
             vec![
                 crate::config::Reference::Plugin("evil-bit".to_string()),
                 crate::config::Reference::Preset("starter-preset".to_string())
             ]
+        );
+        assert_eq!(
+            root.presets.as_ref().unwrap().get(1).unwrap().plugins,
+            vec![crate::config::Reference::Plugin("blank-slate".to_string())]
+        );
+
+        assert_eq!(root.resources.as_ref().unwrap().len(), 2);
+        assert_eq!(root.resources.as_ref().unwrap().get(0).unwrap().route, "/");
+        assert_eq!(
+            root.resources.as_ref().unwrap().get(1).unwrap().route,
+            "/*params"
+        );
+        assert_eq!(
+            root.resources.as_ref().unwrap().get(0).unwrap().plugins,
+            vec![crate::config::Reference::Preset("default".to_string())]
         );
         assert_eq!(
             root.resources.as_ref().unwrap().get(0).unwrap().timeout,
