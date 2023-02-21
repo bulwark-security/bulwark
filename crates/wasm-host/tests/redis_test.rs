@@ -4,6 +4,7 @@ use std::sync::Arc;
 use bulwark_wasm_host::Plugin;
 use bulwark_wasm_host::PluginInstance;
 use bulwark_wasm_host::RedisInfo;
+use bulwark_wasm_host::RequestContext;
 use bulwark_wasm_host::ScriptRegistry;
 
 #[test]
@@ -35576,50 +35577,32 @@ fn test_rate_limit_logic() -> Result<(), Box<dyn std::error::Error>> {
         registry: ScriptRegistry::default(),
     }));
 
-    let mut plugin_instance = PluginInstance::new(
-        plugin.clone(),
-        redis_info.clone(),
-        Arc::new(
-            http::Request::builder()
-                .method("GET")
-                .uri("/")
-                .version(http::Version::HTTP_11)
-                .body(bulwark_wasm_sdk::RequestChunk {
-                    content: vec![],
-                    start: 0,
-                    size: 0,
-                    end_of_stream: true,
-                })?,
-        ),
-    )?;
+    let request = Arc::new(
+        http::Request::builder()
+            .method("GET")
+            .uri("/")
+            .version(http::Version::HTTP_11)
+            .body(bulwark_wasm_sdk::RequestChunk {
+                content: vec![],
+                start: 0,
+                size: 0,
+                end_of_stream: true,
+            })?,
+    );
+    let request_context = RequestContext::new(plugin.clone(), redis_info.clone(), request.clone())?;
+    let mut plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
     let mut decision_components = plugin_instance.start()?;
     assert_eq!(decision_components.decision.accept, 0.0);
     assert_eq!(decision_components.decision.restrict, 0.0);
     assert_eq!(decision_components.decision.unknown, 1.0);
     assert_eq!(decision_components.tags, vec![""; 0]);
 
-    let mut restricted = false;
     for _ in 0..30 {
-        let mut plugin_instance = PluginInstance::new(
-            plugin.clone(),
-            redis_info.clone(),
-            Arc::new(
-                http::Request::builder()
-                    .method("GET")
-                    .uri("/")
-                    .version(http::Version::HTTP_11)
-                    .body(bulwark_wasm_sdk::RequestChunk {
-                        content: vec![],
-                        start: 0,
-                        size: 0,
-                        end_of_stream: true,
-                    })?,
-            ),
-        )?;
+        let request_context =
+            RequestContext::new(plugin.clone(), redis_info.clone(), request.clone())?;
+        let mut plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
+        let mut decision_components = plugin_instance.start()?;
         decision_components = plugin_instance.start()?;
-        if decision_components.decision.restrict > 0.0 {
-            restricted = true;
-        }
     }
     assert_eq!(decision_components.decision.accept, 0.0);
     assert_eq!(decision_components.decision.restrict, 1.0);

@@ -1,7 +1,15 @@
+use tracing::Span;
+
 use {
-    crate::{serialize_decision_sfv, serialize_tags_sfv, FilterProcessingError},
+    crate::{
+        serialize_decision_sfv, serialize_tags_sfv, FilterProcessingError,
+        MultiPluginInstantiationError,
+    },
     bulwark_config::Config,
-    bulwark_wasm_host::{DecisionComponents, Plugin, PluginInstance, PluginLoadError},
+    bulwark_wasm_host::{
+        DecisionComponents, Plugin, PluginInstance, PluginLoadError, RedisInfo, RequestContext,
+        ScriptRegistry,
+    },
     bulwark_wasm_sdk::{Decision, MassFunction},
     envoy_control_plane::envoy::{
         config::core::v3::{HeaderMap, HeaderValue, HeaderValueOption},
@@ -31,8 +39,6 @@ use {
 };
 
 extern crate redis;
-
-use bulwark_wasm_host::{RedisInfo, ScriptRegistry};
 
 type ExternalProcessorStream =
     Pin<Box<dyn Stream<Item = Result<ProcessingResponse, Status>> + Send>>;
@@ -122,9 +128,6 @@ impl ExternalProcessor for BulwarkProcessor {
     ) -> Result<Response<ExternalProcessorStream>, Status> {
         let mut stream = request.into_inner();
         if let Ok(http_req) = prepare_request(&mut stream).await {
-            // println!("request method: {}", http_req.method().as_str());
-            // println!("request path: {}", http_req.uri());
-
             let redis_info = self.redis_info.clone();
             let http_req = Arc::new(http_req);
             let router = self.router.clone();
@@ -147,20 +150,37 @@ impl ExternalProcessor for BulwarkProcessor {
                     let router = router.read().await;
                     let route_result = router.at(http_req.uri().path());
                     // TODO: router needs to point to a struct that bundles the plugin set and associated config like timeout duration
-                    let timeout_duration = Duration::from_micros(200);
+                    // TODO: put default timeout in a constant somewhere central
+                    let mut timeout_duration = Duration::from_millis(10);
                     match route_result {
                         Ok(route_match) => {
                             // TODO: may want to expose params to logging after redaction
                             let route_target = route_match.value;
-                            let combined = execute_plugins(
+                            // TODO: figure out how to bubble the error out of the task and up to the parent
+                            // TODO: figure out if tonic-error or some other option is the best way to convert to a tonic Status error
+                            let plugin_instances = instantiate_plugins(
                                 &route_target.plugins,
-                                timeout_duration,
                                 redis_info.clone(),
                                 http_req.clone(),
                                 route_match.params,
                             )
+                            .unwrap();
+                            if let Some(millis) = route_match.value.timeout {
+                                timeout_duration = Duration::from_millis(millis);
+                            }
+
+                            let combined =
+                                execute_request_phase(plugin_instances, timeout_duration).await;
+
+                            // TODO: need equivalent of prepare_request but for response
+
+                            handle_request_phase_decision(
+                                sender,
+                                stream,
+                                combined.decision,
+                                combined.tags,
+                            )
                             .await;
-                            handle_decision(sender, stream, combined.decision, combined.tags).await;
                         }
                         Err(err) => {
                             // TODO: figure out how to handle trailing slash errors, silent failure is probably undesirable
@@ -178,28 +198,49 @@ impl ExternalProcessor for BulwarkProcessor {
     }
 }
 
-async fn execute_plugins<'k, 'v>(
+fn instantiate_plugins(
     plugins: &PluginList,
-    timeout_duration: std::time::Duration,
     redis_info: Option<Arc<RedisInfo>>,
     http_req: Arc<bulwark_wasm_sdk::Request>,
-    params: matchit::Params<'k, 'v>,
+    params: matchit::Params,
+) -> Result<Vec<Arc<Mutex<PluginInstance>>>, MultiPluginInstantiationError> {
+    let mut plugin_instances = Vec::with_capacity(plugins.len());
+    for plugin in plugins {
+        let mut request_context =
+            RequestContext::new(plugin.clone(), redis_info.clone(), http_req.clone())?;
+        for (key, value) in params.iter() {
+            let wrapped_value = bulwark_wasm_sdk::Value::String(value.to_string());
+            request_context.context_insert(key.to_string(), wrapped_value);
+        }
+
+        plugin_instances.push(Arc::new(Mutex::new(PluginInstance::new(
+            plugin.clone(),
+            request_context,
+        )?)));
+    }
+    Ok(plugin_instances)
+}
+
+async fn execute_request_phase(
+    plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
+    timeout_duration: std::time::Duration,
 ) -> DecisionComponents {
     let mut tasks = JoinSet::new();
-    let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugins.len())));
-    for plugin in plugins {
-        // TODO: actually use the params values
-        let plugin_instance_result =
-            PluginInstance::new(plugin.clone(), redis_info.clone(), http_req.clone());
-        let mut plugin_instance = plugin_instance_result.unwrap();
+    let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
+    for plugin_instance in plugin_instances {
         let decision_components = decision_components.clone();
 
-        let child_span = tracing::debug_span!(
-            "executing plugin",
-            plugin = plugin_instance.plugin_reference()
-        );
+        let child_span: Span;
+        {
+            let plugin_instance = plugin_instance.lock().unwrap();
+            child_span = tracing::debug_span!(
+                "executing plugin",
+                plugin = plugin_instance.plugin_reference()
+            );
+        }
         tasks.spawn(
             timeout(timeout_duration, async move {
+                let mut plugin_instance = plugin_instance.lock().unwrap();
                 let decision_result = plugin_instance.start();
                 // TODO: avoid unwrap
                 let decision_component = decision_result.unwrap();
@@ -262,6 +303,20 @@ async fn execute_plugins<'k, 'v>(
     }
 }
 
+async fn execute_on_request(
+    plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
+    timeout_duration: std::time::Duration,
+) {
+    todo!()
+}
+
+async fn execute_on_request_decision(
+    plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
+    timeout_duration: std::time::Duration,
+) -> DecisionComponents {
+    todo!()
+}
+
 // Add a header to the response.
 async fn prepare_request(
     stream: &mut Streaming<ProcessingRequest>,
@@ -309,7 +364,7 @@ async fn prepare_request(
     )))
 }
 
-async fn handle_decision(
+async fn handle_request_phase_decision(
     mut sender: UnboundedSender<Result<ProcessingResponse, Status>>,
     mut stream: Streaming<ProcessingRequest>,
     decision: Decision,

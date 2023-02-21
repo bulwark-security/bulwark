@@ -7,13 +7,14 @@ use crate::{
 use bulwark_wasm_sdk::{Decision, MassFunction};
 use chrono::Utc;
 use redis::Commands;
+use std::cell::{Cell, RefCell};
 use std::ops::DerefMut;
 use std::path::Path;
 use std::{
     convert::From,
     sync::{Arc, Mutex},
 };
-use wasmtime::{Config, Engine, Instance, Linker, Module, Store};
+use wasmtime::{AsContext, AsContextMut, Config, Engine, Instance, Linker, Module, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
 extern crate redis;
@@ -216,6 +217,15 @@ impl RequestContext {
             tags: vec![],
         })
     }
+
+    pub fn context_insert(
+        &mut self,
+        key: String,
+        value: bulwark_wasm_sdk::Value,
+    ) -> Option<bulwark_wasm_sdk::Value> {
+        let mut context = self.context.lock().unwrap();
+        context.insert(key, value)
+    }
 }
 
 // Owns a single detection plugin and provides the interface between WASM host and guest.
@@ -282,6 +292,7 @@ impl Plugin {
 pub struct PluginInstance {
     plugin: Arc<Plugin>,
     linker: Linker<RequestContext>,
+    // Should store get passed around to funcs separately as a mutable?
     store: Store<RequestContext>,
     instance: Instance,
 }
@@ -289,14 +300,11 @@ pub struct PluginInstance {
 impl PluginInstance {
     pub fn new(
         plugin: Arc<Plugin>,
-        redis_info: Option<Arc<RedisInfo>>,
-        request: Arc<bulwark_wasm_sdk::Request>,
+        request_context: RequestContext,
     ) -> Result<PluginInstance, PluginInstantiationError> {
         // convert from normal request struct to wasm request interface
         let mut linker: Linker<RequestContext> = Linker::new(&plugin.engine);
         wasmtime_wasi::add_to_linker(&mut linker, |s| &mut s.wasi)?;
-
-        let request_context = RequestContext::new(plugin.clone(), redis_info, request)?;
 
         let mut store = Store::new(&plugin.engine, request_context);
         bulwark_host::add_to_linker(&mut linker, |ctx: &mut RequestContext| ctx)?;
@@ -333,8 +341,10 @@ impl PluginInstance {
         })
     }
 
-    fn has_request_decision_handler(&self) -> bool {
-        false
+    pub fn has_request_decision_handler(&mut self) -> bool {
+        self.instance
+            .get_func(&mut self.store, "on_request_decision")
+            .is_some()
     }
 }
 
@@ -523,24 +533,25 @@ mod tests {
     #[test]
     fn test_wasm_execution() -> Result<(), Box<dyn std::error::Error>> {
         let wasm_bytes = include_bytes!("../tests/bulwark-blank-slate.wasm");
-        let plugin =
-            Plugin::from_bytes("bulwark-blank-slate.wasm".to_string(), wasm_bytes, vec![])?;
-        let mut plugin_instance = PluginInstance::new(
-            Arc::new(plugin),
-            None,
-            Arc::new(
-                http::Request::builder()
-                    .method("GET")
-                    .uri("/")
-                    .version(http::Version::HTTP_11)
-                    .body(bulwark_wasm_sdk::RequestChunk {
-                        content: vec![],
-                        start: 0,
-                        size: 0,
-                        end_of_stream: true,
-                    })?,
-            ),
-        )?;
+        let plugin = Arc::new(Plugin::from_bytes(
+            "bulwark-blank-slate.wasm".to_string(),
+            wasm_bytes,
+            vec![],
+        )?);
+        let request = Arc::new(
+            http::Request::builder()
+                .method("GET")
+                .uri("/")
+                .version(http::Version::HTTP_11)
+                .body(bulwark_wasm_sdk::RequestChunk {
+                    content: vec![],
+                    start: 0,
+                    size: 0,
+                    end_of_stream: true,
+                })?,
+        );
+        let request_context = RequestContext::new(plugin.clone(), None, request.clone())?;
+        let mut plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
         let decision_components = plugin_instance.start()?;
         assert_eq!(decision_components.decision.accept, 0.0);
         assert_eq!(decision_components.decision.restrict, 0.0);
@@ -553,53 +564,49 @@ mod tests {
     #[test]
     fn test_wasm_logic() -> Result<(), Box<dyn std::error::Error>> {
         let wasm_bytes = include_bytes!("../tests/bulwark-evil-bit.wasm");
-        let plugin = std::sync::Arc::new(Plugin::from_bytes(
+        let plugin = Arc::new(Plugin::from_bytes(
             "bulwark-evil-bit.wasm".to_string(),
             wasm_bytes,
             vec![],
         )?);
 
-        let mut typical_plugin_instance = PluginInstance::new(
-            plugin.clone(),
-            None,
-            Arc::new(
-                http::Request::builder()
-                    .method("POST")
-                    .uri("/example")
-                    .version(http::Version::HTTP_11)
-                    .header("Content-Type", "application/json")
-                    .body(bulwark_wasm_sdk::RequestChunk {
-                        content: "{\"number\": 42}".as_bytes().to_vec(),
-                        start: 0,
-                        size: 14,
-                        end_of_stream: true,
-                    })?,
-            ),
-        )?;
+        let request = Arc::new(
+            http::Request::builder()
+                .method("POST")
+                .uri("/example")
+                .version(http::Version::HTTP_11)
+                .header("Content-Type", "application/json")
+                .body(bulwark_wasm_sdk::RequestChunk {
+                    content: "{\"number\": 42}".as_bytes().to_vec(),
+                    start: 0,
+                    size: 14,
+                    end_of_stream: true,
+                })?,
+        );
+        let request_context = RequestContext::new(plugin.clone(), None, request.clone())?;
+        let mut typical_plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
         let typical_decision = typical_plugin_instance.start()?;
         assert_eq!(typical_decision.decision.accept, 0.0);
         assert_eq!(typical_decision.decision.restrict, 0.0);
         assert_eq!(typical_decision.decision.unknown, 1.0);
         assert_eq!(typical_decision.tags, vec![""; 0]);
 
-        let mut evil_plugin_instance = PluginInstance::new(
-            plugin,
-            None,
-            Arc::new(
-                http::Request::builder()
-                    .method("POST")
-                    .uri("/example")
-                    .version(http::Version::HTTP_11)
-                    .header("Content-Type", "application/json")
-                    .header("Evil", "true")
-                    .body(bulwark_wasm_sdk::RequestChunk {
-                        content: "{\"number\": 42}".as_bytes().to_vec(),
-                        start: 0,
-                        size: 14,
-                        end_of_stream: true,
-                    })?,
-            ),
-        )?;
+        let request = Arc::new(
+            http::Request::builder()
+                .method("POST")
+                .uri("/example")
+                .version(http::Version::HTTP_11)
+                .header("Content-Type", "application/json")
+                .header("Evil", "true")
+                .body(bulwark_wasm_sdk::RequestChunk {
+                    content: "{\"number\": 42}".as_bytes().to_vec(),
+                    start: 0,
+                    size: 14,
+                    end_of_stream: true,
+                })?,
+        );
+        let request_context = RequestContext::new(plugin.clone(), None, request.clone())?;
+        let mut evil_plugin_instance = PluginInstance::new(plugin, request_context)?;
         let evil_decision = evil_plugin_instance.start()?;
         assert_eq!(evil_decision.decision.accept, 0.0);
         assert_eq!(evil_decision.decision.restrict, 1.0);
