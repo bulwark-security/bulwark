@@ -24,6 +24,8 @@ pub enum PluginExecutionError {
     Error(#[from] anyhow::Error),
     #[error(transparent)]
     StringArray(#[from] StringArrayError),
+    #[error("function not implemented '{expected:?}'")]
+    NotImplementedError { expected: String },
 }
 
 #[derive(thiserror::Error, Debug)]

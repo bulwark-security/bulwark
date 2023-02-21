@@ -323,28 +323,65 @@ impl PluginInstance {
         self.plugin.reference.clone()
     }
 
-    // TODO: traits for decision?
+    pub fn start(&mut self) -> Result<(), PluginExecutionError> {
+        const FN_NAME: &str = "_start";
+        let fn_ref = self.instance.get_func(&mut self.store, FN_NAME);
+        fn_ref
+            .ok_or(PluginExecutionError::NotImplementedError {
+                expected: FN_NAME.to_string(),
+            })?
+            .call(&mut self.store, &[], &mut [])?;
 
-    pub fn start(&mut self) -> Result<DecisionComponents, PluginExecutionError> {
-        let start = self.instance.get_func(&mut self.store, "_start").unwrap();
-        start.call(&mut self.store, &[], &mut [])?;
+        Ok(())
+    }
 
-        let ctx = self.store.data();
+    pub fn has_request_handler(&mut self) -> bool {
+        self.instance
+            .get_func(&mut self.store, "on_request")
+            .is_some()
+    }
 
-        Ok(DecisionComponents {
-            decision: Decision {
-                accept: ctx.accept,
-                restrict: ctx.restrict,
-                unknown: ctx.unknown,
-            },
-            tags: ctx.tags.clone(),
-        })
+    pub fn handle_request(&mut self) -> Result<(), PluginExecutionError> {
+        const FN_NAME: &str = "on_request";
+        let fn_ref = self.instance.get_func(&mut self.store, FN_NAME);
+        fn_ref
+            .ok_or(PluginExecutionError::NotImplementedError {
+                expected: FN_NAME.to_string(),
+            })?
+            .call(&mut self.store, &[], &mut [])?;
+
+        Ok(())
     }
 
     pub fn has_request_decision_handler(&mut self) -> bool {
         self.instance
             .get_func(&mut self.store, "on_request_decision")
             .is_some()
+    }
+
+    pub fn handle_request_decision(&mut self) -> Result<(), PluginExecutionError> {
+        const FN_NAME: &str = "on_request_decision";
+        let fn_ref = self.instance.get_func(&mut self.store, FN_NAME);
+        fn_ref
+            .ok_or(PluginExecutionError::NotImplementedError {
+                expected: FN_NAME.to_string(),
+            })?
+            .call(&mut self.store, &[], &mut [])?;
+
+        Ok(())
+    }
+
+    pub fn get_decision(&mut self) -> DecisionComponents {
+        let ctx = self.store.data();
+
+        DecisionComponents {
+            decision: Decision {
+                accept: ctx.accept,
+                restrict: ctx.restrict,
+                unknown: ctx.unknown,
+            },
+            tags: ctx.tags.clone(),
+        }
     }
 }
 
@@ -552,7 +589,8 @@ mod tests {
         );
         let request_context = RequestContext::new(plugin.clone(), None, request.clone())?;
         let mut plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
-        let decision_components = plugin_instance.start()?;
+        plugin_instance.start()?;
+        let decision_components = plugin_instance.get_decision();
         assert_eq!(decision_components.decision.accept, 0.0);
         assert_eq!(decision_components.decision.restrict, 0.0);
         assert_eq!(decision_components.decision.unknown, 1.0);
@@ -585,7 +623,8 @@ mod tests {
         );
         let request_context = RequestContext::new(plugin.clone(), None, request.clone())?;
         let mut typical_plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
-        let typical_decision = typical_plugin_instance.start()?;
+        typical_plugin_instance.start()?;
+        let typical_decision = typical_plugin_instance.get_decision();
         assert_eq!(typical_decision.decision.accept, 0.0);
         assert_eq!(typical_decision.decision.restrict, 0.0);
         assert_eq!(typical_decision.decision.unknown, 1.0);
@@ -607,7 +646,8 @@ mod tests {
         );
         let request_context = RequestContext::new(plugin.clone(), None, request.clone())?;
         let mut evil_plugin_instance = PluginInstance::new(plugin, request_context)?;
-        let evil_decision = evil_plugin_instance.start()?;
+        evil_plugin_instance.start()?;
+        let evil_decision = evil_plugin_instance.get_decision();
         assert_eq!(evil_decision.decision.accept, 0.0);
         assert_eq!(evil_decision.decision.restrict, 1.0);
         assert_eq!(evil_decision.decision.unknown, 0.0);

@@ -1,3 +1,4 @@
+use bulwark_wasm_host::PluginExecutionError;
 use tracing::Span;
 
 use {
@@ -240,9 +241,10 @@ async fn execute_request_phase(
         }
         tasks.spawn(
             timeout(timeout_duration, async move {
-                let mut plugin_instance = plugin_instance.lock().unwrap();
-                let decision_result = plugin_instance.start();
-                // TODO: avoid unwrap
+                // TODO: avoid unwraps
+                execute_plugin_initialization(plugin_instance.clone()).unwrap();
+                execute_on_request(plugin_instance.clone()).unwrap();
+                let decision_result = execute_on_request_decision(plugin_instance.clone());
                 let decision_component = decision_result.unwrap();
                 {
                     let decision = &decision_component.decision;
@@ -303,18 +305,44 @@ async fn execute_request_phase(
     }
 }
 
-async fn execute_on_request(
-    plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-    timeout_duration: std::time::Duration,
-) {
-    todo!()
+fn execute_plugin_initialization(
+    plugin_instance: Arc<Mutex<PluginInstance>>,
+) -> Result<(), PluginExecutionError> {
+    let mut plugin_instance = plugin_instance.lock().unwrap();
+    // unlike on_request, the _start/main function is mandatory
+    plugin_instance.start()
 }
 
-async fn execute_on_request_decision(
-    plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-    timeout_duration: std::time::Duration,
-) -> DecisionComponents {
-    todo!()
+fn execute_on_request(
+    plugin_instance: Arc<Mutex<PluginInstance>>,
+) -> Result<(), PluginExecutionError> {
+    let mut plugin_instance = plugin_instance.lock().unwrap();
+    let result = plugin_instance.handle_request();
+    match result {
+        Ok(_) => result,
+        Err(e) => match e {
+            // we can silence not implemented errors because they are expected and normal here
+            PluginExecutionError::NotImplementedError { expected: _ } => Ok(()),
+            // everything else will get passed along
+            _ => Err(e),
+        },
+    }
+}
+
+fn execute_on_request_decision(
+    plugin_instance: Arc<Mutex<PluginInstance>>,
+) -> Result<DecisionComponents, PluginExecutionError> {
+    let mut plugin_instance = plugin_instance.lock().unwrap();
+    let result = plugin_instance.handle_request_decision();
+    if let Err(e) = result {
+        match e {
+            // we can silence not implemented errors because they are expected and normal here
+            PluginExecutionError::NotImplementedError { expected: _ } => (),
+            // everything else will get passed along
+            _ => Err(e)?,
+        }
+    }
+    Ok(plugin_instance.get_decision())
 }
 
 // Add a header to the response.
