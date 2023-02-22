@@ -184,7 +184,8 @@ pub struct RequestContext {
     wasi: WasiCtx,
     plugin_reference: String,
     config: Arc<Vec<u8>>,
-    context: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>,
+    /// params are shared between all plugin instances for a single request
+    params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>,
     request: bulwark_host::RequestInterface,
     redis_info: Option<Arc<RedisInfo>>,
     accept: f64,
@@ -197,6 +198,7 @@ impl RequestContext {
     pub fn new(
         plugin: Arc<Plugin>,
         redis_info: Option<Arc<RedisInfo>>,
+        params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>,
         request: Arc<bulwark_wasm_sdk::Request>,
     ) -> Result<RequestContext, ContextInstantiationError> {
         let wasi = WasiCtxBuilder::new()
@@ -209,7 +211,7 @@ impl RequestContext {
             redis_info,
             plugin_reference: plugin.reference.clone(),
             config: plugin.config.clone(),
-            context: Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new())),
+            params,
             request: bulwark_host::RequestInterface::from(request),
             accept: 0.0,
             restrict: 0.0,
@@ -218,13 +220,13 @@ impl RequestContext {
         })
     }
 
-    pub fn context_insert(
+    pub fn param_insert(
         &mut self,
         key: String,
         value: bulwark_wasm_sdk::Value,
     ) -> Option<bulwark_wasm_sdk::Value> {
-        let mut context = self.context.lock().unwrap();
-        context.insert(key, value)
+        let mut params = self.params.lock().unwrap();
+        params.insert(key, value)
     }
 }
 
@@ -390,16 +392,16 @@ impl bulwark_host::BulwarkHost for RequestContext {
         self.config.to_vec()
     }
 
-    fn get_context_value(&mut self, key: &str) -> Vec<u8> {
-        let context = self.context.lock().unwrap();
-        let value = context.get(key).unwrap_or(&bulwark_wasm_sdk::Value::Null);
+    fn get_param_value(&mut self, key: &str) -> Vec<u8> {
+        let params = self.params.lock().unwrap();
+        let value = params.get(key).unwrap_or(&bulwark_wasm_sdk::Value::Null);
         serde_json::to_vec(value).unwrap()
     }
 
-    fn set_context_value(&mut self, key: &str, value: &[u8]) {
-        let mut context = self.context.lock().unwrap();
+    fn set_param_value(&mut self, key: &str, value: &[u8]) {
+        let mut params = self.params.lock().unwrap();
         let value: bulwark_wasm_sdk::Value = serde_json::from_slice(value).unwrap();
-        context.insert(key.to_string(), value);
+        params.insert(key.to_string(), value);
     }
 
     fn get_request(&mut self) -> bulwark_host::RequestInterface {
@@ -587,7 +589,8 @@ mod tests {
                     end_of_stream: true,
                 })?,
         );
-        let request_context = RequestContext::new(plugin.clone(), None, request.clone())?;
+        let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
+        let request_context = RequestContext::new(plugin.clone(), None, params, request.clone())?;
         let mut plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
         plugin_instance.start()?;
         let decision_components = plugin_instance.get_decision();
@@ -621,7 +624,8 @@ mod tests {
                     end_of_stream: true,
                 })?,
         );
-        let request_context = RequestContext::new(plugin.clone(), None, request.clone())?;
+        let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
+        let request_context = RequestContext::new(plugin.clone(), None, params, request.clone())?;
         let mut typical_plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
         typical_plugin_instance.start()?;
         let typical_decision = typical_plugin_instance.get_decision();
@@ -644,7 +648,8 @@ mod tests {
                     end_of_stream: true,
                 })?,
         );
-        let request_context = RequestContext::new(plugin.clone(), None, request.clone())?;
+        let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
+        let request_context = RequestContext::new(plugin.clone(), None, params, request.clone())?;
         let mut evil_plugin_instance = PluginInstance::new(plugin, request_context)?;
         evil_plugin_instance.start()?;
         let evil_decision = evil_plugin_instance.get_decision();

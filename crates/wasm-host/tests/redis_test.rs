@@ -1,11 +1,8 @@
-use std::borrow::Borrow;
-use std::sync::Arc;
-
-use bulwark_wasm_host::Plugin;
-use bulwark_wasm_host::PluginInstance;
-use bulwark_wasm_host::RedisInfo;
-use bulwark_wasm_host::RequestContext;
-use bulwark_wasm_host::ScriptRegistry;
+use {
+    bulwark_wasm_host::{Plugin, PluginInstance, RedisInfo, RequestContext, ScriptRegistry},
+    std::borrow::Borrow,
+    std::sync::{Arc, Mutex},
+};
 
 #[test]
 fn test_rate_limit_logic() -> Result<(), Box<dyn std::error::Error>> {
@@ -35589,7 +35586,9 @@ fn test_rate_limit_logic() -> Result<(), Box<dyn std::error::Error>> {
                 end_of_stream: true,
             })?,
     );
-    let request_context = RequestContext::new(plugin.clone(), redis_info.clone(), request.clone())?;
+    let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
+    let request_context =
+        RequestContext::new(plugin.clone(), redis_info.clone(), params, request.clone())?;
     let mut plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
     plugin_instance.start()?;
     let mut decision_components = plugin_instance.get_decision();
@@ -35599,8 +35598,9 @@ fn test_rate_limit_logic() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(decision_components.tags, vec![""; 0]);
 
     for _ in 0..30 {
+        let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
         let request_context =
-            RequestContext::new(plugin.clone(), redis_info.clone(), request.clone())?;
+            RequestContext::new(plugin.clone(), redis_info.clone(), params, request.clone())?;
         let mut plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
         plugin_instance.start()?;
         decision_components = plugin_instance.get_decision();

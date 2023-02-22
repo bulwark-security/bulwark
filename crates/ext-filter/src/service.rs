@@ -206,12 +206,17 @@ fn instantiate_plugins(
     params: matchit::Params,
 ) -> Result<Vec<Arc<Mutex<PluginInstance>>>, MultiPluginInstantiationError> {
     let mut plugin_instances = Vec::with_capacity(plugins.len());
+    let shared_params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
     for plugin in plugins {
-        let mut request_context =
-            RequestContext::new(plugin.clone(), redis_info.clone(), http_req.clone())?;
+        let mut request_context = RequestContext::new(
+            plugin.clone(),
+            redis_info.clone(),
+            shared_params.clone(),
+            http_req.clone(),
+        )?;
         for (key, value) in params.iter() {
             let wrapped_value = bulwark_wasm_sdk::Value::String(value.to_string());
-            request_context.context_insert(key.to_string(), wrapped_value);
+            request_context.param_insert(key.to_string(), wrapped_value);
         }
 
         plugin_instances.push(Arc::new(Mutex::new(PluginInstance::new(
@@ -244,6 +249,8 @@ async fn execute_request_phase(
                 // TODO: avoid unwraps
                 execute_plugin_initialization(plugin_instance.clone()).unwrap();
                 execute_on_request(plugin_instance.clone()).unwrap();
+                // TODO: simply sharing the parameters between plugin instances doesn't solve the sequencing problem, perhaps place nested joins here?
+                // TODO: figure out how to handle timeouts since a timeout might result in a plugin failing to join, causing all other plugins to timeout too
                 let decision_result = execute_on_request_decision(plugin_instance.clone());
                 let decision_component = decision_result.unwrap();
                 {

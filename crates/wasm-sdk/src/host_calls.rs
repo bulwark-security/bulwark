@@ -47,17 +47,17 @@ pub fn get_config_value(key: &str) -> Option<serde_json::Value> {
     }
 }
 
-pub fn get_context_value(key: &str) -> serde_json::Value {
+pub fn get_param_value(key: &str) -> serde_json::Value {
     // TODO: this should return a result
-    let raw_value = bulwark_host::get_context_value(key);
+    let raw_value = bulwark_host::get_param_value(key);
     let value: serde_json::Value = serde_json::from_slice(&raw_value).unwrap();
     value
 }
 
-pub fn set_context_value(key: &str, value: serde_json::Value) {
+pub fn set_param_value(key: &str, value: serde_json::Value) {
     // TODO: this should return a result
     let json = serde_json::to_vec(&value).unwrap();
-    bulwark_host::set_context_value(key, &json);
+    bulwark_host::set_param_value(key, &json);
 }
 
 pub fn get_request() -> Request {
