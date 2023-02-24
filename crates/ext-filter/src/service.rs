@@ -1,4 +1,5 @@
 use bulwark_wasm_host::PluginExecutionError;
+use tokio::task::JoinHandle;
 use tracing::Span;
 
 use {
@@ -122,7 +123,7 @@ impl BulwarkProcessor {
 impl ExternalProcessor for BulwarkProcessor {
     type ProcessStream = ExternalProcessorStream;
 
-    #[instrument(skip(self, request))]
+    #[instrument(name = "request_handler", skip(self, request))]
     async fn process(
         &self,
         request: Request<Streaming<ProcessingRequest>>,
@@ -134,7 +135,7 @@ impl ExternalProcessor for BulwarkProcessor {
             let router = self.router.clone();
 
             info!(
-                message = "request processed",
+                message = "handling request",
                 method = http_req.method().to_string(),
                 uri = http_req.uri().to_string(),
                 user_agent = http_req
@@ -231,26 +232,75 @@ async fn execute_request_phase(
     plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
     timeout_duration: std::time::Duration,
 ) -> DecisionComponents {
-    let mut tasks = JoinSet::new();
-    let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
-    for plugin_instance in plugin_instances {
-        let decision_components = decision_components.clone();
+    execute_request_phase_one(plugin_instances.clone(), timeout_duration).await;
+    execute_request_phase_two(plugin_instances.clone(), timeout_duration).await
+}
 
-        let child_span: Span;
+async fn execute_request_phase_one(
+    plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
+    timeout_duration: std::time::Duration,
+) {
+    let mut phase_one_tasks = JoinSet::new();
+    for plugin_instance in plugin_instances.clone() {
+        let phase_one_child_span: Span;
         {
             let plugin_instance = plugin_instance.lock().unwrap();
-            child_span = tracing::debug_span!(
-                "executing plugin",
-                plugin = plugin_instance.plugin_reference()
+            phase_one_child_span = tracing::debug_span!(
+                "executing on_request phase",
+                // TODO: figure out why this isn't displayed in the logs
+                plugin = plugin_instance.plugin_reference(),
             );
         }
-        tasks.spawn(
+        phase_one_tasks.spawn(
             timeout(timeout_duration, async move {
                 // TODO: avoid unwraps
                 execute_plugin_initialization(plugin_instance.clone()).unwrap();
                 execute_on_request(plugin_instance.clone()).unwrap();
-                // TODO: simply sharing the parameters between plugin instances doesn't solve the sequencing problem, perhaps place nested joins here?
-                // TODO: figure out how to handle timeouts since a timeout might result in a plugin failing to join, causing all other plugins to timeout too
+            })
+            .instrument(phase_one_child_span.or_current()),
+        );
+    }
+    // efficiently hand execution off to the plugins
+    tokio::task::yield_now().await;
+
+    while let Some(r) = phase_one_tasks.join_next().await {
+        match r {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => {
+                warn!(
+                    message = "timeout on plugin execution",
+                    elapsed = ?e,
+                );
+            }
+            Err(e) => {
+                warn!(
+                    message = "join error on plugin execution",
+                    error_message = ?e,
+                );
+            }
+        }
+    }
+}
+
+async fn execute_request_phase_two(
+    plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
+    timeout_duration: std::time::Duration,
+) -> DecisionComponents {
+    let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
+    let mut phase_two_tasks = JoinSet::new();
+    for plugin_instance in plugin_instances.clone() {
+        let phase_two_child_span: Span;
+        {
+            let plugin_instance = plugin_instance.lock().unwrap();
+            phase_two_child_span = tracing::debug_span!(
+                "executing on_request_decision phase",
+                // TODO: figure out why this isn't displayed in the logs
+                plugin = plugin_instance.plugin_reference(),
+            );
+        }
+        let decision_components = decision_components.clone();
+        phase_two_tasks.spawn(
+            timeout(timeout_duration, async move {
                 let decision_result = execute_on_request_decision(plugin_instance.clone());
                 let decision_component = decision_result.unwrap();
                 {
@@ -265,22 +315,25 @@ async fn execute_request_phase(
                 let mut decision_components = decision_components.lock().unwrap();
                 decision_components.push(decision_component);
             })
-            .instrument(child_span.or_current()),
+            .instrument(phase_two_child_span.or_current()),
         );
     }
-    // hand execution off to the plugins
+    // efficiently hand execution off to the plugins
     tokio::task::yield_now().await;
-    while let Some(r) = tasks.join_next().await {
+
+    while let Some(r) = phase_two_tasks.join_next().await {
         match r {
             Ok(Ok(_)) => {}
-            Ok(Err(_)) => {
-                warn!(message = "timeout waiting on plugin execution");
-                // TODO: confirm that we haven't leaked a task on timeout; plugins may not halt
+            Ok(Err(e)) => {
+                warn!(
+                    message = "timeout on plugin execution",
+                    elapsed = ?e,
+                );
             }
             Err(e) => {
                 warn!(
                     message = "join error on plugin execution",
-                    error_message = e.to_string(),
+                    error_message = ?e,
                 );
             }
         }
@@ -302,10 +355,16 @@ async fn execute_request_phase(
         accept = decision.accept,
         restrict = decision.restrict,
         unknown = decision.unknown,
-        // TODO: is it possible to pass a meaningful tracing::Value here instead of formating to string?
-        tags = format!("{:?}", tags),
+        // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
+        tags = tags
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<&str>>()
+            .to_vec()
+            .join(","),
         count = decision_vec.len(),
     );
+
     DecisionComponents {
         decision,
         tags: tags.into_iter().collect(),
