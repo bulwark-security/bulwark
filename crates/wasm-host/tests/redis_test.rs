@@ -35579,7 +35579,7 @@ fn test_rate_limit_logic() -> Result<(), Box<dyn std::error::Error>> {
             .method("GET")
             .uri("/")
             .version(http::Version::HTTP_11)
-            .body(bulwark_wasm_sdk::RequestChunk {
+            .body(bulwark_wasm_sdk::BodyChunk {
                 content: vec![],
                 start: 0,
                 size: 0,

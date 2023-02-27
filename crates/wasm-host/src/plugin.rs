@@ -582,7 +582,7 @@ mod tests {
                 .method("GET")
                 .uri("/")
                 .version(http::Version::HTTP_11)
-                .body(bulwark_wasm_sdk::RequestChunk {
+                .body(bulwark_wasm_sdk::BodyChunk {
                     content: vec![],
                     start: 0,
                     size: 0,
@@ -617,7 +617,7 @@ mod tests {
                 .uri("/example")
                 .version(http::Version::HTTP_11)
                 .header("Content-Type", "application/json")
-                .body(bulwark_wasm_sdk::RequestChunk {
+                .body(bulwark_wasm_sdk::BodyChunk {
                     content: "{\"number\": 42}".as_bytes().to_vec(),
                     start: 0,
                     size: 14,
@@ -641,7 +641,7 @@ mod tests {
                 .version(http::Version::HTTP_11)
                 .header("Content-Type", "application/json")
                 .header("Evil", "true")
-                .body(bulwark_wasm_sdk::RequestChunk {
+                .body(bulwark_wasm_sdk::BodyChunk {
                     content: "{\"number\": 42}".as_bytes().to_vec(),
                     start: 0,
                     size: 14,

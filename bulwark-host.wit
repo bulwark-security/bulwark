@@ -9,6 +9,14 @@ record request-interface {
   chunk-length: u64,
   end-of-stream: bool,
 }
+record response-interface {
+  status: u32,
+  headers: list<header-interface>,
+  chunk: list<u8>,
+  chunk-start: u64,
+  chunk-length: u64,
+  end-of-stream: bool,
+}
 record header-interface {
   name: string,
   value: string,

@@ -19,9 +19,10 @@ use validator::{Validate, ValidationErrors};
 
 use self::bulwark_host::DecisionInterface;
 
-pub type Request = http::Request<RequestChunk>;
+pub type Request = http::Request<BodyChunk>;
+pub type Response = http::Response<BodyChunk>;
 
-pub struct RequestChunk {
+pub struct BodyChunk {
     pub end_of_stream: bool,
     pub size: u64,
     pub start: u64,
@@ -73,7 +74,7 @@ pub fn get_request() -> Request {
         request = request.header(header.name, header.value);
     }
     request
-        .body(RequestChunk {
+        .body(BodyChunk {
             content: chunk,
             size: raw_request.chunk_length,
             start: raw_request.chunk_start,

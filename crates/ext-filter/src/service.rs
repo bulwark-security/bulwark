@@ -411,7 +411,6 @@ fn execute_on_request_decision(
     Ok(plugin_instance.get_decision())
 }
 
-// Add a header to the response.
 async fn prepare_request(
     stream: &mut Streaming<ProcessingRequest>,
 ) -> Result<bulwark_wasm_sdk::Request, FilterProcessingError> {
@@ -433,7 +432,8 @@ async fn prepare_request(
             FilterProcessingError::Error(anyhow::anyhow!("Missing HTTP request URI"))
         })?;
         let mut request = http::Request::builder();
-        let request_chunk = bulwark_wasm_sdk::RequestChunk {
+        // TODO: read the request body
+        let request_chunk = bulwark_wasm_sdk::BodyChunk {
             end_of_stream: header_msg.end_of_stream,
             size: 0,
             start: 0,
@@ -453,6 +453,44 @@ async fn prepare_request(
         }
         return Ok(request.body(request_chunk).unwrap());
     }
+    // TODO: what exactly should happen here?
+    Err(FilterProcessingError::Error(anyhow::anyhow!(
+        "Nothing useful happened"
+    )))
+}
+
+async fn prepare_response(
+    stream: &mut Streaming<ProcessingRequest>,
+) -> Result<bulwark_wasm_sdk::Response, FilterProcessingError> {
+    // TODO: determine client IP address, pass it through as an extension
+    if let Some(header_msg) = get_response_headers(stream).await {
+        // TODO: make this an int? status builder function might not care though?
+        let status = get_header_value(&header_msg.headers, ":status")
+            .ok_or_else(|| FilterProcessingError::Error(anyhow::anyhow!("Missing HTTP status")))?;
+
+        let mut response = http::Response::builder();
+        // TODO: read the response body
+        let response_chunk = bulwark_wasm_sdk::BodyChunk {
+            end_of_stream: header_msg.end_of_stream,
+            size: 0,
+            start: 0,
+            content: vec![],
+        };
+        response = response.status(status);
+        match &header_msg.headers {
+            Some(headers) => {
+                for header in &headers.headers {
+                    // must not pass through Envoy pseudo headers here, http module treats them as invalid
+                    if !header.key.starts_with(':') {
+                        response = response.header(&header.key, &header.value);
+                    }
+                }
+            }
+            None => {}
+        }
+        return Ok(response.body(response_chunk).unwrap());
+    }
+    // TODO: what exactly should happen here?
     Err(FilterProcessingError::Error(anyhow::anyhow!(
         "Nothing useful happened"
     )))
@@ -475,8 +513,9 @@ async fn handle_request_phase_decision(
         return;
     }
 
-    if get_response_headers(&mut stream).await.is_some() {
+    if let Ok(http_resp) = prepare_response(&mut stream).await {
         let mut resp_headers_cr = CommonResponse::default();
+        // TODO: probably remove this
         add_set_header(&mut resp_headers_cr, "x-external-processor", "Bulwark");
 
         let resp_headers_resp = ProcessingResponse {
@@ -489,7 +528,6 @@ async fn handle_request_phase_decision(
         };
         sender.send(Ok(resp_headers_resp)).await.ok();
     }
-    // Fall through if we get the wrong message.
 }
 
 async fn allow_request(
@@ -532,7 +570,9 @@ async fn block_request(
         response: Some(processing_response::Response::ImmediateResponse(
             ImmediateResponse {
                 status: Some(HttpStatus { code: 403 }),
-                details: "blocked by bulwark".to_string(), // TODO: add decision debug
+                // TODO: add decision debug
+                details: "blocked by bulwark".to_string(),
+                // TODO: better default response + customizability
                 body: "Bulwark says no.".to_string(),
                 headers: None,
                 grpc_status: None,
