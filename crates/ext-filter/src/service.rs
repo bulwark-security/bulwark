@@ -181,8 +181,7 @@ impl ExternalProcessor for BulwarkProcessor {
                             handle_request_phase_decision(
                                 sender,
                                 stream,
-                                combined.decision,
-                                combined.tags,
+                                combined,
                                 plugin_instances,
                                 timeout_duration,
                             )
@@ -533,13 +532,12 @@ async fn prepare_request(
 ) -> Result<bulwark_wasm_sdk::Request, FilterProcessingError> {
     // TODO: determine client IP address, pass it through as an extension
     if let Some(header_msg) = get_request_headers(stream).await {
+        // TODO: currently this information isn't used and isn't accessible to the plugin environment yet
         let authority = get_header_value(&header_msg.headers, ":authority").ok_or_else(|| {
             FilterProcessingError::Error(anyhow::anyhow!("Missing HTTP authority"))
         })?;
-        // println!("request authority (unused): {}", authority);
         let scheme = get_header_value(&header_msg.headers, ":scheme")
             .ok_or_else(|| FilterProcessingError::Error(anyhow::anyhow!("Missing HTTP scheme")))?;
-        // println!("request scheme (unused): {}", scheme);
 
         let method =
             http::Method::from_str(get_header_value(&header_msg.headers, ":method").ok_or_else(
@@ -614,20 +612,19 @@ async fn prepare_response(
 }
 
 async fn handle_request_phase_decision(
-    mut sender: UnboundedSender<Result<ProcessingResponse, Status>>,
+    sender: UnboundedSender<Result<ProcessingResponse, Status>>,
     mut stream: Streaming<ProcessingRequest>,
-    decision: Decision,
-    tags: Vec<String>,
+    decision_components: DecisionComponents,
     plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
     timeout_duration: std::time::Duration,
 ) {
     // TODO: make threshold configurable
-    if decision.accepted(0.5) {
-        let result = allow_request(&sender, decision, tags.clone()).await;
+    if decision_components.decision.accepted(0.5) {
+        let result = allow_request(&sender, decision_components).await;
         // TODO: must perform error handling on sender results, sending can definitely fail
         debug!(message = "send result", result = result.is_ok());
     } else {
-        let result = block_request(&sender, decision, tags.clone()).await;
+        let result = block_request(&sender, decision_components).await;
         // TODO: must perform error handling on sender results, sending can definitely fail
         debug!(message = "send result", result = result.is_ok());
         return;
@@ -636,10 +633,25 @@ async fn handle_request_phase_decision(
     if let Ok(http_resp) = prepare_response(&mut stream).await {
         let http_resp = Arc::new(http_resp);
 
-        let combined =
-            execute_response_phase(plugin_instances.clone(), http_resp, timeout_duration).await;
+        handle_response_phase_decision(
+            sender,
+            execute_response_phase(plugin_instances.clone(), http_resp, timeout_duration).await,
+        )
+        .await;
+    }
+}
 
-        let result = allow_response(&sender, decision, tags).await;
+async fn handle_response_phase_decision(
+    sender: UnboundedSender<Result<ProcessingResponse, Status>>,
+    decision_components: DecisionComponents,
+) {
+    // TODO: make threshold configurable
+    if decision_components.decision.accepted(0.5) {
+        let result = allow_response(&sender, decision_components).await;
+        // TODO: must perform error handling on sender results, sending can definitely fail
+        debug!(message = "send result", result = result.is_ok());
+    } else {
+        let result = block_response(&sender, decision_components).await;
         // TODO: must perform error handling on sender results, sending can definitely fail
         debug!(message = "send result", result = result.is_ok());
     }
@@ -647,21 +659,20 @@ async fn handle_request_phase_decision(
 
 async fn allow_request(
     mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
-    decision: Decision,
-    tags: Vec<String>,
+    decision_components: DecisionComponents,
 ) -> Result<(), SendError> {
     // Send back a response that changes the request header for the HTTP target.
     let mut req_headers_cr = CommonResponse::default();
     add_set_header(
         &mut req_headers_cr,
         "Bulwark-Decision",
-        &serialize_decision_sfv(decision),
+        &serialize_decision_sfv(decision_components.decision),
     );
-    if !tags.is_empty() {
+    if !decision_components.tags.is_empty() {
         add_set_header(
             &mut req_headers_cr,
             "Bulwark-Tags",
-            &serialize_tags_sfv(tags),
+            &serialize_tags_sfv(decision_components.tags),
         );
     }
     let req_headers_resp = ProcessingResponse {
@@ -677,8 +688,8 @@ async fn allow_request(
 
 async fn block_request(
     mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
-    decision: Decision,
-    tags: Vec<String>,
+    // TODO: this will be used in the future
+    _decision_components: DecisionComponents,
 ) -> Result<(), SendError> {
     // Send back a response indicating the request has been blocked.
     let req_headers_resp = ProcessingResponse {
@@ -700,8 +711,8 @@ async fn block_request(
 
 async fn allow_response(
     mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
-    decision: Decision,
-    tags: Vec<String>,
+    // TODO: this will be used in the future
+    _decision_components: DecisionComponents,
 ) -> Result<(), SendError> {
     let resp_headers_resp = ProcessingResponse {
         response: Some(processing_response::Response::RequestHeaders(
@@ -714,8 +725,8 @@ async fn allow_response(
 
 async fn block_response(
     mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
-    decision: Decision,
-    tags: Vec<String>,
+    // TODO: this will be used in the future
+    _decision_components: DecisionComponents,
 ) -> Result<(), SendError> {
     // Send back a response indicating the request has been blocked.
     let resp_headers_resp = ProcessingResponse {
