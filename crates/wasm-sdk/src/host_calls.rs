@@ -83,7 +83,24 @@ pub fn get_request() -> Request {
         .unwrap()
 }
 
-// TODO: get_response
+pub fn get_response() -> Response {
+    let raw_response: bulwark_host::ResponseInterface = bulwark_host::get_response();
+    let chunk: Vec<u8> = raw_response.chunk;
+    // TODO: error handling
+    let status: u16 = raw_response.status.try_into().unwrap();
+    let mut response = http::Response::builder().status(status);
+    for header in raw_response.headers {
+        response = response.header(header.name, header.value);
+    }
+    response
+        .body(BodyChunk {
+            content: chunk,
+            size: raw_response.chunk_length,
+            start: raw_response.chunk_start,
+            end_of_stream: raw_response.end_of_stream,
+        })
+        .unwrap()
+}
 
 pub fn set_decision(decision: Decision) -> Result<(), ValidationErrors> {
     decision.validate()?;

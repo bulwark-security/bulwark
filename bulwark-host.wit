@@ -44,6 +44,7 @@ get-param-value: func(key: string)-> list<u8>
 set-param-value: func(key: string, value: list<u8>)
 
 get-request: func() -> request-interface
+get-response: func() -> response-interface
 
 set-decision: func(decision: decision-interface)
 set-tags: func(tags: list<string>)

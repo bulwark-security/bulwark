@@ -10,6 +10,7 @@ use redis::Commands;
 use std::cell::{Cell, RefCell};
 use std::ops::DerefMut;
 use std::path::Path;
+use std::sync::MutexGuard;
 use std::{
     convert::From,
     sync::{Arc, Mutex},
@@ -43,6 +44,31 @@ impl From<Arc<bulwark_wasm_sdk::Request>> for bulwark_host::RequestInterface {
             end_of_stream: request.body().end_of_stream,
             // TODO: figure out how to avoid the copy
             chunk: request.body().content.clone(),
+        }
+    }
+}
+
+impl From<Arc<bulwark_wasm_sdk::Response>> for bulwark_host::ResponseInterface {
+    fn from(response: Arc<bulwark_wasm_sdk::Response>) -> Self {
+        bulwark_host::ResponseInterface {
+            // this unwrap should be okay since a non-zero u16 should always be coercible to u32
+            status: response.status().as_u16().try_into().unwrap(),
+            headers: response
+                .headers()
+                .iter()
+                .map(|(name, value)| {
+                    bulwark_host::HeaderInterface {
+                        name: name.to_string(),
+                        // TODO: header values might not be valid unicode
+                        value: String::from(value.to_str().unwrap()),
+                    }
+                })
+                .collect(),
+            chunk_start: response.body().start,
+            chunk_length: response.body().size,
+            end_of_stream: response.body().end_of_stream,
+            // TODO: figure out how to avoid the copy
+            chunk: response.body().content.clone(),
         }
     }
 }
@@ -185,8 +211,9 @@ pub struct RequestContext {
     plugin_reference: String,
     config: Arc<Vec<u8>>,
     /// params are shared between all plugin instances for a single request
-    params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>,
+    params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>, // TODO: remove Arc?
     request: bulwark_host::RequestInterface,
+    response: Arc<Mutex<Option<bulwark_host::ResponseInterface>>>,
     redis_info: Option<Arc<RedisInfo>>,
     accept: f64,
     restrict: f64,
@@ -213,20 +240,12 @@ impl RequestContext {
             config: plugin.config.clone(),
             params,
             request: bulwark_host::RequestInterface::from(request),
+            response: Arc::new(Mutex::new(None)),
             accept: 0.0,
             restrict: 0.0,
             unknown: 1.0,
             tags: vec![],
         })
-    }
-
-    pub fn param_insert(
-        &mut self,
-        key: String,
-        value: bulwark_wasm_sdk::Value,
-    ) -> Option<bulwark_wasm_sdk::Value> {
-        let mut params = self.params.lock().unwrap();
-        params.insert(key, value)
     }
 }
 
@@ -294,8 +313,8 @@ impl Plugin {
 pub struct PluginInstance {
     plugin: Arc<Plugin>,
     linker: Linker<RequestContext>,
-    // Should store get passed around to funcs separately as a mutable?
     store: Store<RequestContext>,
+    response: Arc<Mutex<Option<bulwark_host::ResponseInterface>>>,
     instance: Instance,
 }
 
@@ -304,6 +323,7 @@ impl PluginInstance {
         plugin: Arc<Plugin>,
         request_context: RequestContext,
     ) -> Result<PluginInstance, PluginInstantiationError> {
+        let response = request_context.response.clone();
         // convert from normal request struct to wasm request interface
         let mut linker: Linker<RequestContext> = Linker::new(&plugin.engine);
         wasmtime_wasi::add_to_linker(&mut linker, |s| &mut s.wasi)?;
@@ -317,8 +337,14 @@ impl PluginInstance {
             plugin,
             linker,
             store,
+            response,
             instance,
         })
+    }
+
+    pub fn insert_response(&mut self, response: Arc<http::Response<bulwark_wasm_sdk::BodyChunk>>) {
+        let mut stored_response = self.response.lock().unwrap();
+        *stored_response = Some(bulwark_host::ResponseInterface::from(response));
     }
 
     pub fn plugin_reference(&self) -> String {
@@ -327,48 +353,66 @@ impl PluginInstance {
 
     pub fn start(&mut self) -> Result<(), PluginExecutionError> {
         const FN_NAME: &str = "_start";
-        let fn_ref = self.instance.get_func(&mut self.store, FN_NAME);
+        let fn_ref = self.instance.get_func(self.store.as_context_mut(), FN_NAME);
         fn_ref
             .ok_or(PluginExecutionError::NotImplementedError {
                 expected: FN_NAME.to_string(),
             })?
-            .call(&mut self.store, &[], &mut [])?;
+            .call(self.store.as_context_mut(), &[], &mut [])?;
 
         Ok(())
     }
 
     pub fn has_request_handler(&mut self) -> bool {
         self.instance
-            .get_func(&mut self.store, "on_request")
+            .get_func(self.store.as_context_mut(), "on_request")
             .is_some()
     }
 
     pub fn handle_request(&mut self) -> Result<(), PluginExecutionError> {
         const FN_NAME: &str = "on_request";
-        let fn_ref = self.instance.get_func(&mut self.store, FN_NAME);
+        let fn_ref = self.instance.get_func(self.store.as_context_mut(), FN_NAME);
         fn_ref
             .ok_or(PluginExecutionError::NotImplementedError {
                 expected: FN_NAME.to_string(),
             })?
-            .call(&mut self.store, &[], &mut [])?;
+            .call(self.store.as_context_mut(), &[], &mut [])?;
 
         Ok(())
     }
 
     pub fn has_request_decision_handler(&mut self) -> bool {
         self.instance
-            .get_func(&mut self.store, "on_request_decision")
+            .get_func(self.store.as_context_mut(), "on_request_decision")
             .is_some()
     }
 
     pub fn handle_request_decision(&mut self) -> Result<(), PluginExecutionError> {
         const FN_NAME: &str = "on_request_decision";
-        let fn_ref = self.instance.get_func(&mut self.store, FN_NAME);
+        let fn_ref = self.instance.get_func(self.store.as_context_mut(), FN_NAME);
         fn_ref
             .ok_or(PluginExecutionError::NotImplementedError {
                 expected: FN_NAME.to_string(),
             })?
-            .call(&mut self.store, &[], &mut [])?;
+            .call(self.store.as_context_mut(), &[], &mut [])?;
+
+        Ok(())
+    }
+
+    pub fn has_response_decision_handler(&mut self) -> bool {
+        self.instance
+            .get_func(self.store.as_context_mut(), "on_response_decision")
+            .is_some()
+    }
+
+    pub fn handle_response_decision(&mut self) -> Result<(), PluginExecutionError> {
+        const FN_NAME: &str = "on_response_decision";
+        let fn_ref = self.instance.get_func(self.store.as_context_mut(), FN_NAME);
+        fn_ref
+            .ok_or(PluginExecutionError::NotImplementedError {
+                expected: FN_NAME.to_string(),
+            })?
+            .call(self.store.as_context_mut(), &[], &mut [])?;
 
         Ok(())
     }
@@ -406,6 +450,12 @@ impl bulwark_host::BulwarkHost for RequestContext {
 
     fn get_request(&mut self) -> bulwark_host::RequestInterface {
         self.request.clone()
+    }
+
+    fn get_response(&mut self) -> bulwark_host::ResponseInterface {
+        let guarded_response: MutexGuard<Option<bulwark_host::ResponseInterface>> =
+            self.response.lock().unwrap();
+        guarded_response.to_owned().unwrap()
     }
 
     fn set_decision(&mut self, decision: bulwark_host::DecisionInterface) {
