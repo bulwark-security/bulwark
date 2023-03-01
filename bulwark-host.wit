@@ -55,6 +55,10 @@ increment-remote-state: func(key: string) -> s64
 increment-remote-state-by: func(key: string, delta: s64) -> s64
 set-remote-ttl: func(key: string, ttl: s64)
 
+prepare-request: func(method: string, uri: string) -> u64
+add-request-header: func(request-id: u64, name: string, value: string)
+set-request-body: func(request-id: u64, body: list<u8>) -> response-interface
+
 increment-rate-limit: func(key: string, delta: s64, window: s64) -> rate-interface
 check-rate-limit: func(key: string) -> rate-interface
 increment-breaker: func(key: string, success-delta: s64, failure-delta: s64, window: s64) -> breaker-interface

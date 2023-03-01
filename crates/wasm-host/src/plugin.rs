@@ -8,6 +8,7 @@ use bulwark_wasm_sdk::{Decision, MassFunction};
 use chrono::Utc;
 use redis::Commands;
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::path::Path;
 use std::sync::MutexGuard;
@@ -20,7 +21,7 @@ use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
 extern crate redis;
 
-use self::bulwark_host::DecisionInterface;
+use self::bulwark_host::{DecisionInterface, HeaderInterface};
 
 impl From<Arc<bulwark_wasm_sdk::Request>> for bulwark_host::RequestInterface {
     fn from(request: Arc<bulwark_wasm_sdk::Request>) -> Self {
@@ -215,6 +216,8 @@ pub struct RequestContext {
     request: bulwark_host::RequestInterface,
     response: Arc<Mutex<Option<bulwark_host::ResponseInterface>>>,
     redis_info: Option<Arc<RedisInfo>>,
+    outbound_http: Arc<Mutex<HashMap<u64, reqwest::blocking::RequestBuilder>>>,
+    http_client: reqwest::blocking::Client,
     accept: f64,
     restrict: f64,
     unknown: f64,
@@ -241,6 +244,8 @@ impl RequestContext {
             params,
             request: bulwark_host::RequestInterface::from(request),
             response: Arc::new(Mutex::new(None)),
+            outbound_http: Arc::new(Mutex::new(HashMap::new())),
+            http_client: reqwest::blocking::Client::new(),
             accept: 0.0,
             restrict: 0.0,
             unknown: 1.0,
@@ -506,6 +511,55 @@ impl bulwark_host::BulwarkHost for RequestContext {
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
         conn.expire(key, ttl.try_into().unwrap()).unwrap()
+    }
+
+    fn prepare_request(&mut self, method: &str, uri: &str) -> u64 {
+        let mut outbound_requests = self.outbound_http.lock().unwrap();
+        let builder = self.http_client.request(reqwest::Method::GET, uri);
+        let index: u64 = outbound_requests.len().try_into().unwrap();
+        outbound_requests.insert(index, builder);
+        (outbound_requests.len() - 1).try_into().unwrap()
+    }
+
+    fn add_request_header(&mut self, request_id: u64, name: &str, value: &str) {
+        let mut outbound_requests = self.outbound_http.lock().unwrap();
+        // remove/insert to avoid move issues
+        let mut builder = outbound_requests.remove(&request_id).unwrap();
+        builder = builder.header(name, value);
+        outbound_requests.insert(request_id, builder);
+    }
+
+    fn set_request_body(
+        &mut self,
+        request_id: u64,
+        body: &[u8],
+    ) -> bulwark_host::ResponseInterface {
+        let mut outbound_requests = self.outbound_http.lock().unwrap();
+        // remove/insert to avoid move issues
+        let builder = outbound_requests.remove(&request_id).unwrap();
+        let builder = builder.body(body.to_vec());
+
+        let response = builder.send().unwrap();
+        let status: u32 = response.status().as_u16().try_into().unwrap();
+        // need to read headers before body because retrieving body bytes will move the response
+        let headers: Vec<HeaderInterface> = response
+            .headers()
+            .iter()
+            .map(|(name, value)| HeaderInterface {
+                name: name.to_string(),
+                value: value.to_str().unwrap().to_string(),
+            })
+            .collect();
+        let body = response.bytes().unwrap().to_vec();
+        let content_length: u64 = body.len().try_into().unwrap();
+        bulwark_host::ResponseInterface {
+            status,
+            headers,
+            chunk: body,
+            chunk_start: 0,
+            chunk_length: content_length,
+            end_of_stream: true,
+        }
     }
 
     fn increment_rate_limit(
