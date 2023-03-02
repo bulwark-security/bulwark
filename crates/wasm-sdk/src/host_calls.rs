@@ -29,6 +29,31 @@ pub struct BodyChunk {
     pub content: Vec<u8>,
 }
 
+pub const NO_BODY: BodyChunk = BodyChunk {
+    end_of_stream: true,
+    size: 0,
+    start: 0,
+    content: vec![],
+};
+
+impl From<bulwark_host::ResponseInterface> for Response {
+    fn from(response: bulwark_host::ResponseInterface) -> Self {
+        let mut builder = http::response::Builder::new();
+        builder = builder.status::<u16>(response.status.try_into().unwrap());
+        for bulwark_host::HeaderInterface { name, value } in response.headers {
+            builder = builder.header(name, value);
+        }
+        builder
+            .body(BodyChunk {
+                end_of_stream: true,
+                size: response.chunk.len().try_into().unwrap(),
+                start: 0,
+                content: response.chunk,
+            })
+            .unwrap()
+    }
+}
+
 // TODO: might need either get_remote_addr or an extension on the request for non-forwarded IP address
 
 pub use serde_json::{Map, Value};
@@ -100,6 +125,27 @@ pub fn get_response() -> Response {
             end_of_stream: raw_response.end_of_stream,
         })
         .unwrap()
+}
+
+pub fn send_request(request: Request) -> Response {
+    let request_id = bulwark_host::prepare_request(
+        request.method().as_str(),
+        request.uri().to_string().as_str(),
+    );
+    for (name, value) in request.headers() {
+        // TODO: header value should be bytes, not a str
+        bulwark_host::add_request_header(request_id, name.as_str(), value.to_str().unwrap());
+    }
+    let chunk = request.body();
+    if !chunk.end_of_stream {
+        panic!("the entire request body must be available");
+    } else if chunk.start != 0 {
+        panic!("chunk start must be 0");
+    } else if chunk.size > 16384 {
+        panic!("the entire request body must be 16384 bytes or less");
+    }
+    let response = bulwark_host::set_request_body(request_id, &chunk.content);
+    Response::from(response)
 }
 
 pub fn set_decision(decision: Decision) -> Result<(), ValidationErrors> {
