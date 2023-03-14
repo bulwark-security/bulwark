@@ -32,12 +32,9 @@ impl From<Arc<bulwark_wasm_sdk::Request>> for bulwark_host::RequestInterface {
             headers: request
                 .headers()
                 .iter()
-                .map(|(name, value)| {
-                    bulwark_host::HeaderInterface {
-                        name: name.to_string(),
-                        // TODO: header values might not be valid unicode
-                        value: String::from(value.to_str().unwrap()),
-                    }
+                .map(|(name, value)| bulwark_host::HeaderInterface {
+                    name: name.to_string(),
+                    value: value.as_bytes().to_vec(),
                 })
                 .collect(),
             chunk_start: request.body().start,
@@ -57,12 +54,9 @@ impl From<Arc<bulwark_wasm_sdk::Response>> for bulwark_host::ResponseInterface {
             headers: response
                 .headers()
                 .iter()
-                .map(|(name, value)| {
-                    bulwark_host::HeaderInterface {
-                        name: name.to_string(),
-                        // TODO: header values might not be valid unicode
-                        value: String::from(value.to_str().unwrap()),
-                    }
+                .map(|(name, value)| bulwark_host::HeaderInterface {
+                    name: name.to_string(),
+                    value: value.as_bytes().to_vec(),
                 })
                 .collect(),
             chunk_start: response.body().start,
@@ -547,7 +541,7 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .iter()
             .map(|(name, value)| HeaderInterface {
                 name: name.to_string(),
-                value: value.to_str().unwrap().to_string(),
+                value: value.as_bytes().to_vec(),
             })
             .collect();
         let body = response.bytes().unwrap().to_vec();

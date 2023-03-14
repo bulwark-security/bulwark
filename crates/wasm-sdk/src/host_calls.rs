@@ -26,6 +26,7 @@ pub struct BodyChunk {
     pub end_of_stream: bool,
     pub size: u64,
     pub start: u64,
+    // TODO: use bytes crate to avoid copies
     pub content: Vec<u8>,
 }
 

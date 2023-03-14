@@ -19,7 +19,7 @@ record response-interface {
 }
 record header-interface {
   name: string,
-  value: string,
+  value: list<u8>,
 }
 record decision-interface {
   accept: float64,
