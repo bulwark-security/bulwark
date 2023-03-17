@@ -100,14 +100,16 @@ impl BulwarkProcessor {
                     )?;
                     plugins.push(Arc::new(plugin));
                 }
-                router.insert(
-                    resource.route.clone(),
-                    RouteTarget {
-                        value: resource.route.clone(),
-                        timeout: resource.timeout,
-                        plugins,
-                    },
-                );
+                router
+                    .insert(
+                        resource.route.clone(),
+                        RouteTarget {
+                            value: resource.route.clone(),
+                            timeout: resource.timeout,
+                            plugins,
+                        },
+                    )
+                    .ok();
             }
         } else {
             // TODO: error handling
@@ -396,7 +398,7 @@ async fn execute_response_phase(
             // Make sure the plugin instance knows about the response
             let mut plugin_instance = plugin_instance.lock().unwrap();
             let response = response.clone();
-            plugin_instance.insert_response(response);
+            plugin_instance.set_response(response);
         }
         let decision_components = decision_components.clone();
         response_phase_tasks.spawn(
@@ -527,6 +529,22 @@ fn execute_on_response_decision(
     Ok(plugin_instance.get_decision())
 }
 
+fn execute_on_decision_feedback(
+    plugin_instance: Arc<Mutex<PluginInstance>>,
+) -> Result<(), PluginExecutionError> {
+    let mut plugin_instance = plugin_instance.lock().unwrap();
+    let result = plugin_instance.handle_decision_feedback();
+    if let Err(e) = result {
+        match e {
+            // we can silence not implemented errors because they are expected and normal here
+            PluginExecutionError::NotImplementedError { expected: _ } => (),
+            // everything else will get passed along
+            _ => Err(e)?,
+        }
+    }
+    Ok(())
+}
+
 async fn prepare_request(
     stream: &mut Streaming<ProcessingRequest>,
 ) -> Result<bulwark_wasm_sdk::Request, FilterProcessingError> {
@@ -618,15 +636,30 @@ async fn handle_request_phase_decision(
     plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
     timeout_duration: std::time::Duration,
 ) {
+    let outcome: bulwark_wasm_host::Outcome;
     // TODO: make threshold configurable
     if decision_components.decision.accepted(0.5) {
-        let result = allow_request(&sender, decision_components).await;
+        let result = allow_request(&sender, &decision_components).await;
         // TODO: must perform error handling on sender results, sending can definitely fail
         debug!(message = "send result", result = result.is_ok());
+        outcome = bulwark_wasm_host::Outcome::Accepted;
     } else {
-        let result = block_request(&sender, decision_components).await;
+        let result = block_request(&sender, &decision_components).await;
         // TODO: must perform error handling on sender results, sending can definitely fail
         debug!(message = "send result", result = result.is_ok());
+        outcome = bulwark_wasm_host::Outcome::Restricted;
+    }
+
+    if outcome == bulwark_wasm_host::Outcome::Restricted {
+        // Normally we initiate feedback after the response phase, but if we skip the response phase
+        // we need to do it here instead.
+        handle_decision_feedback(
+            decision_components,
+            outcome,
+            plugin_instances,
+            timeout_duration,
+        );
+        // Short-circuit if restricted, we can skip the response phase
         return;
     }
 
@@ -636,6 +669,8 @@ async fn handle_request_phase_decision(
         handle_response_phase_decision(
             sender,
             execute_response_phase(plugin_instances.clone(), http_resp, timeout_duration).await,
+            plugin_instances.clone(),
+            timeout_duration,
         )
         .await;
     }
@@ -644,22 +679,64 @@ async fn handle_request_phase_decision(
 async fn handle_response_phase_decision(
     sender: UnboundedSender<Result<ProcessingResponse, Status>>,
     decision_components: DecisionComponents,
+    plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
+    timeout_duration: std::time::Duration,
 ) {
+    let outcome: bulwark_wasm_host::Outcome;
     // TODO: make threshold configurable
     if decision_components.decision.accepted(0.5) {
-        let result = allow_response(&sender, decision_components).await;
+        let result = allow_response(&sender, &decision_components).await;
         // TODO: must perform error handling on sender results, sending can definitely fail
         debug!(message = "send result", result = result.is_ok());
+        outcome = bulwark_wasm_host::Outcome::Accepted;
     } else {
-        let result = block_response(&sender, decision_components).await;
+        let result = block_response(&sender, &decision_components).await;
         // TODO: must perform error handling on sender results, sending can definitely fail
         debug!(message = "send result", result = result.is_ok());
+        outcome = bulwark_wasm_host::Outcome::Restricted;
+    }
+
+    handle_decision_feedback(
+        decision_components,
+        outcome,
+        plugin_instances,
+        timeout_duration,
+    );
+}
+
+fn handle_decision_feedback(
+    decision_components: DecisionComponents,
+    outcome: bulwark_wasm_host::Outcome,
+    plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
+    timeout_duration: std::time::Duration,
+) {
+    for plugin_instance in plugin_instances.clone() {
+        let response_phase_child_span: Span;
+        {
+            let plugin_instance = plugin_instance.lock().unwrap();
+            response_phase_child_span = tracing::debug_span!(
+                "executing on_decision_feedback phase",
+                // TODO: figure out why this isn't displayed in the logs
+                plugin = plugin_instance.plugin_reference(),
+            );
+        }
+        {
+            // Make sure the plugin instance knows about the final combined decision
+            let mut plugin_instance = plugin_instance.lock().unwrap();
+            plugin_instance.set_combined_decision(&decision_components, outcome);
+        }
+        tokio::spawn(
+            timeout(timeout_duration, async move {
+                execute_on_decision_feedback(plugin_instance.clone()).ok();
+            })
+            .instrument(response_phase_child_span.or_current()),
+        );
     }
 }
 
 async fn allow_request(
     mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
-    decision_components: DecisionComponents,
+    decision_components: &DecisionComponents,
 ) -> Result<(), SendError> {
     // Send back a response that changes the request header for the HTTP target.
     let mut req_headers_cr = CommonResponse::default();
@@ -672,7 +749,7 @@ async fn allow_request(
         add_set_header(
             &mut req_headers_cr,
             "Bulwark-Tags",
-            &serialize_tags_sfv(decision_components.tags),
+            &serialize_tags_sfv(decision_components.tags.clone()),
         );
     }
     let req_headers_resp = ProcessingResponse {
@@ -689,7 +766,7 @@ async fn allow_request(
 async fn block_request(
     mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
     // TODO: this will be used in the future
-    _decision_components: DecisionComponents,
+    _decision_components: &DecisionComponents,
 ) -> Result<(), SendError> {
     // Send back a response indicating the request has been blocked.
     let req_headers_resp = ProcessingResponse {
@@ -712,7 +789,7 @@ async fn block_request(
 async fn allow_response(
     mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
     // TODO: this will be used in the future
-    _decision_components: DecisionComponents,
+    _decision_components: &DecisionComponents,
 ) -> Result<(), SendError> {
     let resp_headers_resp = ProcessingResponse {
         response: Some(processing_response::Response::RequestHeaders(
@@ -726,7 +803,7 @@ async fn allow_response(
 async fn block_response(
     mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
     // TODO: this will be used in the future
-    _decision_components: DecisionComponents,
+    _decision_components: &DecisionComponents,
 ) -> Result<(), SendError> {
     // Send back a response indicating the request has been blocked.
     let resp_headers_resp = ProcessingResponse {

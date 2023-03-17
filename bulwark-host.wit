@@ -26,6 +26,12 @@ record decision-interface {
   restrict: float64,
   unknown: float64,
 }
+enum outcome-interface {
+  restricted,
+  suspected,
+  accepted,
+  trusted,
+}
 record rate-interface {
   attempts: s64,
   expiration: s64,
@@ -40,7 +46,7 @@ record breaker-interface {
 }
 
 get-config: func() -> list<u8>
-get-param-value: func(key: string)-> list<u8>
+get-param-value: func(key: string) -> list<u8>
 set-param-value: func(key: string, value: list<u8>)
 
 get-request: func() -> request-interface
@@ -48,6 +54,9 @@ get-response: func() -> response-interface
 
 set-decision: func(decision: decision-interface)
 set-tags: func(tags: list<string>)
+get-combined-decision: func() -> decision-interface
+get-combined-tags: func() -> list<string>
+get-outcome: func() -> outcome-interface
 
 get-remote-state: func(key: string) -> list<u8>
 set-remote-state: func(key: string, value: list<u8>)
@@ -56,6 +65,7 @@ increment-remote-state-by: func(key: string, delta: s64) -> s64
 set-remote-ttl: func(key: string, ttl: s64)
 
 prepare-request: func(method: string, uri: string) -> u64
+// TODO: fix unicode/byte issue with API design
 add-request-header: func(request-id: u64, name: string, value: string)
 set-request-body: func(request-id: u64, body: list<u8>) -> response-interface
 

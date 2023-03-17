@@ -1,6 +1,8 @@
 // TODO: switch to wasmtime::component::bindgen!
 wit_bindgen_wasmtime::export!("../../bulwark-host.wit");
 
+pub use bulwark_host::OutcomeInterface as Outcome;
+
 use crate::{
     ContextInstantiationError, PluginExecutionError, PluginInstantiationError, PluginLoadError,
 };
@@ -208,7 +210,6 @@ pub struct RequestContext {
     /// params are shared between all plugin instances for a single request
     params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>, // TODO: remove Arc?
     request: bulwark_host::RequestInterface,
-    response: Arc<Mutex<Option<bulwark_host::ResponseInterface>>>,
     redis_info: Option<Arc<RedisInfo>>,
     outbound_http: Arc<Mutex<HashMap<u64, reqwest::blocking::RequestBuilder>>>,
     http_client: reqwest::blocking::Client,
@@ -216,6 +217,7 @@ pub struct RequestContext {
     restrict: f64,
     unknown: f64,
     tags: Vec<String>,
+    host_mutable_context: HostMutableContext,
 }
 
 impl RequestContext {
@@ -237,13 +239,18 @@ impl RequestContext {
             config: plugin.config.clone(),
             params,
             request: bulwark_host::RequestInterface::from(request),
-            response: Arc::new(Mutex::new(None)),
             outbound_http: Arc::new(Mutex::new(HashMap::new())),
             http_client: reqwest::blocking::Client::new(),
             accept: 0.0,
             restrict: 0.0,
             unknown: 1.0,
             tags: vec![],
+            host_mutable_context: HostMutableContext {
+                response: Arc::new(Mutex::new(None)),
+                combined_decision: Arc::new(Mutex::new(None)),
+                outcome: Arc::new(Mutex::new(None)),
+                combined_tags: Arc::new(Mutex::new(None)),
+            },
         })
     }
 }
@@ -309,12 +316,20 @@ impl Plugin {
     }
 }
 
+#[derive(Clone)]
+struct HostMutableContext {
+    response: Arc<Mutex<Option<bulwark_host::ResponseInterface>>>,
+    combined_decision: Arc<Mutex<Option<bulwark_host::DecisionInterface>>>,
+    combined_tags: Arc<Mutex<Option<Vec<String>>>>,
+    outcome: Arc<Mutex<Option<bulwark_host::OutcomeInterface>>>,
+}
+
 pub struct PluginInstance {
     plugin: Arc<Plugin>,
     linker: Linker<RequestContext>,
     store: Store<RequestContext>,
-    response: Arc<Mutex<Option<bulwark_host::ResponseInterface>>>,
     instance: Instance,
+    host_mutable_context: HostMutableContext,
 }
 
 impl PluginInstance {
@@ -322,7 +337,9 @@ impl PluginInstance {
         plugin: Arc<Plugin>,
         request_context: RequestContext,
     ) -> Result<PluginInstance, PluginInstantiationError> {
-        let response = request_context.response.clone();
+        // Clone the host mutable context so that we can make changes to the interior of our request context from the parent.
+        let host_mutable_context = request_context.host_mutable_context.clone();
+
         // convert from normal request struct to wasm request interface
         let mut linker: Linker<RequestContext> = Linker::new(&plugin.engine);
         wasmtime_wasi::add_to_linker(&mut linker, |s| &mut s.wasi)?;
@@ -336,14 +353,25 @@ impl PluginInstance {
             plugin,
             linker,
             store,
-            response,
             instance,
+            host_mutable_context,
         })
     }
 
-    pub fn insert_response(&mut self, response: Arc<http::Response<bulwark_wasm_sdk::BodyChunk>>) {
-        let mut stored_response = self.response.lock().unwrap();
-        *stored_response = Some(bulwark_host::ResponseInterface::from(response));
+    pub fn set_response(&mut self, response: Arc<http::Response<bulwark_wasm_sdk::BodyChunk>>) {
+        let mut interior_response = self.host_mutable_context.response.lock().unwrap();
+        *interior_response = Some(bulwark_host::ResponseInterface::from(response));
+    }
+
+    pub fn set_combined_decision(
+        &mut self,
+        decision_components: &DecisionComponents,
+        outcome: Outcome,
+    ) {
+        let mut interior_decision = self.host_mutable_context.combined_decision.lock().unwrap();
+        *interior_decision = Some(decision_components.decision.into());
+        let mut interior_outcome = self.host_mutable_context.outcome.lock().unwrap();
+        *interior_outcome = Some(outcome);
     }
 
     pub fn plugin_reference(&self) -> String {
@@ -416,6 +444,24 @@ impl PluginInstance {
         Ok(())
     }
 
+    pub fn has_decision_feedback_handler(&mut self) -> bool {
+        self.instance
+            .get_func(self.store.as_context_mut(), "on_decision_feedback")
+            .is_some()
+    }
+
+    pub fn handle_decision_feedback(&mut self) -> Result<(), PluginExecutionError> {
+        const FN_NAME: &str = "on_decision_feedback";
+        let fn_ref = self.instance.get_func(self.store.as_context_mut(), FN_NAME);
+        fn_ref
+            .ok_or(PluginExecutionError::NotImplementedError {
+                expected: FN_NAME.to_string(),
+            })?
+            .call(self.store.as_context_mut(), &[], &mut [])?;
+
+        Ok(())
+    }
+
     pub fn get_decision(&mut self) -> DecisionComponents {
         let ctx = self.store.data();
 
@@ -452,22 +498,34 @@ impl bulwark_host::BulwarkHost for RequestContext {
     }
 
     fn get_response(&mut self) -> bulwark_host::ResponseInterface {
-        let guarded_response: MutexGuard<Option<bulwark_host::ResponseInterface>> =
-            self.response.lock().unwrap();
-        guarded_response.to_owned().unwrap()
+        let response: MutexGuard<Option<bulwark_host::ResponseInterface>> =
+            self.host_mutable_context.response.lock().unwrap();
+        response.to_owned().unwrap()
     }
 
     fn set_decision(&mut self, decision: bulwark_host::DecisionInterface) {
         self.accept = decision.accept;
         self.restrict = decision.restrict;
         self.unknown = decision.unknown;
-        // self.tags = decision
-        //     .tags
-        //     .iter()
-        //     .map(|s| String::from(*s))
-        //     .collect::<Vec<String>>();
-
         // TODO: validate, probably via trait?
+    }
+
+    fn get_combined_decision(&mut self) -> bulwark_host::DecisionInterface {
+        let combined_decision: MutexGuard<Option<bulwark_host::DecisionInterface>> =
+            self.host_mutable_context.combined_decision.lock().unwrap();
+        combined_decision.to_owned().unwrap()
+    }
+
+    fn get_combined_tags(&mut self) -> Vec<String> {
+        let combined_tags: MutexGuard<Option<Vec<String>>> =
+            self.host_mutable_context.combined_tags.lock().unwrap();
+        combined_tags.to_owned().unwrap()
+    }
+
+    fn get_outcome(&mut self) -> bulwark_host::OutcomeInterface {
+        let outcome: MutexGuard<Option<bulwark_host::OutcomeInterface>> =
+            self.host_mutable_context.outcome.lock().unwrap();
+        outcome.to_owned().unwrap()
     }
 
     fn set_tags(&mut self, tags: Vec<&str>) {
