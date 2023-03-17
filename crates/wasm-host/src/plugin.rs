@@ -573,7 +573,7 @@ impl bulwark_host::BulwarkHost for RequestContext {
         (outbound_requests.len() - 1).try_into().unwrap()
     }
 
-    fn add_request_header(&mut self, request_id: u64, name: &str, value: &str) {
+    fn add_request_header(&mut self, request_id: u64, name: &str, value: &[u8]) {
         let mut outbound_requests = self.outbound_http.lock().unwrap();
         // remove/insert to avoid move issues
         let mut builder = outbound_requests.remove(&request_id).unwrap();

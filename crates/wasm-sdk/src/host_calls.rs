@@ -146,8 +146,7 @@ pub fn send_request(request: Request) -> Response {
         request.uri().to_string().as_str(),
     );
     for (name, value) in request.headers() {
-        // TODO: header value should be bytes, not a str
-        bulwark_host::add_request_header(request_id, name.as_str(), value.to_str().unwrap());
+        bulwark_host::add_request_header(request_id, name.as_str(), value.as_bytes());
     }
     let chunk = request.body();
     if !chunk.end_of_stream {
