@@ -199,7 +199,7 @@ mod tests {
         port = 10002
 
         [thresholds]
-        reject = 0.75
+        restrict = 0.75
     
         [[include]]
         path = "default.toml"
