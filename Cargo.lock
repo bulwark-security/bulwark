@@ -291,6 +291,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "http",
  "serde_json",
+ "thiserror",
  "validator",
  "wit-bindgen-rust",
 ]

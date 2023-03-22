@@ -1,3 +1,13 @@
+use crate::ThresholdError;
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum Outcome {
+    Trusted,
+    Accepted,
+    Suspected,
+    Restricted,
+}
+
 pub trait MassFunction
 where
     Self: std::marker::Sized,
@@ -19,6 +29,34 @@ where
     fn accepted(&self, threshold: f64) -> bool {
         let p = self.pignistic();
         p.accept() >= threshold
+    }
+
+    fn outcome(
+        &self,
+        trust: f64,
+        suspicious: f64,
+        restrict: f64,
+    ) -> Result<Outcome, ThresholdError> {
+        let p = self.pignistic();
+        if trust > suspicious || suspicious > restrict {
+            return Err(ThresholdError::ThresholdOutOfOrder);
+        }
+        if !(0.0..=1.0).contains(&trust) {
+            return Err(ThresholdError::ThresholdOutOfRange(trust));
+        }
+        if !(0.0..=1.0).contains(&suspicious) {
+            return Err(ThresholdError::ThresholdOutOfRange(suspicious));
+        }
+        if !(0.0..=1.0).contains(&restrict) {
+            return Err(ThresholdError::ThresholdOutOfRange(restrict));
+        }
+        match p.accept() {
+            x if x <= trust => Ok(Outcome::Trusted),
+            x if x < suspicious => Ok(Outcome::Accepted),
+            x if x >= restrict => Ok(Outcome::Restricted),
+            // x >= suspicious && x < restrict
+            _ => Ok(Outcome::Suspected),
+        }
     }
 
     fn clamp(&self) -> Self {

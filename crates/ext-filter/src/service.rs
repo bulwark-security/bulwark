@@ -1,3 +1,4 @@
+use bulwark_config::Thresholds;
 use bulwark_wasm_host::PluginExecutionError;
 use bulwark_wasm_sdk::BodyChunk;
 use tokio::task::JoinHandle;
@@ -60,6 +61,7 @@ pub struct BulwarkProcessor {
     // TODO: may need to have a plugin registry at some point
     router: Arc<RwLock<Router<RouteTarget>>>,
     redis_info: Option<Arc<RedisInfo>>,
+    thresholds: bulwark_config::Thresholds,
 }
 
 impl BulwarkProcessor {
@@ -118,6 +120,7 @@ impl BulwarkProcessor {
         Ok(Self {
             router: Arc::new(RwLock::new(router)),
             redis_info,
+            thresholds: config.thresholds.unwrap_or_default(),
         })
     }
 }
@@ -156,6 +159,7 @@ impl ExternalProcessor for BulwarkProcessor {
                     let route_result = router.at(http_req.uri().path());
                     // TODO: router needs to point to a struct that bundles the plugin set and associated config like timeout duration
                     // TODO: put default timeout in a constant somewhere central
+                    // TODO: figure out timeout from optional resource-specific timeout or central default
                     let mut timeout_duration = Duration::from_millis(10);
                     match route_result {
                         Ok(route_match) => {
@@ -184,6 +188,8 @@ impl ExternalProcessor for BulwarkProcessor {
                                 sender,
                                 stream,
                                 combined,
+                                // TODO: get thresholds from config
+                                Thresholds::default(),
                                 plugin_instances,
                                 timeout_duration,
                             )
@@ -204,6 +210,8 @@ impl ExternalProcessor for BulwarkProcessor {
         Ok(Response::new(Box::pin(futures::stream::empty())))
     }
 }
+
+// TODO: a bunch of these fns seem like they should probably be inside the BulwarkProcessor impl but currently aren't due to async/move
 
 fn instantiate_plugins(
     plugins: &PluginList,
@@ -633,24 +641,32 @@ async fn handle_request_phase_decision(
     sender: UnboundedSender<Result<ProcessingResponse, Status>>,
     mut stream: Streaming<ProcessingRequest>,
     decision_components: DecisionComponents,
+    thresholds: Thresholds,
     plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
     timeout_duration: std::time::Duration,
 ) {
-    let outcome: bulwark_wasm_host::Outcome;
-    // TODO: make threshold configurable
-    if decision_components.decision.accepted(0.5) {
-        let result = allow_request(&sender, &decision_components).await;
-        // TODO: must perform error handling on sender results, sending can definitely fail
-        debug!(message = "send result", result = result.is_ok());
-        outcome = bulwark_wasm_host::Outcome::Accepted;
-    } else {
-        let result = block_request(&sender, &decision_components).await;
-        // TODO: must perform error handling on sender results, sending can definitely fail
-        debug!(message = "send result", result = result.is_ok());
-        outcome = bulwark_wasm_host::Outcome::Restricted;
+    let outcome = decision_components
+        .decision
+        .outcome(thresholds.trust, thresholds.suspicious, thresholds.restrict)
+        .unwrap();
+
+    match outcome {
+            bulwark_wasm_sdk::Outcome::Trusted
+            | bulwark_wasm_sdk::Outcome::Accepted
+            // suspected requests are monitored but not rejected
+            | bulwark_wasm_sdk::Outcome::Suspected => {
+                let result = allow_request(&sender, &decision_components).await;
+                // TODO: must perform error handling on sender results, sending can definitely fail
+                debug!(message = "send result", result = result.is_ok());
+               },
+               bulwark_wasm_sdk::Outcome::Restricted => {
+                let result = block_request(&sender, &decision_components).await;
+                // TODO: must perform error handling on sender results, sending can definitely fail
+                debug!(message = "send result", result = result.is_ok());
+        },
     }
 
-    if outcome == bulwark_wasm_host::Outcome::Restricted {
+    if outcome == bulwark_wasm_sdk::Outcome::Restricted {
         // Normally we initiate feedback after the response phase, but if we skip the response phase
         // we need to do it here instead.
         handle_decision_feedback(
@@ -669,6 +685,8 @@ async fn handle_request_phase_decision(
         handle_response_phase_decision(
             sender,
             execute_response_phase(plugin_instances.clone(), http_resp, timeout_duration).await,
+            // TODO: get thresholds from config
+            Thresholds::default(),
             plugin_instances.clone(),
             timeout_duration,
         )
@@ -679,21 +697,28 @@ async fn handle_request_phase_decision(
 async fn handle_response_phase_decision(
     sender: UnboundedSender<Result<ProcessingResponse, Status>>,
     decision_components: DecisionComponents,
+    thresholds: Thresholds,
     plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
     timeout_duration: std::time::Duration,
 ) {
-    let outcome: bulwark_wasm_host::Outcome;
-    // TODO: make threshold configurable
-    if decision_components.decision.accepted(0.5) {
-        let result = allow_response(&sender, &decision_components).await;
-        // TODO: must perform error handling on sender results, sending can definitely fail
-        debug!(message = "send result", result = result.is_ok());
-        outcome = bulwark_wasm_host::Outcome::Accepted;
-    } else {
-        let result = block_response(&sender, &decision_components).await;
-        // TODO: must perform error handling on sender results, sending can definitely fail
-        debug!(message = "send result", result = result.is_ok());
-        outcome = bulwark_wasm_host::Outcome::Restricted;
+    let outcome = decision_components
+        .decision
+        .outcome(thresholds.trust, thresholds.suspicious, thresholds.restrict)
+        .unwrap();
+    match outcome {
+        bulwark_wasm_sdk::Outcome::Trusted
+        | bulwark_wasm_sdk::Outcome::Accepted
+        // suspected requests are monitored but not rejected
+        | bulwark_wasm_sdk::Outcome::Suspected => {
+            let result = allow_response(&sender, &decision_components).await;
+            // TODO: must perform error handling on sender results, sending can definitely fail
+            debug!(message = "send result", result = result.is_ok());
+        },
+        bulwark_wasm_sdk::Outcome::Restricted => {
+            let result = block_response(&sender, &decision_components).await;
+            // TODO: must perform error handling on sender results, sending can definitely fail
+            debug!(message = "send result", result = result.is_ok());
+        }
     }
 
     handle_decision_feedback(
@@ -706,7 +731,7 @@ async fn handle_response_phase_decision(
 
 fn handle_decision_feedback(
     decision_components: DecisionComponents,
-    outcome: bulwark_wasm_host::Outcome,
+    outcome: bulwark_wasm_sdk::Outcome,
     plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
     timeout_duration: std::time::Duration,
 ) {

@@ -5,7 +5,7 @@ wit_bindgen_rust::import!("../../bulwark-host.wit");
 
 use std::str::FromStr;
 
-pub use crate::Decision;
+pub use crate::{Decision, Outcome};
 pub use bulwark_host::check_rate_limit;
 pub use bulwark_host::get_combined_tags;
 pub use bulwark_host::get_remote_state;
@@ -15,7 +15,6 @@ pub use bulwark_host::increment_remote_state_by;
 pub use bulwark_host::set_remote_state;
 pub use bulwark_host::set_remote_ttl;
 pub use bulwark_host::set_tags; // TODO: use BTreeSet for merging sorted tag lists
-pub use bulwark_host::OutcomeInterface as Outcome;
 pub use http::{Extensions, Method, Uri, Version};
 use validator::{Validate, ValidationErrors};
 
@@ -57,12 +56,25 @@ impl From<bulwark_host::ResponseInterface> for Response {
     }
 }
 
+// TODO: can we avoid conversions, perhaps by moving bindgen into lib.rs?
+
 impl From<bulwark_host::DecisionInterface> for Decision {
     fn from(decision: bulwark_host::DecisionInterface) -> Self {
         Decision {
             accept: decision.accept,
             restrict: decision.restrict,
             unknown: decision.unknown,
+        }
+    }
+}
+
+impl From<bulwark_host::OutcomeInterface> for Outcome {
+    fn from(outcome: bulwark_host::OutcomeInterface) -> Self {
+        match outcome {
+            bulwark_host::OutcomeInterface::Trusted => Outcome::Trusted,
+            bulwark_host::OutcomeInterface::Accepted => Outcome::Accepted,
+            bulwark_host::OutcomeInterface::Suspected => Outcome::Suspected,
+            bulwark_host::OutcomeInterface::Restricted => Outcome::Restricted,
         }
     }
 }
@@ -177,5 +189,5 @@ pub fn get_combined_decision() -> Decision {
 
 pub fn get_outcome() -> Outcome {
     // TODO: Option<Outcome> ?
-    bulwark_host::get_outcome()
+    bulwark_host::get_outcome().into()
 }

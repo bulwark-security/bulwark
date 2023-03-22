@@ -2,6 +2,9 @@
 port = 10002
 remote_state = "redis://127.0.0.1:6379"
 
+[thresholds]
+reject = 0.75
+
 [[include]]
 path = "include.toml"
 

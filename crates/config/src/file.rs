@@ -1,11 +1,15 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
-use crate::ConfigFileError;
+use crate::{
+    ConfigFileError, DEFAULT_RESTRICT_THRESHOLD, DEFAULT_SUSPICIOUS_THRESHOLD,
+    DEFAULT_TRUST_THRESHOLD,
+};
 
 #[derive(Serialize, Deserialize)]
 struct Config {
     service: Option<Service>,
+    thresholds: Option<Thresholds>,
     #[serde(rename(serialize = "include", deserialize = "include"))]
     includes: Option<Vec<Include>>,
     #[serde(rename(serialize = "plugin", deserialize = "plugin"))]
@@ -20,6 +24,13 @@ struct Config {
 struct Service {
     port: Option<u16>,
     remote_state: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Thresholds {
+    restrict: Option<f64>,
+    suspicious: Option<f64>,
+    trust: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -48,60 +59,6 @@ struct Resource {
     plugins: Vec<String>,
     timeout: Option<u64>,
 }
-
-// pub fn load_config<'a, P>(path: &'a P) -> Result<crate::config::Config, ConfigFileError>
-// where
-//     P: 'a + ?Sized + AsRef<Path>,
-// {
-//     let toml_data = fs::read_to_string(path)?;
-//     let raw_root: Config = toml::from_str(&toml_data)?;
-//     // TODO: avoid unwrap
-//     let base = path.as_ref().parent().unwrap();
-
-//     // TODO: error on circular includes
-//     if let Some(includes) = &root.includes {
-//         for include in includes {
-//             let include_path = base.join(&include.path);
-//             let mut include_root = load_config(&include_path)?;
-
-//             // TODO: clean this up
-//             if let Some(include_plugins) = include_root.plugins {
-//                 let root_plugins = root.plugins.unwrap_or_default();
-//                 let mut combined_plugins: Vec<Plugin> =
-//                     Vec::with_capacity(root_plugins.len() + include_plugins.len());
-//                 combined_plugins.extend_from_slice(root_plugins.as_slice());
-//                 combined_plugins.extend_from_slice(include_plugins.as_slice());
-
-//                 root.plugins = Some(combined_plugins);
-//             }
-
-//             if let Some(include_presets) = include_root.presets {
-//                 let root_presets = root.presets.unwrap_or_default();
-//                 let mut combined_presets: Vec<Preset> =
-//                     Vec::with_capacity(root_presets.len() + include_presets.len());
-//                 combined_presets.extend_from_slice(root_presets.as_slice());
-//                 combined_presets.extend_from_slice(include_presets.as_slice());
-
-//                 root.presets = Some(combined_presets);
-//             }
-
-//             if let Some(include_resources) = include_root.resources {
-//                 let root_resources = root.resources.unwrap_or_default();
-//                 let mut combined_resources: Vec<Resource> =
-//                     Vec::with_capacity(root_resources.len() + include_resources.len());
-//                 combined_resources.extend_from_slice(root_resources.as_slice());
-//                 combined_resources.extend_from_slice(include_resources.as_slice());
-
-//                 root.resources = Some(combined_resources);
-//             }
-//         }
-//     }
-
-//     // Strip includes once processed
-//     root.includes = None;
-
-//     Ok(root)
-// }
 
 pub fn load_config<'a, P>(path: &'a P) -> Result<crate::config::Config, ConfigFileError>
 where
@@ -182,11 +139,22 @@ where
         reference
     };
     // Transfer to the public config type, checking reference enums
+    // TODO: convert this to From traits
     Ok(crate::config::Config {
         service: root.service.as_ref().map(|service| crate::config::Service {
             port: service.port,
             remote_state: service.remote_state.clone(),
         }),
+        thresholds: root
+            .thresholds
+            .as_ref()
+            .map(|thresholds| crate::config::Thresholds {
+                restrict: thresholds.restrict.unwrap_or(DEFAULT_RESTRICT_THRESHOLD),
+                suspicious: thresholds
+                    .suspicious
+                    .unwrap_or(DEFAULT_SUSPICIOUS_THRESHOLD),
+                trust: thresholds.trust.unwrap_or(DEFAULT_TRUST_THRESHOLD),
+            }),
         plugins: root.plugins.as_ref().map(|plugins| {
             plugins
                 .iter()
@@ -230,6 +198,9 @@ mod tests {
         [service]
         port = 10002
 
+        [thresholds]
+        reject = 0.75
+    
         [[include]]
         path = "default.toml"
 
@@ -250,6 +221,10 @@ mod tests {
         )?;
 
         assert_eq!(root.service.as_ref().unwrap().port, Some(10002));
+
+        assert_eq!(root.thresholds.as_ref().unwrap().restrict, Some(0.75));
+        assert_eq!(root.thresholds.as_ref().unwrap().suspicious, None);
+        assert_eq!(root.thresholds.as_ref().unwrap().trust, None);
 
         assert_eq!(root.includes.as_ref().unwrap().len(), 1);
         assert_eq!(
@@ -300,6 +275,10 @@ mod tests {
         let root: crate::config::Config = load_config("tests/main.toml")?;
 
         assert_eq!(root.service.as_ref().unwrap().port, Some(10002));
+
+        assert_eq!(root.thresholds.as_ref().unwrap().restrict, 0.75); // non-default
+        assert_eq!(root.thresholds.as_ref().unwrap().suspicious, 0.6); // default
+        assert_eq!(root.thresholds.as_ref().unwrap().trust, 0.2); // default
 
         assert_eq!(root.plugins.as_ref().unwrap().len(), 2);
         assert_eq!(

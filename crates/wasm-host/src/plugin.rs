@@ -1,12 +1,10 @@
 // TODO: switch to wasmtime::component::bindgen!
 wit_bindgen_wasmtime::export!("../../bulwark-host.wit");
 
-pub use bulwark_host::OutcomeInterface as Outcome;
-
 use crate::{
     ContextInstantiationError, PluginExecutionError, PluginInstantiationError, PluginLoadError,
 };
-use bulwark_wasm_sdk::{Decision, MassFunction};
+use bulwark_wasm_sdk::{Decision, MassFunction, Outcome};
 use chrono::Utc;
 use redis::Commands;
 use std::cell::{Cell, RefCell};
@@ -23,7 +21,7 @@ use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
 extern crate redis;
 
-use self::bulwark_host::{DecisionInterface, HeaderInterface};
+use self::bulwark_host::{DecisionInterface, HeaderInterface, OutcomeInterface};
 
 impl From<Arc<bulwark_wasm_sdk::Request>> for bulwark_host::RequestInterface {
     fn from(request: Arc<bulwark_wasm_sdk::Request>) -> Self {
@@ -82,6 +80,17 @@ impl From<Decision> for DecisionInterface {
             accept: decision.accept(),
             restrict: decision.restrict(),
             unknown: decision.unknown(),
+        }
+    }
+}
+
+impl From<Outcome> for OutcomeInterface {
+    fn from(outcome: Outcome) -> Self {
+        match outcome {
+            Outcome::Trusted => OutcomeInterface::Trusted,
+            Outcome::Accepted => OutcomeInterface::Accepted,
+            Outcome::Suspected => OutcomeInterface::Suspected,
+            Outcome::Restricted => OutcomeInterface::Restricted,
         }
     }
 }
@@ -371,7 +380,7 @@ impl PluginInstance {
         let mut interior_decision = self.host_mutable_context.combined_decision.lock().unwrap();
         *interior_decision = Some(decision_components.decision.into());
         let mut interior_outcome = self.host_mutable_context.outcome.lock().unwrap();
-        *interior_outcome = Some(outcome);
+        *interior_outcome = Some(outcome.into());
     }
 
     pub fn plugin_reference(&self) -> String {

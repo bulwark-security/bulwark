@@ -1,4 +1,3 @@
-use chrono::TimeZone;
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_PORT: u16 = 10000;
@@ -6,6 +5,7 @@ const DEFAULT_PORT: u16 = 10000;
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     pub service: Option<Service>,
+    pub thresholds: Option<Thresholds>,
     #[serde(rename(serialize = "plugin", deserialize = "plugin"))]
     pub plugins: Option<Vec<Plugin>>,
     #[serde(rename(serialize = "preset", deserialize = "preset"))]
@@ -51,6 +51,27 @@ impl Config {
 pub struct Service {
     pub port: Option<u16>,
     pub remote_state: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Thresholds {
+    pub restrict: f64,
+    pub suspicious: f64,
+    pub trust: f64,
+}
+
+pub const DEFAULT_RESTRICT_THRESHOLD: f64 = 0.8;
+pub const DEFAULT_SUSPICIOUS_THRESHOLD: f64 = 0.6;
+pub const DEFAULT_TRUST_THRESHOLD: f64 = 0.2;
+
+impl Default for Thresholds {
+    fn default() -> Self {
+        Self {
+            restrict: DEFAULT_RESTRICT_THRESHOLD,
+            suspicious: DEFAULT_SUSPICIOUS_THRESHOLD,
+            trust: DEFAULT_TRUST_THRESHOLD,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]

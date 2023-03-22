@@ -1,8 +1,10 @@
 mod decision;
+mod errors;
 mod host_calls;
 mod mass_function;
 
 pub use decision::*;
+pub use errors::*;
 pub use host_calls::*;
 pub use mass_function::*;
 
