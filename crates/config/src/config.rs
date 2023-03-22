@@ -53,7 +53,7 @@ pub struct Service {
     pub remote_state: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Thresholds {
     pub restrict: f64,
     pub suspicious: f64,

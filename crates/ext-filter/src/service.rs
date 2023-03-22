@@ -135,6 +135,7 @@ impl ExternalProcessor for BulwarkProcessor {
         request: Request<Streaming<ProcessingRequest>>,
     ) -> Result<Response<ExternalProcessorStream>, Status> {
         let mut stream = request.into_inner();
+        let thresholds = self.thresholds;
         if let Ok(http_req) = prepare_request(&mut stream).await {
             let redis_info = self.redis_info.clone();
             let http_req = Arc::new(http_req);
@@ -182,14 +183,11 @@ impl ExternalProcessor for BulwarkProcessor {
                                 execute_request_phase(plugin_instances.clone(), timeout_duration)
                                     .await;
 
-                            // TODO: need equivalent of prepare_request but for response
-
                             handle_request_phase_decision(
                                 sender,
                                 stream,
                                 combined,
-                                // TODO: get thresholds from config
-                                Thresholds::default(),
+                                thresholds,
                                 plugin_instances,
                                 timeout_duration,
                             )
