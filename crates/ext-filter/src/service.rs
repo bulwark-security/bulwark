@@ -1,6 +1,9 @@
+use std::net::IpAddr;
+
 use bulwark_config::Thresholds;
-use bulwark_wasm_host::PluginExecutionError;
+use bulwark_wasm_host::{ForwardedIP, PluginExecutionError, RemoteIP};
 use bulwark_wasm_sdk::BodyChunk;
+use forwarded_header_value::ForwardedHeaderValue;
 use tokio::task::JoinHandle;
 use tracing::Span;
 
@@ -62,6 +65,7 @@ pub struct BulwarkProcessor {
     router: Arc<RwLock<Router<RouteTarget>>>,
     redis_info: Option<Arc<RedisInfo>>,
     thresholds: bulwark_config::Thresholds,
+    hops: usize,
 }
 
 impl BulwarkProcessor {
@@ -121,6 +125,8 @@ impl BulwarkProcessor {
             router: Arc::new(RwLock::new(router)),
             redis_info,
             thresholds: config.thresholds.unwrap_or_default(),
+            // TODO: make hops configurable
+            hops: 0,
         })
     }
 }
@@ -129,14 +135,14 @@ impl BulwarkProcessor {
 impl ExternalProcessor for BulwarkProcessor {
     type ProcessStream = ExternalProcessorStream;
 
-    #[instrument(name = "request_handler", skip(self, request))]
+    #[instrument(name = "request_handler", skip(self, tonic_request))]
     async fn process(
         &self,
-        request: Request<Streaming<ProcessingRequest>>,
+        tonic_request: Request<Streaming<ProcessingRequest>>,
     ) -> Result<Response<ExternalProcessorStream>, Status> {
-        let mut stream = request.into_inner();
+        let mut stream = tonic_request.into_inner();
         let thresholds = self.thresholds;
-        if let Ok(http_req) = prepare_request(&mut stream).await {
+        if let Ok(http_req) = prepare_request(&mut stream, self.hops).await {
             let redis_info = self.redis_info.clone();
             let http_req = Arc::new(http_req);
             let router = self.router.clone();
@@ -553,6 +559,7 @@ fn execute_on_decision_feedback(
 
 async fn prepare_request(
     stream: &mut Streaming<ProcessingRequest>,
+    proxy_hops: usize,
 ) -> Result<bulwark_wasm_sdk::Request, FilterProcessingError> {
     // TODO: determine client IP address, pass it through as an extension
     if let Some(header_msg) = get_request_headers(stream).await {
@@ -590,6 +597,18 @@ async fn prepare_request(
             }
             None => {}
         }
+
+        // TODO: remote IP should probably be received via an external attribute, but that's not currently supported by envoy
+        if let Some(forwarded) = get_header_value(&header_msg.headers, "Forwarded") {
+            if let Some(ip_addr) = parse_forwarded_ip(forwarded, proxy_hops) {
+                request = request.extension(ForwardedIP(ip_addr));
+            }
+        } else if let Some(forwarded) = get_header_value(&header_msg.headers, "X-Forwarded-For") {
+            if let Some(ip_addr) = parse_x_forwarded_for_ip(forwarded, proxy_hops) {
+                request = request.extension(ForwardedIP(ip_addr));
+            }
+        }
+
         return Ok(request.body(request_chunk).unwrap());
     }
     // TODO: what exactly should happen here?
@@ -847,6 +866,7 @@ async fn block_response(
 }
 
 async fn get_request_headers(stream: &mut Streaming<ProcessingRequest>) -> Option<HttpHeaders> {
+    // TODO: if request attributes are eventually supported, we may need to extract both instead of just headers
     if let Ok(Some(next_msg)) = stream.message().await {
         if let Some(processing_request::Request::RequestHeaders(hdrs)) = next_msg.request {
             return Some(hdrs);
@@ -893,5 +913,114 @@ fn add_set_header(cr: &mut CommonResponse, key: &str, value: &str) {
             new_hm.set_headers.push(new_header);
             cr.header_mutation = Some(new_hm);
         }
+    }
+}
+
+fn parse_forwarded_ip(forwarded: &str, hops: usize) -> Option<IpAddr> {
+    let value = ForwardedHeaderValue::from_forwarded(forwarded).ok();
+    value.and_then(|fhv| {
+        if hops > fhv.len() {
+            None
+        } else {
+            let item = fhv.iter().nth(fhv.len() - hops);
+            item.and_then(|fs| fs.forwarded_for_ip())
+        }
+    })
+}
+
+fn parse_x_forwarded_for_ip(forwarded: &str, hops: usize) -> Option<IpAddr> {
+    let value = ForwardedHeaderValue::from_x_forwarded_for(forwarded).ok();
+    value.and_then(|fhv| {
+        if hops > fhv.len() {
+            None
+        } else {
+            let item = fhv.iter().nth(fhv.len() - hops);
+            item.and_then(|fs| fs.forwarded_for_ip())
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_forwarded() -> Result<(), Box<dyn std::error::Error>> {
+        let test_cases = [
+            ("", 0, None),
+            ("", 1, None),
+            ("bogus", 0, None),
+            ("213!04]d$7n2;31d4%,hbq#", 0, None),
+            (
+                "for=192.0.2.43",
+                1,
+                Some("192.0.2.43".parse::<IpAddr>().unwrap()),
+            ),
+            (
+                "for=192.0.2.43,for=198.51.100.17;by=203.0.113.60;proto=http;host=example.com",
+                2,
+                Some("192.0.2.43".parse::<IpAddr>().unwrap()),
+            ),
+            (
+                "   for=192.0.2.43, for=198.51.100.17;  by=203.0.113.60; proto=http;host=example.com",
+                2,
+                Some("192.0.2.43".parse::<IpAddr>().unwrap()),
+            ),
+            (
+                "for=192.0.2.43,for=198.51.100.17;by=203.0.113.60;proto=http;host=example.com",
+                1,
+                Some("198.51.100.17".parse::<IpAddr>().unwrap()),
+            ),
+            (
+                "for=192.0.2.43,for=198.51.100.17;by=203.0.113.60;proto=http;host=example.com",
+                3,
+                None,
+            ),
+        ];
+
+        for (forwarded, hops, expected) in test_cases {
+            let parsed = parse_forwarded_ip(forwarded, hops);
+            assert_eq!(parsed, expected);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_x_forwarded_for() -> Result<(), Box<dyn std::error::Error>> {
+        let test_cases = [
+            ("", 0, None),
+            ("", 1, None),
+            ("bogus", 0, None),
+            ("213!04]d$7n2;31d4%,hbq#", 0, None),
+            (
+                "192.0.2.43",
+                1,
+                Some("192.0.2.43".parse::<IpAddr>().unwrap()),
+            ),
+            (
+                "192.0.2.43,198.51.100.17",
+                2,
+                Some("192.0.2.43".parse::<IpAddr>().unwrap()),
+            ),
+            (
+                "   192.0.2.43, 198.51.100.17 ",
+                2,
+                Some("192.0.2.43".parse::<IpAddr>().unwrap()),
+            ),
+            (
+                "192.0.2.43,198.51.100.17",
+                1,
+                Some("198.51.100.17".parse::<IpAddr>().unwrap()),
+            ),
+            ("192.0.2.43,198.51.100.17", 3, None),
+        ];
+
+        for (forwarded, hops, expected) in test_cases {
+            let parsed = parse_x_forwarded_for_ip(forwarded, hops);
+            assert_eq!(parsed, expected);
+        }
+
+        Ok(())
     }
 }

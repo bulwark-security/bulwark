@@ -14,6 +14,7 @@ use std::path::Path;
 use std::sync::MutexGuard;
 use std::{
     convert::From,
+    net::IpAddr,
     sync::{Arc, Mutex},
 };
 use wasmtime::{AsContext, AsContextMut, Config, Engine, Instance, Linker, Module, Store};
@@ -22,6 +23,9 @@ use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 extern crate redis;
 
 use self::bulwark_host::{DecisionInterface, HeaderInterface, OutcomeInterface};
+
+pub struct RemoteIP(pub IpAddr);
+pub struct ForwardedIP(pub IpAddr);
 
 impl From<Arc<bulwark_wasm_sdk::Request>> for bulwark_host::RequestInterface {
     fn from(request: Arc<bulwark_wasm_sdk::Request>) -> Self {

@@ -29,6 +29,7 @@ redis = { version = "0.22.1", features = [
     "r2d2",
 ] }
 r2d2 = "0.8.10"
+forwarded-header-value = "0.1.1"
 
 [build-dependencies]
 prost-wkt-build = "=0.3.0"
