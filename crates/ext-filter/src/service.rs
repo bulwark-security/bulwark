@@ -125,8 +125,12 @@ impl BulwarkProcessor {
             router: Arc::new(RwLock::new(router)),
             redis_info,
             thresholds: config.thresholds.unwrap_or_default(),
-            // TODO: make hops configurable
-            hops: 0,
+            hops: usize::from(
+                config
+                    .service
+                    .and_then(|service| service.proxy_hops)
+                    .unwrap_or(0),
+            ),
         })
     }
 }

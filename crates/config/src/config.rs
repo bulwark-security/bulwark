@@ -51,6 +51,7 @@ impl Config {
 pub struct Service {
     pub port: Option<u16>,
     pub remote_state: Option<String>,
+    pub proxy_hops: Option<u8>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]

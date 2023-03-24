@@ -24,6 +24,17 @@ struct Config {
 struct Service {
     port: Option<u16>,
     remote_state: Option<String>,
+    proxy_hops: Option<u8>,
+}
+
+impl From<Service> for crate::config::Service {
+    fn from(service: Service) -> Self {
+        Self {
+            port: service.port,
+            remote_state: service.remote_state.clone(),
+            proxy_hops: service.proxy_hops,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -44,6 +55,16 @@ struct Plugin {
     reference: String,
     path: String,
     config: toml::map::Map<String, toml::Value>,
+}
+
+impl From<&Plugin> for crate::config::Plugin {
+    fn from(plugin: &Plugin) -> Self {
+        Self {
+            reference: plugin.reference.clone(),
+            path: plugin.path.clone(),
+            config: plugin.config.clone(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -141,10 +162,7 @@ where
     // Transfer to the public config type, checking reference enums
     // TODO: convert this to From traits
     Ok(crate::config::Config {
-        service: root.service.as_ref().map(|service| crate::config::Service {
-            port: service.port,
-            remote_state: service.remote_state.clone(),
-        }),
+        service: root.service.map(|service| service.into()),
         thresholds: root
             .thresholds
             .as_ref()
@@ -155,16 +173,10 @@ where
                     .unwrap_or(DEFAULT_SUSPICIOUS_THRESHOLD),
                 trust: thresholds.trust.unwrap_or(DEFAULT_TRUST_THRESHOLD),
             }),
-        plugins: root.plugins.as_ref().map(|plugins| {
-            plugins
-                .iter()
-                .map(|plugin| crate::config::Plugin {
-                    reference: plugin.reference.clone(),
-                    path: plugin.path.clone(),
-                    config: plugin.config.clone(),
-                })
-                .collect()
-        }),
+        plugins: root
+            .plugins
+            .as_ref()
+            .map(|plugins| plugins.iter().map(|plugin| plugin.into()).collect()),
         presets: root.presets.as_ref().map(|presets| {
             presets
                 .iter()
