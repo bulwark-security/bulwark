@@ -72,6 +72,30 @@ impl From<Arc<bulwark_wasm_sdk::Response>> for bulwark_host::ResponseInterface {
     }
 }
 
+impl From<IpAddr> for bulwark_host::IpInterface {
+    fn from(ip: IpAddr) -> Self {
+        match ip {
+            IpAddr::V4(v4) => {
+                let octets = v4.octets();
+                bulwark_host::IpInterface::V4((octets[0], octets[1], octets[2], octets[3]))
+            }
+            IpAddr::V6(v6) => {
+                let segments = v6.segments();
+                bulwark_host::IpInterface::V6((
+                    segments[0],
+                    segments[1],
+                    segments[2],
+                    segments[3],
+                    segments[4],
+                    segments[5],
+                    segments[6],
+                    segments[7],
+                ))
+            }
+        }
+    }
+}
+
 impl From<DecisionInterface> for Decision {
     fn from(decision: DecisionInterface) -> Self {
         Decision::new(decision.accept, decision.restrict, decision.unknown)
@@ -223,6 +247,7 @@ pub struct RequestContext {
     /// params are shared between all plugin instances for a single request
     params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>, // TODO: remove Arc?
     request: bulwark_host::RequestInterface,
+    client_ip: Option<bulwark_host::IpInterface>,
     redis_info: Option<Arc<RedisInfo>>,
     outbound_http: Arc<Mutex<HashMap<u64, reqwest::blocking::RequestBuilder>>>,
     http_client: reqwest::blocking::Client,
@@ -244,6 +269,10 @@ impl RequestContext {
             .inherit_stdio()
             .inherit_args()?
             .build();
+        let client_ip = request
+            .extensions()
+            .get::<ForwardedIP>()
+            .map(|forwarded_ip| bulwark_host::IpInterface::from(forwarded_ip.0));
 
         Ok(RequestContext {
             wasi,
@@ -252,6 +281,7 @@ impl RequestContext {
             config: plugin.config.clone(),
             params,
             request: bulwark_host::RequestInterface::from(request),
+            client_ip,
             outbound_http: Arc::new(Mutex::new(HashMap::new())),
             http_client: reqwest::blocking::Client::new(),
             accept: 0.0,
@@ -514,6 +544,10 @@ impl bulwark_host::BulwarkHost for RequestContext {
         let response: MutexGuard<Option<bulwark_host::ResponseInterface>> =
             self.host_mutable_context.response.lock().unwrap();
         response.to_owned().unwrap()
+    }
+
+    fn get_client_ip(&mut self) -> Option<bulwark_host::IpInterface> {
+        self.client_ip
     }
 
     fn set_decision(&mut self, decision: bulwark_host::DecisionInterface) {

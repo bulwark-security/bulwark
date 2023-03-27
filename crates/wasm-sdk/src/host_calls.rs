@@ -3,7 +3,13 @@
 // TODO: switch to wasmtime::component::bindgen!
 wit_bindgen_rust::import!("../../bulwark-host.wit");
 
-use std::str::FromStr;
+use {
+    std::{
+        net::{IpAddr, Ipv4Addr, Ipv6Addr},
+        str::FromStr,
+    },
+    validator::{Validate, ValidationErrors},
+};
 
 pub use crate::{Decision, Outcome};
 pub use bulwark_host::check_rate_limit;
@@ -16,7 +22,6 @@ pub use bulwark_host::set_remote_state;
 pub use bulwark_host::set_remote_ttl;
 pub use bulwark_host::set_tags; // TODO: use BTreeSet for merging sorted tag lists
 pub use http::{Extensions, Method, Uri, Version};
-use validator::{Validate, ValidationErrors};
 
 use self::bulwark_host::DecisionInterface;
 
@@ -53,6 +58,17 @@ impl From<bulwark_host::ResponseInterface> for Response {
                 content: response.chunk,
             })
             .unwrap()
+    }
+}
+
+impl From<bulwark_host::IpInterface> for IpAddr {
+    fn from(ip: bulwark_host::IpInterface) -> Self {
+        match ip {
+            bulwark_host::IpInterface::V4(v4) => Self::V4(Ipv4Addr::new(v4.0, v4.1, v4.2, v4.3)),
+            bulwark_host::IpInterface::V6(v6) => Self::V6(Ipv6Addr::new(
+                v6.0, v6.1, v6.2, v6.3, v6.4, v6.5, v6.6, v6.7,
+            )),
+        }
     }
 }
 
@@ -150,6 +166,10 @@ pub fn get_response() -> Response {
             end_of_stream: raw_response.end_of_stream,
         })
         .unwrap()
+}
+
+pub fn get_client_ip() -> Option<IpAddr> {
+    bulwark_host::get_client_ip().map(|ip| ip.into())
 }
 
 pub fn send_request(request: Request) -> Response {

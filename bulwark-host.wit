@@ -21,6 +21,10 @@ record header-interface {
   name: string,
   value: list<u8>,
 }
+variant ip-interface {
+  v4(tuple<u8, u8, u8, u8>),
+  v6(tuple<u16, u16, u16, u16, u16, u16, u16, u16>),
+}
 record decision-interface {
   accept: float64,
   restrict: float64,
@@ -51,6 +55,7 @@ set-param-value: func(key: string, value: list<u8>)
 
 get-request: func() -> request-interface
 get-response: func() -> response-interface
+get-client-ip: func() -> option<ip-interface>
 
 set-decision: func(decision: decision-interface)
 set-tags: func(tags: list<string>)

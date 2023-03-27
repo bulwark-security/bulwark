@@ -603,11 +603,12 @@ async fn prepare_request(
         }
 
         // TODO: remote IP should probably be received via an external attribute, but that's not currently supported by envoy
-        if let Some(forwarded) = get_header_value(&header_msg.headers, "Forwarded") {
+        // NOTE: header keys must be sent in lower case
+        if let Some(forwarded) = get_header_value(&header_msg.headers, "forwarded") {
             if let Some(ip_addr) = parse_forwarded_ip(forwarded, proxy_hops) {
                 request = request.extension(ForwardedIP(ip_addr));
             }
-        } else if let Some(forwarded) = get_header_value(&header_msg.headers, "X-Forwarded-For") {
+        } else if let Some(forwarded) = get_header_value(&header_msg.headers, "x-forwarded-for") {
             if let Some(ip_addr) = parse_x_forwarded_for_ip(forwarded, proxy_hops) {
                 request = request.extension(ForwardedIP(ip_addr));
             }
