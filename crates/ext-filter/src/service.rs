@@ -823,7 +823,7 @@ async fn block_request(
                 // TODO: add decision debug
                 details: "blocked by bulwark".to_string(),
                 // TODO: better default response + customizability
-                body: "Bulwark says no.".to_string(),
+                body: "Access Denied".to_string(),
                 headers: None,
                 grpc_status: None,
             },
@@ -860,7 +860,7 @@ async fn block_response(
                 // TODO: add decision debug
                 details: "blocked by bulwark".to_string(),
                 // TODO: better default response + customizability
-                body: "Bulwark says no.".to_string(),
+                body: "Access Denied".to_string(),
                 headers: None,
                 grpc_status: None,
             },
