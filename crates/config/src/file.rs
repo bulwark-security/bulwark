@@ -54,7 +54,13 @@ struct Plugin {
     #[serde(rename(serialize = "ref", deserialize = "ref"))]
     reference: String,
     path: String,
+    #[serde(default = "default_weight")]
+    weight: f64,
     config: toml::map::Map<String, toml::Value>,
+}
+
+fn default_weight() -> f64 {
+    1.0
 }
 
 impl From<&Plugin> for crate::config::Plugin {
@@ -62,6 +68,7 @@ impl From<&Plugin> for crate::config::Plugin {
         Self {
             reference: plugin.reference.clone(),
             path: plugin.path.clone(),
+            weight: plugin.weight,
             config: plugin.config.clone(),
         }
     }

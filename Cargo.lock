@@ -266,6 +266,7 @@ name = "bulwark-wasm-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bulwark-config",
  "bulwark-wasm-sdk",
  "chrono",
  "http",

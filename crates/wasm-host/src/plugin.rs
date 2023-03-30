@@ -278,7 +278,7 @@ impl RequestContext {
             wasi,
             redis_info,
             plugin_reference: plugin.reference.clone(),
-            config: plugin.config.clone(),
+            config: Arc::new(plugin.guest_config()),
             params,
             request: bulwark_host::RequestInterface::from(request),
             client_ip,
@@ -302,13 +302,17 @@ impl RequestContext {
 #[derive(Clone)]
 pub struct Plugin {
     reference: String,
-    config: Arc<Vec<u8>>,
+    config: Arc<bulwark_config::Plugin>,
     engine: Engine,
     module: Module,
 }
 
 impl Plugin {
-    pub fn from_wat(name: String, wat: &str, config: Vec<u8>) -> Result<Self, PluginLoadError> {
+    pub fn from_wat(
+        name: String,
+        wat: &str,
+        config: bulwark_config::Plugin,
+    ) -> Result<Self, PluginLoadError> {
         Self::from_module(name, config, |engine| -> Result<Module, PluginLoadError> {
             let module = Module::new(engine, wat.as_bytes())?;
             Ok(module)
@@ -318,7 +322,7 @@ impl Plugin {
     pub fn from_bytes(
         name: String,
         bytes: &[u8],
-        config: Vec<u8>,
+        config: bulwark_config::Plugin,
     ) -> Result<Self, PluginLoadError> {
         Self::from_module(name, config, |engine| -> Result<Module, PluginLoadError> {
             let module = Module::from_binary(engine, bytes)?;
@@ -326,7 +330,10 @@ impl Plugin {
         })
     }
 
-    pub fn from_file(path: impl AsRef<Path>, config: Vec<u8>) -> Result<Self, PluginLoadError> {
+    pub fn from_file(
+        path: impl AsRef<Path>,
+        config: bulwark_config::Plugin,
+    ) -> Result<Self, PluginLoadError> {
         let name = path.as_ref().display().to_string();
         Self::from_module(name, config, |engine| -> Result<Module, PluginLoadError> {
             let module = Module::from_file(engine, &path)?;
@@ -336,7 +343,7 @@ impl Plugin {
 
     fn from_module<F>(
         reference: String,
-        config: Vec<u8>,
+        config: bulwark_config::Plugin,
         mut get_module: F,
     ) -> Result<Self, PluginLoadError>
     where
@@ -357,6 +364,11 @@ impl Plugin {
             module,
         })
     }
+
+    fn guest_config(&self) -> Vec<u8> {
+        // TODO: should guest config be required or optional?
+        self.config.config_as_json()
+    }
 }
 
 #[derive(Clone)]
@@ -369,7 +381,6 @@ struct HostMutableContext {
 
 pub struct PluginInstance {
     plugin: Arc<Plugin>,
-    linker: Linker<RequestContext>,
     store: Store<RequestContext>,
     instance: Instance,
     host_mutable_context: HostMutableContext,
@@ -383,6 +394,7 @@ impl PluginInstance {
         // Clone the host mutable context so that we can make changes to the interior of our request context from the parent.
         let host_mutable_context = request_context.host_mutable_context.clone();
 
+        // TODO: do we need to retain a reference to the linker value anywhere? explore how other wasm-based systems use it.
         // convert from normal request struct to wasm request interface
         let mut linker: Linker<RequestContext> = Linker::new(&plugin.engine);
         wasmtime_wasi::add_to_linker(&mut linker, |s| &mut s.wasi)?;
@@ -394,11 +406,14 @@ impl PluginInstance {
 
         Ok(PluginInstance {
             plugin,
-            linker,
             store,
             instance,
             host_mutable_context,
         })
+    }
+
+    pub fn get_weight(&self) -> f64 {
+        self.plugin.config.weight
     }
 
     pub fn set_response(&mut self, response: Arc<http::Response<bulwark_wasm_sdk::BodyChunk>>) {
@@ -778,7 +793,7 @@ mod tests {
         let plugin = Arc::new(Plugin::from_bytes(
             "bulwark-blank-slate.wasm".to_string(),
             wasm_bytes,
-            vec![],
+            bulwark_config::Plugin::default(),
         )?);
         let request = Arc::new(
             http::Request::builder()
@@ -793,7 +808,7 @@ mod tests {
                 })?,
         );
         let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
-        let request_context = RequestContext::new(plugin.clone(), None, params, request.clone())?;
+        let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
         let mut plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
         plugin_instance.start()?;
         let decision_components = plugin_instance.get_decision();
@@ -811,7 +826,7 @@ mod tests {
         let plugin = Arc::new(Plugin::from_bytes(
             "bulwark-evil-bit.wasm".to_string(),
             wasm_bytes,
-            vec![],
+            bulwark_config::Plugin::default(),
         )?);
 
         let request = Arc::new(
@@ -828,7 +843,7 @@ mod tests {
                 })?,
         );
         let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
-        let request_context = RequestContext::new(plugin.clone(), None, params, request.clone())?;
+        let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
         let mut typical_plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
         typical_plugin_instance.start()?;
         let typical_decision = typical_plugin_instance.get_decision();
@@ -852,7 +867,7 @@ mod tests {
                 })?,
         );
         let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
-        let request_context = RequestContext::new(plugin.clone(), None, params, request.clone())?;
+        let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
         let mut evil_plugin_instance = PluginInstance::new(plugin, request_context)?;
         evil_plugin_instance.start()?;
         let evil_decision = evil_plugin_instance.get_decision();

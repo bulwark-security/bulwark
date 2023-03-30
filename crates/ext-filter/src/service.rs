@@ -93,17 +93,14 @@ impl BulwarkProcessor {
             for resource in resources {
                 let plugin_configs = resource.resolve_plugins(&config);
                 let mut plugins: PluginList = Vec::with_capacity(plugin_configs.len());
-                for plugin_config in &plugin_configs {
+                for plugin_config in plugin_configs {
                     // TODO: pass in the plugin config
                     debug!(
                         plugin_path = plugin_config.path,
                         message = "loading plugin",
                         resource = resource.route
                     );
-                    let plugin = Plugin::from_file(
-                        plugin_config.path.clone(),
-                        plugin_config.config_as_json(),
-                    )?;
+                    let plugin = Plugin::from_file(plugin_config.path.clone(), plugin_config)?;
                     plugins.push(Arc::new(plugin));
                 }
                 router
@@ -324,8 +321,14 @@ async fn execute_request_phase_two(
         phase_two_tasks.spawn(
             timeout(timeout_duration, async move {
                 let decision_result = execute_on_request_decision(plugin_instance.clone());
-                let decision_component = decision_result.unwrap();
+                let mut decision_component = decision_result.unwrap();
                 {
+                    // Re-weight the decision based on its weighting value from the configuration
+                    let plugin_instance = plugin_instance.lock().unwrap();
+                    decision_component.decision = decision_component
+                        .decision
+                        .weight(plugin_instance.get_weight());
+
                     let decision = &decision_component.decision;
                     debug!(
                         message = "plugin decision result",
@@ -420,8 +423,14 @@ async fn execute_response_phase(
         response_phase_tasks.spawn(
             timeout(timeout_duration, async move {
                 let decision_result = execute_on_response_decision(plugin_instance.clone());
-                let decision_component = decision_result.unwrap();
+                let mut decision_component = decision_result.unwrap();
                 {
+                    // Re-weight the decision based on its weighting value from the configuration
+                    let plugin_instance = plugin_instance.lock().unwrap();
+                    decision_component.decision = decision_component
+                        .decision
+                        .weight(plugin_instance.get_weight());
+
                     let decision = &decision_component.decision;
                     debug!(
                         message = "plugin decision result",

@@ -35565,7 +35565,7 @@ fn test_rate_limit_logic() -> Result<(), Box<dyn std::error::Error>> {
     let plugin = Arc::new(Plugin::from_bytes(
         "bulwark-rate-limiter.wasm".to_string(),
         wasm_bytes.borrow(),
-        vec![],
+        bulwark_config::Plugin::default(),
     )?);
 
     let client = redis::Client::open("redis://127.0.0.1:6379")?;
