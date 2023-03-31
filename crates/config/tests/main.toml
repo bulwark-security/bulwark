@@ -11,7 +11,6 @@ path = "include.toml"
 [[plugin]]
 ref = "evil-bit"
 path = "bulwark-evil-bit.wasm"
-config = {}
 
 [[preset]]
 ref = "default"

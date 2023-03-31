@@ -7,8 +7,7 @@ use crate::{
 use bulwark_wasm_sdk::{Decision, MassFunction, Outcome};
 use chrono::Utc;
 use redis::Commands;
-use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::ops::DerefMut;
 use std::path::Path;
 use std::sync::MutexGuard;
@@ -17,7 +16,7 @@ use std::{
     net::IpAddr,
     sync::{Arc, Mutex},
 };
-use wasmtime::{AsContext, AsContextMut, Config, Engine, Instance, Linker, Module, Store};
+use wasmtime::{AsContextMut, Config, Engine, Instance, Linker, Module, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
 extern crate redis;
@@ -244,8 +243,9 @@ pub struct RequestContext {
     wasi: WasiCtx,
     plugin_reference: String,
     config: Arc<Vec<u8>>,
+    permissions: bulwark_config::Permissions,
     /// params are shared between all plugin instances for a single request
-    params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>, // TODO: remove Arc?
+    params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>, // TODO: remove Arc? move to host mutable context?
     request: bulwark_host::RequestInterface,
     client_ip: Option<bulwark_host::IpInterface>,
     redis_info: Option<Arc<RedisInfo>>,
@@ -255,6 +255,7 @@ pub struct RequestContext {
     restrict: f64,
     unknown: f64,
     tags: Vec<String>,
+    // TODO: should there be read-only context and guest-mutable context structs as well?
     host_mutable_context: HostMutableContext,
 }
 
@@ -279,6 +280,7 @@ impl RequestContext {
             redis_info,
             plugin_reference: plugin.reference.clone(),
             config: Arc::new(plugin.guest_config()),
+            permissions: plugin.permissions(),
             params,
             request: bulwark_host::RequestInterface::from(request),
             client_ip,
@@ -368,6 +370,10 @@ impl Plugin {
     fn guest_config(&self) -> Vec<u8> {
         // TODO: should guest config be required or optional?
         self.config.config_as_json()
+    }
+
+    fn permissions(&self) -> bulwark_config::Permissions {
+        self.config.permissions.clone()
     }
 }
 
@@ -549,6 +555,20 @@ impl bulwark_host::BulwarkHost for RequestContext {
         let mut params = self.params.lock().unwrap();
         let value: bulwark_wasm_sdk::Value = serde_json::from_slice(value).unwrap();
         params.insert(key.to_string(), value);
+    }
+
+    fn get_env_bytes(&mut self, key: &str) -> Vec<u8> {
+        let allowed_env_vars = self
+            .permissions
+            .env
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<String>>();
+        if !allowed_env_vars.contains(&key.to_string()) {
+            panic!("access to environment variable denied");
+        }
+        // TODO: return result instead of panic due to OsString/String stuff
+        std::env::var(key).unwrap().as_bytes().to_vec()
     }
 
     fn get_request(&mut self) -> bulwark_host::RequestInterface {

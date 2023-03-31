@@ -79,14 +79,12 @@ impl Default for Thresholds {
 pub struct Plugin {
     #[serde(rename(serialize = "ref", deserialize = "ref"))]
     pub reference: String,
-
     // TODO: plugin path should be absolute; once it's in this structure the config base path is no longer known
     pub path: String,
-
     pub weight: f64,
-
     // TODO: this will serialize as JSON, so there might be a better internal representation
     pub config: toml::map::Map<String, toml::Value>,
+    pub permissions: Permissions,
 }
 
 impl Plugin {
@@ -99,6 +97,11 @@ impl Plugin {
         // TODO: probably should return a result instead of panicking
         serde_json::to_vec(&obj).unwrap()
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct Permissions {
+    pub env: Vec<String>,
 }
 
 fn toml_value_to_json(value: toml::Value) -> serde_json::Value {

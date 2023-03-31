@@ -1,3 +1,5 @@
+// TODO: the awkward distinction between the config file format here and the future config serialization for the wire may be unnecessary if From traits can convert to the Toml structs instead of directly embedding them?
+
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
@@ -56,7 +58,10 @@ struct Plugin {
     path: String,
     #[serde(default = "default_weight")]
     weight: f64,
+    #[serde(default)]
     config: toml::map::Map<String, toml::Value>,
+    #[serde(default)]
+    permissions: Permissions,
 }
 
 fn default_weight() -> f64 {
@@ -70,6 +75,21 @@ impl From<&Plugin> for crate::config::Plugin {
             path: plugin.path.clone(),
             weight: plugin.weight,
             config: plugin.config.clone(),
+            permissions: plugin.permissions.clone().into(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+struct Permissions {
+    #[serde(default)]
+    env: Vec<String>,
+}
+
+impl From<Permissions> for crate::config::Permissions {
+    fn from(permissions: Permissions) -> Self {
+        Self {
+            env: permissions.env,
         }
     }
 }
@@ -226,7 +246,6 @@ mod tests {
         [[plugin]]
         ref = "evil-bit"
         path = "bulwark-evil-bit.wasm"
-        config = {}
 
         [[preset]]
         ref = "custom"
@@ -262,7 +281,7 @@ mod tests {
         );
         assert_eq!(
             root.plugins.as_ref().unwrap().get(0).unwrap().config,
-            toml::map::Map::new()
+            toml::map::Map::default()
         );
 
         assert_eq!(root.presets.as_ref().unwrap().len(), 1);
@@ -310,7 +329,7 @@ mod tests {
         );
         assert_eq!(
             root.plugins.as_ref().unwrap().get(0).unwrap().config,
-            toml::map::Map::new()
+            toml::map::Map::default()
         );
 
         assert_eq!(root.presets.as_ref().unwrap().len(), 2);

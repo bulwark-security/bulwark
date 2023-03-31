@@ -127,6 +127,16 @@ pub fn set_param_value(key: &str, value: serde_json::Value) {
     bulwark_host::set_param_value(key, &json);
 }
 
+pub fn get_env(key: &str) -> String {
+    // TODO: this should return a result
+    String::from_utf8(bulwark_host::get_env_bytes(key)).unwrap()
+}
+
+pub fn get_env_bytes(key: &str) -> Vec<u8> {
+    // TODO: this should return a result
+    bulwark_host::get_env_bytes(key)
+}
+
 pub fn get_request() -> Request {
     let raw_request: bulwark_host::RequestInterface = bulwark_host::get_request();
     let chunk: Vec<u8> = raw_request.chunk;

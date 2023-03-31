@@ -52,6 +52,7 @@ record breaker-interface {
 get-config: func() -> list<u8>
 get-param-value: func(key: string) -> list<u8>
 set-param-value: func(key: string, value: list<u8>)
+get-env-bytes: func(key: string) -> list<u8>
 
 get-request: func() -> request-interface
 get-response: func() -> response-interface
