@@ -84,12 +84,18 @@ impl From<&Plugin> for crate::config::Plugin {
 struct Permissions {
     #[serde(default)]
     env: Vec<String>,
+    #[serde(default)]
+    http: Vec<String>,
+    #[serde(default)]
+    state: Vec<String>,
 }
 
 impl From<Permissions> for crate::config::Permissions {
     fn from(permissions: Permissions) -> Self {
         Self {
             env: permissions.env,
+            http: permissions.http,
+            state: permissions.state,
         }
     }
 }

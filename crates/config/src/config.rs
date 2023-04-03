@@ -102,6 +102,8 @@ impl Plugin {
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Permissions {
     pub env: Vec<String>,
+    pub http: Vec<String>,
+    pub state: Vec<String>,
 }
 
 fn toml_value_to_json(value: toml::Value) -> serde_json::Value {

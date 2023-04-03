@@ -16,6 +16,7 @@ use std::{
     net::IpAddr,
     sync::{Arc, Mutex},
 };
+use url::{ParseError, Url};
 use wasmtime::{AsContextMut, Config, Engine, Instance, Linker, Module, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
@@ -618,38 +619,130 @@ impl bulwark_host::BulwarkHost for RequestContext {
     }
 
     fn get_remote_state(&mut self, key: &str) -> Vec<u8> {
+        // TODO: figure out how to extract to a helper function?
+        let allowed_key_prefixes = self
+            .permissions
+            .state
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<String>>();
+        if !allowed_key_prefixes
+            .iter()
+            .any(|prefix| key.starts_with(prefix))
+        {
+            panic!("access to state value by prefix denied");
+        }
+
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
         conn.get(key).unwrap()
     }
 
     fn set_remote_state(&mut self, key: &str, value: &[u8]) {
+        // TODO: figure out how to extract to a helper function?
+        let allowed_key_prefixes = self
+            .permissions
+            .state
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<String>>();
+        if !allowed_key_prefixes
+            .iter()
+            .any(|prefix| key.starts_with(prefix))
+        {
+            panic!("access to state value by prefix denied");
+        }
+
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
         conn.set(key, value.to_vec()).unwrap()
     }
 
     fn increment_remote_state(&mut self, key: &str) -> i64 {
+        // TODO: figure out how to extract to a helper function?
+        let allowed_key_prefixes = self
+            .permissions
+            .state
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<String>>();
+        if !allowed_key_prefixes
+            .iter()
+            .any(|prefix| key.starts_with(prefix))
+        {
+            panic!("access to state value by prefix denied");
+        }
+
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
         conn.incr(key, 1).unwrap()
     }
 
     fn increment_remote_state_by(&mut self, key: &str, delta: i64) -> i64 {
+        // TODO: figure out how to extract to a helper function?
+        let allowed_key_prefixes = self
+            .permissions
+            .state
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<String>>();
+        if !allowed_key_prefixes
+            .iter()
+            .any(|prefix| key.starts_with(prefix))
+        {
+            panic!("access to state value by prefix denied");
+        }
+
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
         conn.incr(key, delta).unwrap()
     }
 
     fn set_remote_ttl(&mut self, key: &str, ttl: i64) {
+        // TODO: figure out how to extract to a helper function?
+        let allowed_key_prefixes = self
+            .permissions
+            .state
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<String>>();
+        if !allowed_key_prefixes
+            .iter()
+            .any(|prefix| key.starts_with(prefix))
+        {
+            panic!("access to state value by prefix denied");
+        }
+
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
         conn.expire(key, ttl.try_into().unwrap()).unwrap()
     }
 
     fn prepare_request(&mut self, method: &str, uri: &str) -> u64 {
+        let allowed_http_domains = self
+            .permissions
+            .http
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<String>>();
+        let parsed_uri = Url::parse(uri).unwrap();
+        let requested_domain = parsed_uri.domain().unwrap();
+        if !allowed_http_domains.contains(&requested_domain.to_string()) {
+            panic!("access to http resource denied");
+        }
         let mut outbound_requests = self.outbound_http.lock().unwrap();
-        let builder = self.http_client.request(reqwest::Method::GET, uri);
+        let method = match method.to_ascii_uppercase().as_str() {
+            "GET" => reqwest::Method::GET,
+            "HEAD" => reqwest::Method::HEAD,
+            "POST" => reqwest::Method::POST,
+            "PUT" => reqwest::Method::PUT,
+            "PATCH" => reqwest::Method::PATCH,
+            "DELETE" => reqwest::Method::DELETE,
+            "OPTIONS" => reqwest::Method::OPTIONS,
+            "TRACE" => reqwest::Method::TRACE,
+            _ => panic!("unsupported http method"),
+        };
+        let builder = self.http_client.request(method, uri);
         let index: u64 = outbound_requests.len().try_into().unwrap();
         outbound_requests.insert(index, builder);
         (outbound_requests.len() - 1).try_into().unwrap()
@@ -702,6 +795,20 @@ impl bulwark_host::BulwarkHost for RequestContext {
         delta: i64,
         window: i64,
     ) -> bulwark_host::RateInterface {
+        // TODO: figure out how to extract to a helper function?
+        let allowed_key_prefixes = self
+            .permissions
+            .state
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<String>>();
+        if !allowed_key_prefixes
+            .iter()
+            .any(|prefix| key.starts_with(prefix))
+        {
+            panic!("access to state value by prefix denied");
+        }
+
         let redis_info = self.redis_info.clone().unwrap();
         let mut conn = redis_info.pool.get().unwrap();
         let dt = Utc::now();
@@ -721,6 +828,20 @@ impl bulwark_host::BulwarkHost for RequestContext {
     }
 
     fn check_rate_limit(&mut self, key: &str) -> bulwark_host::RateInterface {
+        // TODO: figure out how to extract to a helper function?
+        let allowed_key_prefixes = self
+            .permissions
+            .state
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<String>>();
+        if !allowed_key_prefixes
+            .iter()
+            .any(|prefix| key.starts_with(prefix))
+        {
+            panic!("access to state value by prefix denied");
+        }
+
         let redis_info = self.redis_info.clone().unwrap();
         let mut conn = redis_info.pool.get().unwrap();
         let dt = Utc::now();
@@ -744,6 +865,20 @@ impl bulwark_host::BulwarkHost for RequestContext {
         failure_delta: i64,
         window: i64,
     ) -> bulwark_host::BreakerInterface {
+        // TODO: figure out how to extract to a helper function?
+        let allowed_key_prefixes = self
+            .permissions
+            .state
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<String>>();
+        if !allowed_key_prefixes
+            .iter()
+            .any(|prefix| key.starts_with(prefix))
+        {
+            panic!("access to state value by prefix denied");
+        }
+
         let redis_info = self.redis_info.clone().unwrap();
         let mut conn = redis_info.pool.get().unwrap();
         let dt = Utc::now();
@@ -775,6 +910,20 @@ impl bulwark_host::BulwarkHost for RequestContext {
     }
 
     fn check_breaker(&mut self, key: &str) -> bulwark_host::BreakerInterface {
+        // TODO: figure out how to extract to a helper function?
+        let allowed_key_prefixes = self
+            .permissions
+            .state
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<String>>();
+        if !allowed_key_prefixes
+            .iter()
+            .any(|prefix| key.starts_with(prefix))
+        {
+            panic!("access to state value by prefix denied");
+        }
+
         let redis_info = self.redis_info.clone().unwrap();
         let mut conn = redis_info.pool.get().unwrap();
         let dt = Utc::now();
