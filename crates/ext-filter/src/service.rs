@@ -66,6 +66,7 @@ pub struct BulwarkProcessor {
     redis_info: Option<Arc<RedisInfo>>,
     thresholds: bulwark_config::Thresholds,
     hops: usize,
+    // TODO: redis circuit breaker for health monitoring
 }
 
 impl BulwarkProcessor {

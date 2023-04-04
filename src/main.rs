@@ -86,16 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let admin_port = config_root.admin_port();
             let admin_enabled = config_root.admin_service_enabled();
 
-            let bulwark_processor = BulwarkProcessor::new(config_root)?;
-            let ext_filter = ExternalProcessorServer::new(bulwark_processor);
-
-            service_tasks.spawn(async move {
-                Server::builder()
-                    .add_service(ext_filter.clone()) // ExternalProcessorServer is clonable but BulwarkProcessor is not
-                    .serve(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port)) // TODO: make socket addr configurable?
-                    .await
-                    .map_err(ServiceError::ExtFilterServiceError)
-            });
+            // TODO: need a reference to the bulwark processor to pass to the admin service but that doesn't exist yet
 
             if admin_enabled {
                 let admin_service = ServiceBuilder::new()
@@ -114,6 +105,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             tokio::task::yield_now().await;
+
+            let bulwark_processor = BulwarkProcessor::new(config_root)?;
+            let ext_filter = ExternalProcessorServer::new(bulwark_processor);
+
+            service_tasks.spawn(async move {
+                Server::builder()
+                    .add_service(ext_filter.clone()) // ExternalProcessorServer is clonable but BulwarkProcessor is not
+                    .serve(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port)) // TODO: make socket addr configurable?
+                    .await
+                    .map_err(ServiceError::ExtFilterServiceError)
+            });
 
             while let Some(r) = service_tasks.join_next().await {
                 match r {
