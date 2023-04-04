@@ -81,8 +81,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut service_tasks: JoinSet<std::result::Result<(), ServiceError>> = JoinSet::new();
 
             let config_root = bulwark_config::load_config(config)?;
+            // TODO: just have serde defaults, this is kinda gross
             let port = config_root.port();
             let admin_port = config_root.admin_port();
+            let admin_enabled = config_root.admin_service_enabled();
 
             let bulwark_processor = BulwarkProcessor::new(config_root)?;
             let ext_filter = ExternalProcessorServer::new(bulwark_processor);
@@ -95,19 +97,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .map_err(ServiceError::ExtFilterServiceError)
             });
 
-            let admin_service = ServiceBuilder::new()
-                .layer(TraceLayer::new_for_http())
-                .service_fn(admin_handler);
+            if admin_enabled {
+                let admin_service = ServiceBuilder::new()
+                    .layer(TraceLayer::new_for_http())
+                    .service_fn(admin_handler);
 
-            // TODO: make admin service optional
-            service_tasks.spawn(async move {
-                // And run our service using `hyper`.
-                let addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::UNSPECIFIED), admin_port));
-                hyper::server::Server::bind(&addr)
-                    .serve(Shared::new(admin_service))
-                    .await
-                    .map_err(ServiceError::AdminServiceError)
-            });
+                // TODO: make admin service optional
+                service_tasks.spawn(async move {
+                    // And run our service using `hyper`.
+                    let addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::UNSPECIFIED), admin_port));
+                    hyper::server::Server::bind(&addr)
+                        .serve(Shared::new(admin_service))
+                        .await
+                        .map_err(ServiceError::AdminServiceError)
+                });
+            }
 
             tokio::task::yield_now().await;
 

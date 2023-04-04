@@ -29,6 +29,8 @@ struct Service {
     port: Option<u16>,
     #[serde(default = "default_admin_port")]
     admin_port: Option<u16>,
+    #[serde(default = "default_admin")]
+    admin: bool,
     remote_state: Option<String>,
     proxy_hops: Option<u8>,
 }
@@ -41,11 +43,16 @@ fn default_admin_port() -> Option<u16> {
     Some(8090)
 }
 
+fn default_admin() -> bool {
+    true
+}
+
 impl From<Service> for crate::config::Service {
     fn from(service: Service) -> Self {
         Self {
             port: service.port,
             admin_port: service.admin_port,
+            admin: service.admin,
             remote_state: service.remote_state.clone(),
             proxy_hops: service.proxy_hops,
         }

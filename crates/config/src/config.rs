@@ -29,7 +29,15 @@ impl Config {
         self.service
             .as_ref()
             .map(|service| service.admin_port.unwrap_or(DEFAULT_ADMIN_PORT))
-            .unwrap_or(DEFAULT_PORT)
+            .unwrap_or(DEFAULT_ADMIN_PORT)
+    }
+
+    pub fn admin_service_enabled(&self) -> bool {
+        // TODO: replace with serde default value?
+        self.service
+            .as_ref()
+            .map(|service| service.admin)
+            .unwrap_or(true)
     }
 
     pub fn get_plugin(&self, reference: &str) -> Option<Plugin> {
@@ -61,6 +69,7 @@ impl Config {
 pub struct Service {
     pub port: Option<u16>,
     pub admin_port: Option<u16>,
+    pub admin: bool,
     pub remote_state: Option<String>,
     pub proxy_hops: Option<u8>,
 }
