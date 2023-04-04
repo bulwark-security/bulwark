@@ -24,15 +24,28 @@ struct Config {
 
 #[derive(Serialize, Deserialize)]
 struct Service {
+    // TODO: should ports be optional or just have a detault value?
+    #[serde(default = "default_port")]
     port: Option<u16>,
+    #[serde(default = "default_admin_port")]
+    admin_port: Option<u16>,
     remote_state: Option<String>,
     proxy_hops: Option<u8>,
+}
+
+fn default_port() -> Option<u16> {
+    Some(8089)
+}
+
+fn default_admin_port() -> Option<u16> {
+    Some(8090)
 }
 
 impl From<Service> for crate::config::Service {
     fn from(service: Service) -> Self {
         Self {
             port: service.port,
+            admin_port: service.admin_port,
             remote_state: service.remote_state.clone(),
             proxy_hops: service.proxy_hops,
         }

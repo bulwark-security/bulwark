@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_PORT: u16 = 10000;
+const DEFAULT_ADMIN_PORT: u16 = 8090;
 
 #[derive(Serialize, Deserialize)]
 pub struct Config {
@@ -16,9 +17,18 @@ pub struct Config {
 
 impl Config {
     pub fn port(&self) -> u16 {
+        // TODO: replace with serde default value?
         self.service
             .as_ref()
             .map(|service| service.port.unwrap_or(DEFAULT_PORT))
+            .unwrap_or(DEFAULT_PORT)
+    }
+
+    pub fn admin_port(&self) -> u16 {
+        // TODO: replace with serde default value?
+        self.service
+            .as_ref()
+            .map(|service| service.admin_port.unwrap_or(DEFAULT_ADMIN_PORT))
             .unwrap_or(DEFAULT_PORT)
     }
 
@@ -50,6 +60,7 @@ impl Config {
 #[derive(Serialize, Deserialize)]
 pub struct Service {
     pub port: Option<u16>,
+    pub admin_port: Option<u16>,
     pub remote_state: Option<String>,
     pub proxy_hops: Option<u8>,
 }
