@@ -7,3 +7,6 @@ pub enum ServiceError {
     #[error("error starting admin service: {0}")]
     AdminServiceError(hyper::Error),
 }
+
+#[derive(thiserror::Error, Debug)]
+pub enum AdminServiceError {}

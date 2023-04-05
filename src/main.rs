@@ -1,29 +1,28 @@
-use bulwark_ext_filter::BulwarkProcessor;
-use clap::{Parser, Subcommand};
-use std::{path::PathBuf, sync::Arc};
-use tokio::task::JoinSet;
-
-use {
-    envoy_control_plane::envoy::service::ext_proc::v3::external_processor_server::ExternalProcessorServer,
-    std::net::{IpAddr, Ipv4Addr, SocketAddr},
-    tonic::transport::Server,
-};
-
-use color_eyre::eyre::Result;
-use http::{Request, Response};
-use hyper::{Body, Error};
-use tower::{make::Shared, ServiceBuilder};
-use tower_http::trace::TraceLayer;
-use tracing::{debug, error, info, instrument, trace, warn, Instrument};
-use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
-use tracing_forest::ForestLayer;
-use tracing_log::LogTracer;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::{EnvFilter, Registry};
-
 mod errors;
 
-use errors::*;
+use {
+    axum::{extract::State, http::StatusCode, response::Json, routing::get, Router},
+    bulwark_ext_filter::BulwarkProcessor,
+    clap::{Parser, Subcommand},
+    color_eyre::eyre::Result,
+    envoy_control_plane::envoy::service::ext_proc::v3::external_processor_server::ExternalProcessorServer,
+    errors::*,
+    serde::Serialize,
+    std::net::{IpAddr, Ipv4Addr, SocketAddr},
+    std::{
+        path::PathBuf,
+        sync::{Arc, Mutex},
+    },
+    tokio::task::JoinSet,
+    tonic::transport::Server,
+    tower::ServiceBuilder,
+    tracing::{debug, error, info, instrument, trace, warn, Instrument},
+    tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
+    tracing_forest::ForestLayer,
+    tracing_log::LogTracer,
+    tracing_subscriber::layer::SubscriberExt,
+    tracing_subscriber::{EnvFilter, Registry},
+};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -52,8 +51,25 @@ enum Commands {
     // TODO: Implement Compile subcommand
 }
 
-async fn admin_handler(request: Request<Body>) -> Result<Response<Body>, Error> {
-    Ok(Response::new(Body::from("{\"live\":true}\n")))
+struct AdminState {
+    started: bool,
+    ready: bool,
+}
+
+#[derive(Serialize)]
+struct HealthResponse {
+    pub live: bool,
+    pub started: bool,
+    pub ready: bool,
+}
+
+async fn admin_handler(State(state): State<Arc<Mutex<AdminState>>>) -> Json<HealthResponse> {
+    let state = state.lock().unwrap();
+    Json(HealthResponse {
+        live: true,
+        started: state.started,
+        ready: state.ready,
+    })
 }
 
 #[tokio::main]
@@ -85,20 +101,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let port = config_root.port();
             let admin_port = config_root.admin_port();
             let admin_enabled = config_root.admin_service_enabled();
+            let admin_state = Arc::new(Mutex::new(AdminState {
+                started: false,
+                ready: false,
+            }));
 
             // TODO: need a reference to the bulwark processor to pass to the admin service but that doesn't exist yet
 
             if admin_enabled {
-                let admin_service = ServiceBuilder::new()
-                    .layer(TraceLayer::new_for_http())
-                    .service_fn(admin_handler);
+                let admin_service = ServiceBuilder::new().service_fn(admin_handler);
+                let admin_state = admin_state.clone();
 
                 // TODO: make admin service optional
                 service_tasks.spawn(async move {
                     // And run our service using `hyper`.
                     let addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::UNSPECIFIED), admin_port));
-                    hyper::server::Server::bind(&addr)
-                        .serve(Shared::new(admin_service))
+                    let app = Router::new()
+                        .route("/", get(admin_handler))
+                        .with_state(admin_state);
+
+                    axum::Server::bind(&addr)
+                        .serve(app.into_make_service())
                         .await
                         .map_err(ServiceError::AdminServiceError)
                 });
@@ -109,13 +132,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let bulwark_processor = BulwarkProcessor::new(config_root)?;
             let ext_filter = ExternalProcessorServer::new(bulwark_processor);
 
-            service_tasks.spawn(async move {
-                Server::builder()
-                    .add_service(ext_filter.clone()) // ExternalProcessorServer is clonable but BulwarkProcessor is not
-                    .serve(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port)) // TODO: make socket addr configurable?
-                    .await
-                    .map_err(ServiceError::ExtFilterServiceError)
-            });
+            {
+                let admin_state = admin_state.clone();
+
+                service_tasks.spawn(async move {
+                    {
+                        let mut admin_state = admin_state.lock().unwrap();
+                        admin_state.started = true;
+                        admin_state.ready = true;
+                    }
+                    Server::builder()
+                        .add_service(ext_filter.clone()) // ExternalProcessorServer is clonable but BulwarkProcessor is not
+                        .serve(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port)) // TODO: make socket addr configurable?
+                        .await
+                        .map_err(ServiceError::ExtFilterServiceError)
+                });
+            }
 
             while let Some(r) = service_tasks.join_next().await {
                 match r {
