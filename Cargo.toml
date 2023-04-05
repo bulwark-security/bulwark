@@ -32,6 +32,8 @@ http = "0.2"
 hyper = { version = "0.14.25", features = ["server"] }
 tower = { version = "0.4.13", features = ["tokio", "tracing"] }
 axum = { version = "0.6.12", features = ["http2"] }
+tower-http = { version = "0.4.0", features = ["tokio", "trace", "tracing", "normalize-path"] }
+tower-layer = "0.3.2"
 
 [build-dependencies]
 clap_mangen = "0.2.5"

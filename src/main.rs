@@ -1,10 +1,9 @@
-use axum::extract::Path;
-use serde_json::json;
+use axum::ServiceExt;
 
 mod errors;
 
 use {
-    axum::{extract::State, http::StatusCode, response::Json, routing::get, Router},
+    axum::{extract::Path, extract::State, http::StatusCode, response::Json, routing::get, Router},
     bulwark_ext_filter::BulwarkProcessor,
     clap::{Parser, Subcommand},
     color_eyre::eyre::Result,
@@ -18,7 +17,8 @@ use {
     },
     tokio::task::JoinSet,
     tonic::transport::Server,
-    tower::ServiceBuilder,
+    tower_http::normalize_path::NormalizePathLayer,
+    tower_layer::Layer,
     tracing::{debug, error, info, instrument, trace, warn, Instrument},
     tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
     tracing_forest::ForestLayer,
@@ -185,10 +185,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 service_tasks.spawn(async move {
                     // And run our service using `hyper`.
                     let addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::UNSPECIFIED), admin_port));
-                    let app = Router::new()
-                        .route("/", get(default_probe_handler)) // :probe is optional and defaults to liveness probe
-                        .route("/:probe", get(probe_handler))
-                        .with_state(health_state);
+                    let app = NormalizePathLayer::trim_trailing_slash().layer(
+                        Router::new()
+                            .route("/health", get(default_probe_handler)) // :probe is optional and defaults to liveness probe
+                            .route("/health/:probe", get(probe_handler))
+                            .with_state(health_state),
+                    );
 
                     axum::Server::bind(&addr)
                         .serve(app.into_make_service())
