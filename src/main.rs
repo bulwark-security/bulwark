@@ -1,3 +1,6 @@
+use axum::extract::Path;
+use serde_json::json;
+
 mod errors;
 
 use {
@@ -51,25 +54,92 @@ enum Commands {
     // TODO: Implement Compile subcommand
 }
 
-struct AdminState {
+/// The health state structure tracks the health of the primary service, primarily for the benefit of
+/// external monitoring by load balancers or container orchestration systems. It does not track a
+/// liveness value because this will always be true if the process is running.
+struct HealthState {
+    /// Indicates that the primary service has successfully initialized and is ready to receive requests.
+    /// Once true, it will remain true for the lifetime of the process.
     started: bool,
+    /// Indicates that the primary service is ready to receive requests.
+    /// In theory, this could become false after the service has started if the system detects that it's
+    /// entered a deadlock state, however this is not currently implemented and does not meaningfully
+    /// differ from the started state.
     ready: bool,
 }
 
+/// The health response structure determines the JSON serialization for health probe responses. Regardless
+/// of the type of probe requested, all 3 health states will be reported for convenience. Generally,
+/// automated systems requesting a health probe only consider the status code. This response body
+/// benefits human operators while not excluding machine-readability.
 #[derive(Serialize)]
 struct HealthResponse {
+    /// The live field is always true and indicates that the process running the primary service has
+    /// started without immediate error but may not yet be ready to receive requests. The health status
+    /// endpoints are not available until after configuration has been read, so if this endpoint can
+    /// return a response at all, this value will be true.
     pub live: bool,
+    /// The started field becomes true after the primary service is ready to receive requests. This occurs
+    /// after all plugins have been compiled but before any plugin is instantiated by an incoming request.
+    /// Once true, it will never become false.
     pub started: bool,
+    /// The ready field indicates that the primary service is ready to receive requests. Theoretically,
+    /// this could become false if a service becomes unlikely to ever be able serve requests again in the
+    /// future, and should be set to false if the desired behavior is to trigger a restart. Currently the
+    /// ready field has identical behavior to the started field since no detection for things like
+    /// deadlock states exist yet.
     pub ready: bool,
 }
 
-async fn admin_handler(State(state): State<Arc<Mutex<AdminState>>>) -> Json<HealthResponse> {
+/// The default probe handler is intended to be at the apex of the health check resource. It simply performs
+/// a liveness health check by default.
+///
+/// See probe_handler.
+async fn default_probe_handler(
+    State(state): State<Arc<Mutex<HealthState>>>,
+) -> (StatusCode, Json<HealthResponse>) {
+    probe_handler(State(state), Path(String::from("live"))).await
+}
+
+/// The probe handler returns a JSON HealthResponse with a status code that depends on the probe type requested.
+///
+/// - live - Always returns an HTTP OK status if the endpoint is serving requests.
+/// - started - Returns an HTTP OK status if the primary service has started and is ready to receive requests
+///     and a Service Unavailable status otherwise.
+/// - ready - Returns an HTTP OK status if the primary service is available and ready to receive requests
+///     and a Service Unavailable status otherwise.
+async fn probe_handler(
+    State(state): State<Arc<Mutex<HealthState>>>,
+    Path(probe): Path<String>,
+) -> (StatusCode, Json<HealthResponse>) {
     let state = state.lock().unwrap();
-    Json(HealthResponse {
-        live: true,
-        started: state.started,
-        ready: state.ready,
-    })
+    let status = match probe.as_str() {
+        "live" => StatusCode::OK,
+        "started" => {
+            if state.started {
+                StatusCode::OK
+            } else {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
+        }
+        "ready" => {
+            if state.ready {
+                StatusCode::OK
+            } else {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
+        }
+        // hint that the wrong probe value was sent
+        _ => StatusCode::NOT_FOUND,
+    };
+    (
+        status,
+        Json(HealthResponse {
+            live: true,
+            started: state.started,
+            ready: state.ready,
+        }),
+    )
 }
 
 #[tokio::main]
@@ -101,7 +171,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let port = config_root.port();
             let admin_port = config_root.admin_port();
             let admin_enabled = config_root.admin_service_enabled();
-            let admin_state = Arc::new(Mutex::new(AdminState {
+            let health_state = Arc::new(Mutex::new(HealthState {
                 started: false,
                 ready: false,
             }));
@@ -109,16 +179,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // TODO: need a reference to the bulwark processor to pass to the admin service but that doesn't exist yet
 
             if admin_enabled {
-                let admin_service = ServiceBuilder::new().service_fn(admin_handler);
-                let admin_state = admin_state.clone();
+                let health_state = health_state.clone();
 
                 // TODO: make admin service optional
                 service_tasks.spawn(async move {
                     // And run our service using `hyper`.
                     let addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::UNSPECIFIED), admin_port));
                     let app = Router::new()
-                        .route("/", get(admin_handler))
-                        .with_state(admin_state);
+                        .route("/", get(default_probe_handler)) // :probe is optional and defaults to liveness probe
+                        .route("/:probe", get(probe_handler))
+                        .with_state(health_state);
 
                     axum::Server::bind(&addr)
                         .serve(app.into_make_service())
@@ -133,13 +203,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let ext_filter = ExternalProcessorServer::new(bulwark_processor);
 
             {
-                let admin_state = admin_state.clone();
+                let health_state = health_state.clone();
 
                 service_tasks.spawn(async move {
                     {
-                        let mut admin_state = admin_state.lock().unwrap();
-                        admin_state.started = true;
-                        admin_state.ready = true;
+                        let mut health_state = health_state.lock().unwrap();
+                        health_state.started = true;
+                        health_state.ready = true;
                     }
                     Server::builder()
                         .add_service(ext_filter.clone()) // ExternalProcessorServer is clonable but BulwarkProcessor is not
