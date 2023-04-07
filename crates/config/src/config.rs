@@ -69,6 +69,7 @@ pub struct Plugin {
     #[serde(rename(serialize = "ref", deserialize = "ref"))]
     pub reference: String,
     // TODO: plugin path should be absolute; once it's in this structure the config base path is no longer known
+    // TODO: should this be a URI? That would allow e.g. data: URI values to embed WASM into config over the wire
     pub path: String,
     pub weight: f64,
     // TODO: this will serialize as JSON, so there might be a better internal representation
