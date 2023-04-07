@@ -166,11 +166,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::ExtFilter { config }) => {
             let mut service_tasks: JoinSet<std::result::Result<(), ServiceError>> = JoinSet::new();
 
-            let config_root = bulwark_config::load_config(config)?;
-            // TODO: just have serde defaults, this is kinda gross
-            let port = config_root.port();
-            let admin_port = config_root.admin_port();
-            let admin_enabled = config_root.admin_service_enabled();
+            let config_root = bulwark_config::load_toml_config(config)?;
+            let port = config_root.service.port;
+            let admin_port = config_root.service.admin_port;
+            let admin_enabled = config_root.service.admin;
             let health_state = Arc::new(Mutex::new(HealthState {
                 started: false,
                 ready: false,

@@ -6,6 +6,8 @@ pub enum PluginLoadError {
     Error(#[from] anyhow::Error),
     #[error(transparent)]
     StringArray(#[from] StringArrayError),
+    #[error("at least one resource required")]
+    ResourceMissing,
 }
 
 #[derive(thiserror::Error, Debug)]

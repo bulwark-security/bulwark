@@ -1,77 +1,46 @@
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_PORT: u16 = 10000;
-const DEFAULT_ADMIN_PORT: u16 = 8090;
-
 #[derive(Serialize, Deserialize)]
 pub struct Config {
-    pub service: Option<Service>,
-    pub thresholds: Option<Thresholds>,
-    #[serde(rename(serialize = "plugin", deserialize = "plugin"))]
-    pub plugins: Option<Vec<Plugin>>,
-    #[serde(rename(serialize = "preset", deserialize = "preset"))]
-    pub presets: Option<Vec<Preset>>,
-    #[serde(rename(serialize = "resource", deserialize = "resource"))]
-    pub resources: Option<Vec<Resource>>,
+    pub service: Service,
+    pub thresholds: Thresholds,
+    pub plugins: Vec<Plugin>,
+    pub presets: Vec<Preset>,
+    pub resources: Vec<Resource>,
 }
 
 impl Config {
-    pub fn port(&self) -> u16 {
-        // TODO: replace with serde default value?
-        self.service
-            .as_ref()
-            .map(|service| service.port.unwrap_or(DEFAULT_PORT))
-            .unwrap_or(DEFAULT_PORT)
-    }
-
-    pub fn admin_port(&self) -> u16 {
-        // TODO: replace with serde default value?
-        self.service
-            .as_ref()
-            .map(|service| service.admin_port.unwrap_or(DEFAULT_ADMIN_PORT))
-            .unwrap_or(DEFAULT_ADMIN_PORT)
-    }
-
-    pub fn admin_service_enabled(&self) -> bool {
-        // TODO: replace with serde default value?
-        self.service
-            .as_ref()
-            .map(|service| service.admin)
-            .unwrap_or(true)
-    }
-
     pub fn get_plugin(&self, reference: &str) -> Option<Plugin> {
-        if let Some(plugins) = &self.plugins {
-            for plugin in plugins {
-                if plugin.reference == reference {
-                    // TODO: might prefer not to clone and use lifetimes instead?
-                    return Some(plugin.clone());
-                }
+        for plugin in &self.plugins {
+            if plugin.reference == reference {
+                // TODO: might prefer not to clone and use lifetimes instead?
+                return Some(plugin.clone());
             }
         }
         None
     }
 
     pub fn get_preset(&self, reference: &str) -> Option<Preset> {
-        if let Some(presets) = &self.presets {
-            for preset in presets {
-                if preset.reference == reference {
-                    // TODO: might prefer not to clone and use lifetimes instead?
-                    return Some(preset.clone());
-                }
+        for preset in &self.presets {
+            if preset.reference == reference {
+                // TODO: might prefer not to clone and use lifetimes instead?
+                return Some(preset.clone());
             }
         }
         None
     }
 }
 
+pub const DEFAULT_PORT: u16 = 8089;
+pub const DEFAULT_ADMIN_PORT: u16 = 8090;
+
 #[derive(Serialize, Deserialize)]
 pub struct Service {
-    pub port: Option<u16>,
-    pub admin_port: Option<u16>,
+    pub port: u16,
+    pub admin_port: u16,
     pub admin: bool,
     pub remote_state: Option<String>,
-    pub proxy_hops: Option<u8>,
+    pub proxy_hops: u8,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
@@ -106,6 +75,8 @@ pub struct Plugin {
     pub config: toml::map::Map<String, toml::Value>,
     pub permissions: Permissions,
 }
+
+pub const DEFAULT_PLUGIN_WEIGHT: f64 = 1.0;
 
 impl Plugin {
     pub fn config_as_json(&self) -> Vec<u8> {

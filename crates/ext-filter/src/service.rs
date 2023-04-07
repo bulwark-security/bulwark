@@ -71,64 +71,53 @@ pub struct BulwarkProcessor {
 
 impl BulwarkProcessor {
     pub fn new(config: Config) -> Result<Self, PluginLoadError> {
-        let redis_info = if let Some(service) = config.service.as_ref() {
-            if let Some(remote_state_addr) = service.remote_state.as_ref() {
+        let redis_info = if let Some(remote_state_addr) = config.service.remote_state.as_ref() {
+            // TODO: better error handling instead of unwrap/panic
+            let client = redis::Client::open(remote_state_addr.as_str()).unwrap();
+            // TODO: make pool size configurable
+            Some(Arc::new(RedisInfo {
                 // TODO: better error handling instead of unwrap/panic
-                let client = redis::Client::open(remote_state_addr.as_str()).unwrap();
-                // TODO: make pool size configurable
-                Some(Arc::new(RedisInfo {
-                    // TODO: better error handling instead of unwrap/panic
-                    pool: r2d2::Pool::builder().max_size(16).build(client).unwrap(),
-                    registry: ScriptRegistry::default(),
-                }))
-            } else {
-                None
-            }
+                pool: r2d2::Pool::builder().max_size(16).build(client).unwrap(),
+                registry: ScriptRegistry::default(),
+            }))
         } else {
             None
         };
 
-        // TODO: return an init error not a plugin load error
         let mut router: Router<RouteTarget> = Router::new();
-        if let Some(resources) = config.resources.as_ref() {
-            for resource in resources {
-                let plugin_configs = resource.resolve_plugins(&config);
-                let mut plugins: PluginList = Vec::with_capacity(plugin_configs.len());
-                for plugin_config in plugin_configs {
-                    // TODO: pass in the plugin config
-                    debug!(
-                        plugin_path = plugin_config.path,
-                        message = "loading plugin",
-                        resource = resource.route
-                    );
-                    let plugin = Plugin::from_file(plugin_config.path.clone(), plugin_config)?;
-                    plugins.push(Arc::new(plugin));
-                }
-                router
-                    .insert(
-                        resource.route.clone(),
-                        RouteTarget {
-                            value: resource.route.clone(),
-                            timeout: resource.timeout,
-                            plugins,
-                        },
-                    )
-                    .ok();
+        if config.resources.len() == 0 {
+            // TODO: return an init error not a plugin load error
+            return Err(PluginLoadError::ResourceMissing);
+        }
+        for resource in &config.resources {
+            let plugin_configs = resource.resolve_plugins(&config);
+            let mut plugins: PluginList = Vec::with_capacity(plugin_configs.len());
+            for plugin_config in plugin_configs {
+                // TODO: pass in the plugin config
+                debug!(
+                    plugin_path = plugin_config.path,
+                    message = "loading plugin",
+                    resource = resource.route
+                );
+                let plugin = Plugin::from_file(plugin_config.path.clone(), plugin_config)?;
+                plugins.push(Arc::new(plugin));
             }
-        } else {
-            // TODO: error handling
-            panic!("no resources found");
+            router
+                .insert(
+                    resource.route.clone(),
+                    RouteTarget {
+                        value: resource.route.clone(),
+                        timeout: resource.timeout,
+                        plugins,
+                    },
+                )
+                .ok();
         }
         Ok(Self {
             router: Arc::new(RwLock::new(router)),
             redis_info,
-            thresholds: config.thresholds.unwrap_or_default(),
-            hops: usize::from(
-                config
-                    .service
-                    .and_then(|service| service.proxy_hops)
-                    .unwrap_or(0),
-            ),
+            thresholds: config.thresholds,
+            hops: usize::from(config.service.proxy_hops),
         })
     }
 }
