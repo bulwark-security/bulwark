@@ -6,24 +6,24 @@ use {
 
 /// The TOML serialization for a Config structure.
 #[derive(Serialize, Deserialize, Default)]
-struct TomlConfig {
+struct Config {
     #[serde(default)]
-    service: TomlService,
+    service: Service,
     #[serde(default)]
-    thresholds: TomlThresholds,
+    thresholds: Thresholds,
     #[serde(default, rename(serialize = "include", deserialize = "include"))]
-    includes: Vec<TomlInclude>,
+    includes: Vec<Include>,
     #[serde(default, rename(serialize = "plugin", deserialize = "plugin"))]
-    plugins: Vec<TomlPlugin>,
+    plugins: Vec<Plugin>,
     #[serde(default, rename(serialize = "preset", deserialize = "preset"))]
-    presets: Vec<TomlPreset>,
+    presets: Vec<Preset>,
     #[serde(default, rename(serialize = "resource", deserialize = "resource"))]
-    resources: Vec<TomlResource>,
+    resources: Vec<Resource>,
 }
 
 /// The TOML serialization for a Service config structure.
 #[derive(Serialize, Deserialize)]
-struct TomlService {
+struct Service {
     #[serde(default = "default_port")]
     port: u16,
     #[serde(default = "default_admin_port")]
@@ -65,7 +65,7 @@ fn default_proxy_hops() -> u8 {
     0
 }
 
-impl Default for TomlService {
+impl Default for Service {
     fn default() -> Self {
         Self {
             port: default_port(),
@@ -77,8 +77,8 @@ impl Default for TomlService {
     }
 }
 
-impl From<TomlService> for crate::Service {
-    fn from(service: TomlService) -> Self {
+impl From<Service> for crate::Service {
+    fn from(service: Service) -> Self {
         Self {
             port: service.port,
             admin_port: service.admin_port,
@@ -91,7 +91,7 @@ impl From<TomlService> for crate::Service {
 
 /// The TOML serialization for a Thresholds structure.
 #[derive(Serialize, Deserialize)]
-struct TomlThresholds {
+struct Thresholds {
     #[serde(default = "default_restrict_threshold")]
     restrict: f64,
     #[serde(default = "default_suspicious_threshold")]
@@ -115,7 +115,7 @@ fn default_trust_threshold() -> f64 {
     crate::DEFAULT_TRUST_THRESHOLD
 }
 
-impl Default for TomlThresholds {
+impl Default for Thresholds {
     fn default() -> Self {
         Self {
             restrict: default_restrict_threshold(),
@@ -125,8 +125,8 @@ impl Default for TomlThresholds {
     }
 }
 
-impl From<TomlThresholds> for crate::Thresholds {
-    fn from(thresholds: TomlThresholds) -> Self {
+impl From<Thresholds> for crate::Thresholds {
+    fn from(thresholds: Thresholds) -> Self {
         Self {
             restrict: thresholds.restrict,
             suspicious: thresholds.suspicious,
@@ -137,13 +137,13 @@ impl From<TomlThresholds> for crate::Thresholds {
 
 /// The TOML serialization for an Include structure.
 #[derive(Serialize, Deserialize)]
-struct TomlInclude {
+struct Include {
     path: String,
 }
 
 /// The TOML serialization for a Plugin structure.
 #[derive(Serialize, Deserialize, Clone)]
-struct TomlPlugin {
+struct Plugin {
     #[serde(rename(serialize = "ref", deserialize = "ref"))]
     reference: String,
     path: String,
@@ -162,8 +162,8 @@ fn default_plugin_weight() -> f64 {
     crate::DEFAULT_PLUGIN_WEIGHT
 }
 
-impl From<&TomlPlugin> for crate::config::Plugin {
-    fn from(plugin: &TomlPlugin) -> Self {
+impl From<&Plugin> for crate::config::Plugin {
+    fn from(plugin: &Plugin) -> Self {
         Self {
             reference: plugin.reference.clone(),
             path: plugin.path.clone(),
@@ -197,7 +197,7 @@ impl From<TomlPermissions> for crate::config::Permissions {
 
 /// The TOML serialization for a Preset structure.
 #[derive(Serialize, Deserialize, Clone)]
-struct TomlPreset {
+struct Preset {
     #[serde(rename(serialize = "ref", deserialize = "ref"))]
     reference: String,
     plugins: Vec<String>,
@@ -205,23 +205,23 @@ struct TomlPreset {
 
 /// The TOML serialization for a Resource structure.
 #[derive(Serialize, Deserialize, Clone)]
-struct TomlResource {
+struct Resource {
     route: String,
     plugins: Vec<String>,
     timeout: Option<u64>,
 }
 
 /// Loads a TOML config file into a Config structure.
-pub fn load_toml_config<'a, P>(path: &'a P) -> Result<crate::Config, ConfigFileError>
+pub fn load_config<'a, P>(path: &'a P) -> Result<crate::Config, ConfigFileError>
 where
     P: 'a + ?Sized + AsRef<Path>,
 {
-    fn load_config_recursive<'a, P>(path: &'a P) -> Result<TomlConfig, ConfigFileError>
+    fn load_config_recursive<'a, P>(path: &'a P) -> Result<Config, ConfigFileError>
     where
         P: 'a + ?Sized + AsRef<Path>,
     {
         let toml_data = fs::read_to_string(path)?;
-        let mut root: TomlConfig = toml::from_str(&toml_data)?;
+        let mut root: Config = toml::from_str(&toml_data)?;
         // TODO: avoid unwrap
         let base = path.as_ref().parent().unwrap();
 
@@ -232,21 +232,21 @@ where
 
             // TODO: clean this up
             let root_plugins = root.plugins;
-            let mut combined_plugins: Vec<TomlPlugin> =
+            let mut combined_plugins: Vec<Plugin> =
                 Vec::with_capacity(root_plugins.len() + include_root.plugins.len());
             combined_plugins.extend_from_slice(root_plugins.as_slice());
             combined_plugins.extend_from_slice(include_root.plugins.as_slice());
             root.plugins = combined_plugins;
 
             let root_presets = root.presets;
-            let mut combined_presets: Vec<TomlPreset> =
+            let mut combined_presets: Vec<Preset> =
                 Vec::with_capacity(root_presets.len() + include_root.presets.len());
             combined_presets.extend_from_slice(root_presets.as_slice());
             combined_presets.extend_from_slice(include_root.presets.as_slice());
             root.presets = combined_presets;
 
             let root_resources = root.resources;
-            let mut combined_resources: Vec<TomlResource> =
+            let mut combined_resources: Vec<Resource> =
                 Vec::with_capacity(root_resources.len() + include_root.resources.len());
             combined_resources.extend_from_slice(root_resources.as_slice());
             combined_resources.extend_from_slice(include_root.resources.as_slice());
@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn test_deserialize() -> Result<(), Box<dyn std::error::Error>> {
-        let root: TomlConfig = toml::from_str(
+        let root: Config = toml::from_str(
             r#"
         [service]
         port = 10002
@@ -367,7 +367,7 @@ mod tests {
 
     #[test]
     fn test_load_config() -> Result<(), Box<dyn std::error::Error>> {
-        let root: crate::config::Config = load_toml_config("tests/main.toml")?;
+        let root: crate::config::Config = load_config("tests/main.toml")?;
 
         assert_eq!(root.service.port, 10002); // non-default
         assert_eq!(root.service.admin_port, crate::DEFAULT_ADMIN_PORT);

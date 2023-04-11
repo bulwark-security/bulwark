@@ -1,7 +1,6 @@
 mod config;
 mod errors;
-mod toml_file;
+pub mod toml;
 
-pub use config::*;
-pub use errors::*;
-pub use toml_file::*;
+pub use crate::config::*;
+pub use crate::errors::*;

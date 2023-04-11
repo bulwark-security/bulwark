@@ -166,7 +166,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::ExtFilter { config }) => {
             let mut service_tasks: JoinSet<std::result::Result<(), ServiceError>> = JoinSet::new();
 
-            let config_root = bulwark_config::load_toml_config(config)?;
+            let config_root = bulwark_config::toml::load_config(config)?;
             let port = config_root.service.port;
             let admin_port = config_root.service.admin_port;
             let admin_enabled = config_root.service.admin;
