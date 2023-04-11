@@ -1,6 +1,3 @@
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize)]
 pub struct Config {
     pub service: Service,
     pub thresholds: Thresholds,
@@ -34,7 +31,6 @@ impl Config {
 pub const DEFAULT_PORT: u16 = 8089;
 pub const DEFAULT_ADMIN_PORT: u16 = 8090;
 
-#[derive(Serialize, Deserialize)]
 pub struct Service {
     pub port: u16,
     pub admin_port: u16,
@@ -43,7 +39,7 @@ pub struct Service {
     pub proxy_hops: u8,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct Thresholds {
     pub restrict: f64,
     pub suspicious: f64,
@@ -64,9 +60,8 @@ impl Default for Thresholds {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct Plugin {
-    #[serde(rename(serialize = "ref", deserialize = "ref"))]
     pub reference: String,
     // TODO: plugin path should be absolute; once it's in this structure the config base path is no longer known
     // TODO: should this be a URI? That would allow e.g. data: URI values to embed WASM into config over the wire
@@ -91,7 +86,7 @@ impl Plugin {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct Permissions {
     pub env: Vec<String>,
     pub http: Vec<String>,
@@ -134,9 +129,8 @@ fn toml_value_to_json(value: toml::Value) -> serde_json::Value {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub struct Preset {
-    #[serde(rename(serialize = "ref", deserialize = "ref"))]
     pub reference: String,
     pub plugins: Vec<Reference>,
 }
@@ -164,7 +158,7 @@ impl Preset {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub struct Resource {
     pub route: String,
     pub plugins: Vec<Reference>,
@@ -194,7 +188,7 @@ impl Resource {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Reference {
     Plugin(String),
     Preset(String),
