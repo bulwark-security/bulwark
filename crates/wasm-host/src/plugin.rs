@@ -370,7 +370,7 @@ impl Plugin {
 
     fn guest_config(&self) -> Vec<u8> {
         // TODO: should guest config be required or optional?
-        self.config.config_as_json()
+        self.config.config_to_json()
     }
 
     fn permissions(&self) -> bulwark_config::Permissions {

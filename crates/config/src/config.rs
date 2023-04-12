@@ -68,20 +68,15 @@ pub struct Plugin {
     // TODO: should this be a URI? That would allow e.g. data: URI values to embed WASM into config over the wire
     pub path: String,
     pub weight: f64,
-    // TODO: this will serialize as JSON, so there might be a better internal representation
-    pub config: toml::map::Map<String, toml::Value>,
+    pub config: serde_json::map::Map<String, serde_json::Value>,
     pub permissions: Permissions,
 }
 
 pub const DEFAULT_PLUGIN_WEIGHT: f64 = 1.0;
 
 impl Plugin {
-    pub fn config_as_json(&self) -> Vec<u8> {
-        let mut json_map = serde_json::Map::with_capacity(self.config.len());
-        for (key, value) in self.config.clone() {
-            json_map.insert(key, toml_value_to_json(value));
-        }
-        let obj = serde_json::Value::Object(json_map);
+    pub fn config_to_json(&self) -> Vec<u8> {
+        let obj = serde_json::Value::Object(self.config.clone());
         // TODO: probably should return a result instead of panicking
         serde_json::to_vec(&obj).unwrap()
     }
@@ -92,42 +87,6 @@ pub struct Permissions {
     pub env: Vec<String>,
     pub http: Vec<String>,
     pub state: Vec<String>,
-}
-
-fn toml_value_to_json(value: toml::Value) -> serde_json::Value {
-    match value {
-        toml::Value::String(v) => serde_json::Value::String(v),
-        toml::Value::Integer(v) => serde_json::Value::Number(serde_json::Number::from(v)),
-        toml::Value::Float(v) => {
-            // TODO: probably should return a result instead of panicking although NaN in a config would be weird
-            serde_json::Value::Number(serde_json::Number::from_f64(v).unwrap())
-        }
-        toml::Value::Boolean(v) => serde_json::Value::Bool(v),
-        toml::Value::Datetime(v) => {
-            // TODO: probably should return a result instead of panicking
-            // TODO: should we always convert to UTC, make this configurable, or just leave time-zone as-is and hope system time is UTC?
-            let ts = chrono::DateTime::parse_from_rfc3339(v.to_string().as_str())
-                .unwrap()
-                .with_timezone(&chrono::Utc);
-            serde_json::Value::String(ts.to_rfc3339())
-        }
-        toml::Value::Array(v) => {
-            let svec = v
-                .iter()
-                .map(|inner_value| toml_value_to_json(inner_value.clone()))
-                .collect();
-            serde_json::Value::Array(svec)
-        }
-        toml::Value::Table(v) => {
-            let smap = v
-                .iter()
-                .map(|(inner_key, inner_value)| {
-                    (inner_key.clone(), toml_value_to_json(inner_value.clone()))
-                })
-                .collect();
-            serde_json::Value::Object(smap)
-        }
-    }
 }
 
 #[derive(Clone)]
