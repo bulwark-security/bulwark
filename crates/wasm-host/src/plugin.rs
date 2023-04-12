@@ -314,7 +314,7 @@ impl Plugin {
     pub fn from_wat(
         name: String,
         wat: &str,
-        config: bulwark_config::Plugin,
+        config: &bulwark_config::Plugin,
     ) -> Result<Self, PluginLoadError> {
         Self::from_module(name, config, |engine| -> Result<Module, PluginLoadError> {
             let module = Module::new(engine, wat.as_bytes())?;
@@ -325,7 +325,7 @@ impl Plugin {
     pub fn from_bytes(
         name: String,
         bytes: &[u8],
-        config: bulwark_config::Plugin,
+        config: &bulwark_config::Plugin,
     ) -> Result<Self, PluginLoadError> {
         Self::from_module(name, config, |engine| -> Result<Module, PluginLoadError> {
             let module = Module::from_binary(engine, bytes)?;
@@ -335,7 +335,7 @@ impl Plugin {
 
     pub fn from_file(
         path: impl AsRef<Path>,
-        config: bulwark_config::Plugin,
+        config: &bulwark_config::Plugin,
     ) -> Result<Self, PluginLoadError> {
         let name = path.as_ref().display().to_string();
         Self::from_module(name, config, |engine| -> Result<Module, PluginLoadError> {
@@ -346,7 +346,7 @@ impl Plugin {
 
     fn from_module<F>(
         reference: String,
-        config: bulwark_config::Plugin,
+        config: &bulwark_config::Plugin,
         mut get_module: F,
     ) -> Result<Self, PluginLoadError>
     where
@@ -362,7 +362,7 @@ impl Plugin {
 
         Ok(Plugin {
             reference,
-            config: Arc::new(config),
+            config: Arc::new(config.clone()),
             engine,
             module,
         })
@@ -962,7 +962,7 @@ mod tests {
         let plugin = Arc::new(Plugin::from_bytes(
             "bulwark-blank-slate.wasm".to_string(),
             wasm_bytes,
-            bulwark_config::Plugin::default(),
+            &bulwark_config::Plugin::default(),
         )?);
         let request = Arc::new(
             http::Request::builder()
@@ -995,7 +995,7 @@ mod tests {
         let plugin = Arc::new(Plugin::from_bytes(
             "bulwark-evil-bit.wasm".to_string(),
             wasm_bytes,
-            bulwark_config::Plugin::default(),
+            &bulwark_config::Plugin::default(),
         )?);
 
         let request = Arc::new(

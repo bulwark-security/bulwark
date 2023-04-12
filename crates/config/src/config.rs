@@ -1,3 +1,6 @@
+/// The root of a Bulwark configuration.
+///
+/// Wraps all child configuration structures and provides the internal representation of Bulwark's configuration.
 pub struct Config {
     pub service: Service,
     pub thresholds: Thresholds,
@@ -7,24 +10,22 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn get_plugin(&self, reference: &str) -> Option<Plugin> {
-        for plugin in &self.plugins {
-            if plugin.reference == reference {
-                // TODO: might prefer not to clone and use lifetimes instead?
-                return Some(plugin.clone());
-            }
-        }
-        None
+    pub fn plugin<'a>(&self, reference: &str) -> Option<&Plugin>
+    where
+        Plugin: 'a,
+    {
+        self.plugins
+            .iter()
+            .find(|&plugin| plugin.reference == reference)
     }
 
-    pub fn get_preset(&self, reference: &str) -> Option<Preset> {
-        for preset in &self.presets {
-            if preset.reference == reference {
-                // TODO: might prefer not to clone and use lifetimes instead?
-                return Some(preset.clone());
-            }
-        }
-        None
+    pub fn preset<'a>(&self, reference: &str) -> Option<&Preset>
+    where
+        Preset: 'a,
+    {
+        self.presets
+            .iter()
+            .find(|&preset| preset.reference == reference)
     }
 }
 
@@ -136,17 +137,17 @@ pub struct Preset {
 }
 
 impl Preset {
-    pub fn resolve_plugins(&self, config: &Config) -> Vec<Plugin> {
-        let mut plugins: Vec<Plugin> = Vec::with_capacity(self.plugins.len());
+    pub fn resolve_plugins<'a>(&'a self, config: &'a Config) -> Vec<&Plugin> {
+        let mut plugins: Vec<&Plugin> = Vec::with_capacity(self.plugins.len());
         for reference in &self.plugins {
             match reference {
                 Reference::Plugin(ref_name) => {
-                    if let Some(plugin) = config.get_plugin(ref_name.as_str()) {
+                    if let Some(plugin) = config.plugin(ref_name.as_str()) {
                         plugins.push(plugin);
                     }
                 }
                 Reference::Preset(ref_name) => {
-                    if let Some(preset) = config.get_preset(ref_name.as_str()) {
+                    if let Some(preset) = config.preset(ref_name.as_str()) {
                         let mut inner_plugins = preset.resolve_plugins(config);
                         plugins.append(&mut inner_plugins);
                     }
@@ -166,17 +167,17 @@ pub struct Resource {
 }
 
 impl Resource {
-    pub fn resolve_plugins(&self, config: &Config) -> Vec<Plugin> {
-        let mut plugins: Vec<Plugin> = Vec::with_capacity(self.plugins.len());
+    pub fn resolve_plugins<'a>(&'a self, config: &'a Config) -> Vec<&Plugin> {
+        let mut plugins: Vec<&Plugin> = Vec::with_capacity(self.plugins.len());
         for reference in &self.plugins {
             match reference {
                 Reference::Plugin(ref_name) => {
-                    if let Some(plugin) = config.get_plugin(ref_name.as_str()) {
+                    if let Some(plugin) = config.plugin(ref_name.as_str()) {
                         plugins.push(plugin);
                     }
                 }
                 Reference::Preset(ref_name) => {
-                    if let Some(preset) = config.get_preset(ref_name.as_str()) {
+                    if let Some(preset) = config.preset(ref_name.as_str()) {
                         let mut inner_plugins = preset.resolve_plugins(config);
                         plugins.append(&mut inner_plugins);
                     }
@@ -188,7 +189,7 @@ impl Resource {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Reference {
     Plugin(String),
     Preset(String),

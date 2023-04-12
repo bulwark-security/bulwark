@@ -85,7 +85,7 @@ impl BulwarkProcessor {
         };
 
         let mut router: Router<RouteTarget> = Router::new();
-        if config.resources.len() == 0 {
+        if config.resources.is_empty() {
             // TODO: return an init error not a plugin load error
             return Err(PluginLoadError::ResourceMissing);
         }
