@@ -1,6 +1,6 @@
 use crate::ThresholdError;
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Outcome {
     Trusted,
     Accepted,
@@ -50,7 +50,7 @@ where
         if !(0.0..=1.0).contains(&restrict) {
             return Err(ThresholdError::ThresholdOutOfRange(restrict));
         }
-        match p.accept() {
+        match p.restrict() {
             x if x <= trust => Ok(Outcome::Trusted),
             x if x < suspicious => Ok(Outcome::Accepted),
             x if x >= restrict => Ok(Outcome::Restricted),
@@ -313,6 +313,43 @@ mod tests {
             unknown: 0.55,
         };
         assert!(!d.accepted(0.5));
+    }
+
+    #[test]
+    fn decision_outcome() -> Result<(), Box<dyn std::error::Error>> {
+        let d = Decision {
+            accept: 0.65,
+            restrict: 0.0,
+            unknown: 0.35,
+        };
+        let outcome = d.outcome(0.2, 0.4, 0.8)?;
+        assert_eq!(outcome, Outcome::Trusted);
+
+        let d = Decision {
+            accept: 0.45,
+            restrict: 0.05,
+            unknown: 0.5,
+        };
+        let outcome = d.outcome(0.2, 0.4, 0.8)?;
+        assert_eq!(outcome, Outcome::Accepted);
+
+        let d = Decision {
+            accept: 0.25,
+            restrict: 0.2,
+            unknown: 0.55,
+        };
+        let outcome = d.outcome(0.2, 0.4, 0.8)?;
+        assert_eq!(outcome, Outcome::Suspected);
+
+        let d = Decision {
+            accept: 0.05,
+            restrict: 0.65,
+            unknown: 0.3,
+        };
+        let outcome = d.outcome(0.2, 0.4, 0.8)?;
+        assert_eq!(outcome, Outcome::Restricted);
+
+        Ok(())
     }
 
     test_decision!(
