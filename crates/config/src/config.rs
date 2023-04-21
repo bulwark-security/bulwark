@@ -63,11 +63,13 @@ impl Default for Thresholds {
 
 #[derive(Clone, Default)]
 pub struct Plugin {
+    /// The plugin reference key. Should be limited to ASCII lowercase a-z plus underscores.
     pub reference: String,
     // TODO: plugin path should be absolute; once it's in this structure the config base path is no longer known
     // TODO: should this be a URI? That would allow e.g. data: URI values to embed WASM into config over the wire
     pub path: String,
     pub weight: f64,
+    // TODO: this might be better represented as a valuable::Mappable / valuable::Value
     pub config: serde_json::map::Map<String, serde_json::Value>,
     pub permissions: Permissions,
 }
@@ -141,7 +143,9 @@ impl Resource {
                         plugins.append(&mut inner_plugins);
                     }
                 }
-                Reference::Missing(_) => todo!(),
+                Reference::Missing(ref_name) => {
+                    panic!("missing reference '{}'", ref_name);
+                }
             }
         }
         plugins

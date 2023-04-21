@@ -1,5 +1,6 @@
 use axum::ServiceExt;
 
+mod ecs;
 mod errors;
 
 use {
@@ -20,7 +21,6 @@ use {
     tower_http::normalize_path::NormalizePathLayer,
     tower_layer::Layer,
     tracing::{debug, error, info, instrument, trace, warn, Instrument},
-    tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
     tracing_forest::ForestLayer,
     tracing_log::LogTracer,
     tracing_subscriber::layer::SubscriberExt,
@@ -35,6 +35,12 @@ struct Cli {
     /// Default is [info]
     #[arg(short, long)]
     log_level: Option<String>,
+
+    /// Log formats: [ecs][forest]
+    ///
+    /// Default is [ecs]
+    #[arg(short, long)]
+    log_format: Option<String>,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -142,6 +148,14 @@ async fn probe_handler(
     )
 }
 
+const ERROR_FILTER: &str = "error";
+const WARN_FILTER: &str = "warn";
+const INFO_FILTER: &str = "info";
+// The debug filter is more selective due to libraries increasing log verbosity too quickly
+const DEBUG_FILTER: &str =
+    "debug,cranelift_codegen=info,wasmtime_cranelift=info,reqwest=info,hyper=info,h2=info";
+const TRACE_FILTER: &str = "trace";
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // TODO: tokio runtime builder to control runtime parameters
@@ -152,12 +166,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     LogTracer::init().expect("log tracer init failed");
 
+    let log_level = cli.log_level.unwrap_or_else(|| "info".to_string());
+    let log_format = cli.log_format.unwrap_or_else(|| "ecs".to_string());
+    let mut ecs_layer = None;
+    let mut forest_layer = None;
+    match log_format.as_str() {
+        "ecs" => {
+            ecs_layer = Some(ForestLayer::from(
+                tracing_forest::Printer::new().formatter(crate::ecs::EcsFormatter),
+            ));
+            forest_layer = None;
+        }
+        "forest" => {
+            ecs_layer = None;
+            forest_layer = Some(ForestLayer::default());
+        }
+        _ => {
+            Err(crate::errors::CliArgumentError::InvalidLogFormat(
+                log_format,
+            ))?;
+        }
+    }
+
     let subscriber = Registry::default()
-        .with(ForestLayer::default())
+        .with(ecs_layer)
+        .with(forest_layer)
+        // TODO: refine filter to hide extraneous info from libraries
+        // TODO: behavior should be that library events are visible only at the TRACE level
         .with(EnvFilter::new(
-            cli.log_level.unwrap_or_else(|| "INFO".to_string()),
-        ))
-        .with(JsonStorageLayer);
+            match log_level.to_ascii_lowercase().as_str() {
+                "error" => ERROR_FILTER,
+                "warn" => WARN_FILTER,
+                "info" => INFO_FILTER,
+                "debug" => DEBUG_FILTER,
+                "trace" => TRACE_FILTER,
+                _ => log_level.as_str(),
+            },
+        ));
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
     // You can check for the existence of subcommands, and if found use their
@@ -194,7 +239,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     axum::Server::bind(&addr)
                         .serve(app.into_make_service())
                         .await
-                        .map_err(ServiceError::AdminServiceError)
+                        .map_err(ServiceError::AdminService)
                 });
             }
 
@@ -216,7 +261,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .add_service(ext_filter.clone()) // ExternalProcessorServer is clonable but BulwarkProcessor is not
                         .serve(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port)) // TODO: make socket addr configurable?
                         .await
-                        .map_err(ServiceError::ExtFilterServiceError)
+                        .map_err(ServiceError::ExtFilterService)
                 });
             }
 

@@ -9,12 +9,12 @@ restrict = 0.75
 path = "include.toml"
 
 [[plugin]]
-ref = "evil-bit"
+ref = "evil_bit"
 path = "bulwark-evil-bit.wasm"
 
 [[preset]]
 ref = "default"
-plugins = ["evil-bit", "starter-preset"]
+plugins = ["evil_bit", "starter_preset"]
 
 [[resource]]
 route = "/"

@@ -4,6 +4,7 @@ use bulwark_config::Thresholds;
 use bulwark_wasm_host::{ForwardedIP, PluginExecutionError, RemoteIP};
 use bulwark_wasm_sdk::BodyChunk;
 use forwarded_header_value::ForwardedHeaderValue;
+use http::StatusCode;
 use tokio::task::JoinHandle;
 use tracing::Span;
 
@@ -95,8 +96,8 @@ impl BulwarkProcessor {
             for plugin_config in plugin_configs {
                 // TODO: pass in the plugin config
                 debug!(
-                    plugin_path = plugin_config.path,
-                    message = "loading plugin",
+                    message = "load plugin",
+                    path = plugin_config.path,
                     resource = resource.route
                 );
                 let plugin = Plugin::from_file(plugin_config.path.clone(), plugin_config)?;
@@ -126,7 +127,7 @@ impl BulwarkProcessor {
 impl ExternalProcessor for BulwarkProcessor {
     type ProcessStream = ExternalProcessorStream;
 
-    #[instrument(name = "request_handler", skip(self, tonic_request))]
+    #[instrument(name = "handle request", skip(self, tonic_request))]
     async fn process(
         &self,
         tonic_request: Request<Streaming<ProcessingRequest>>,
@@ -139,7 +140,7 @@ impl ExternalProcessor for BulwarkProcessor {
             let router = self.router.clone();
 
             info!(
-                message = "handling request",
+                message = "process request",
                 method = http_req.method().to_string(),
                 uri = http_req.uri().to_string(),
                 user_agent = http_req
@@ -148,7 +149,7 @@ impl ExternalProcessor for BulwarkProcessor {
                     .map(|ua: &http::HeaderValue| ua.to_str().unwrap_or_default())
             );
 
-            let child_span = tracing::debug_span!("routing request");
+            let child_span = tracing::info_span!("route request");
             let (sender, receiver) = futures::channel::mpsc::unbounded();
             tokio::task::spawn(
                 async move {
@@ -251,15 +252,7 @@ async fn execute_request_phase_one(
 ) {
     let mut phase_one_tasks = JoinSet::new();
     for plugin_instance in plugin_instances.clone() {
-        let phase_one_child_span: Span;
-        {
-            let plugin_instance = plugin_instance.lock().unwrap();
-            phase_one_child_span = tracing::debug_span!(
-                "executing on_request phase",
-                // TODO: figure out why this isn't displayed in the logs
-                plugin = plugin_instance.plugin_reference(),
-            );
-        }
+        let phase_one_child_span = tracing::info_span!("execute on_request",);
         phase_one_tasks.spawn(
             timeout(timeout_duration, async move {
                 // TODO: avoid unwraps
@@ -298,15 +291,7 @@ async fn execute_request_phase_two(
     let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
     let mut phase_two_tasks = JoinSet::new();
     for plugin_instance in plugin_instances.clone() {
-        let phase_two_child_span: Span;
-        {
-            let plugin_instance = plugin_instance.lock().unwrap();
-            phase_two_child_span = tracing::debug_span!(
-                "executing on_request_decision phase",
-                // TODO: figure out why this isn't displayed in the logs
-                plugin = plugin_instance.plugin_reference(),
-            );
-        }
+        let phase_two_child_span = tracing::info_span!("execute on_request_decision",);
         let decision_components = decision_components.clone();
         phase_two_tasks.spawn(
             timeout(timeout_duration, async move {
@@ -315,16 +300,17 @@ async fn execute_request_phase_two(
                 {
                     // Re-weight the decision based on its weighting value from the configuration
                     let plugin_instance = plugin_instance.lock().unwrap();
-                    decision_component.decision = decision_component
-                        .decision
-                        .weight(plugin_instance.get_weight());
+                    decision_component.decision =
+                        decision_component.decision.weight(plugin_instance.weight());
 
                     let decision = &decision_component.decision;
-                    debug!(
-                        message = "plugin decision result",
-                        accept = decision.accept,
-                        restrict = decision.restrict,
-                        unknown = decision.unknown
+                    info!(
+                        message = "plugin decision",
+                        name = plugin_instance.plugin_reference(),
+                        accept = decision.accept(),
+                        restrict = decision.restrict(),
+                        unknown = decision.unknown(),
+                        score = decision.pignistic().restrict(),
                     );
                 }
                 let mut decision_components = decision_components.lock().unwrap();
@@ -365,21 +351,6 @@ async fn execute_request_phase_two(
     }
     let decision = Decision::combine(&decision_vec);
 
-    info!(
-        message = "decision combined",
-        accept = decision.accept,
-        restrict = decision.restrict,
-        unknown = decision.unknown,
-        // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
-        tags = tags
-            .iter()
-            .map(|s| s.as_str())
-            .collect::<Vec<&str>>()
-            .to_vec()
-            .join(","),
-        count = decision_vec.len(),
-    );
-
     DecisionComponents {
         decision,
         tags: tags.into_iter().collect(),
@@ -394,15 +365,7 @@ async fn execute_response_phase(
     let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
     let mut response_phase_tasks = JoinSet::new();
     for plugin_instance in plugin_instances.clone() {
-        let response_phase_child_span: Span;
-        {
-            let plugin_instance = plugin_instance.lock().unwrap();
-            response_phase_child_span = tracing::debug_span!(
-                "executing on_response_decision phase",
-                // TODO: figure out why this isn't displayed in the logs
-                plugin = plugin_instance.plugin_reference(),
-            );
-        }
+        let response_phase_child_span = tracing::info_span!("execute on_response_decision",);
         {
             // Make sure the plugin instance knows about the response
             let mut plugin_instance = plugin_instance.lock().unwrap();
@@ -417,16 +380,17 @@ async fn execute_response_phase(
                 {
                     // Re-weight the decision based on its weighting value from the configuration
                     let plugin_instance = plugin_instance.lock().unwrap();
-                    decision_component.decision = decision_component
-                        .decision
-                        .weight(plugin_instance.get_weight());
+                    decision_component.decision =
+                        decision_component.decision.weight(plugin_instance.weight());
 
                     let decision = &decision_component.decision;
-                    debug!(
-                        message = "plugin decision result",
-                        accept = decision.accept,
-                        restrict = decision.restrict,
-                        unknown = decision.unknown
+                    info!(
+                        message = "plugin decision",
+                        name = plugin_instance.plugin_reference(),
+                        accept = decision.accept(),
+                        restrict = decision.restrict(),
+                        unknown = decision.unknown(),
+                        score = decision.pignistic().restrict(),
                     );
                 }
                 let mut decision_components = decision_components.lock().unwrap();
@@ -466,21 +430,6 @@ async fn execute_response_phase(
             .collect();
     }
     let decision = Decision::combine(&decision_vec);
-
-    info!(
-        message = "decision combined",
-        accept = decision.accept,
-        restrict = decision.restrict,
-        unknown = decision.unknown,
-        // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
-        tags = tags
-            .iter()
-            .map(|s| s.as_str())
-            .collect::<Vec<&str>>()
-            .to_vec()
-            .join(","),
-        count = decision_vec.len(),
-    );
 
     DecisionComponents {
         decision,
@@ -666,24 +615,51 @@ async fn handle_request_phase_decision(
     plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
     timeout_duration: std::time::Duration,
 ) {
-    let outcome = decision_components
-        .decision
+    let decision = decision_components.decision;
+    let outcome = decision
         .outcome(thresholds.trust, thresholds.suspicious, thresholds.restrict)
         .unwrap();
 
+    info!(
+        message = "combine decision",
+        accept = decision.accept(),
+        restrict = decision.restrict(),
+        unknown = decision.unknown(),
+        score = decision.pignistic().restrict(),
+        outcome = match outcome {
+            bulwark_wasm_sdk::Outcome::Trusted => "trusted",
+            bulwark_wasm_sdk::Outcome::Accepted => "accepted",
+            bulwark_wasm_sdk::Outcome::Suspected => "suspected",
+            bulwark_wasm_sdk::Outcome::Restricted => "restricted",
+        },
+        // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
+        tags = decision_components
+            .tags
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<&str>>()
+            .to_vec()
+            .join(","),
+    );
+
     match outcome {
-            bulwark_wasm_sdk::Outcome::Trusted
-            | bulwark_wasm_sdk::Outcome::Accepted
-            // suspected requests are monitored but not rejected
-            | bulwark_wasm_sdk::Outcome::Suspected => {
-                let result = allow_request(&sender, &decision_components).await;
-                // TODO: must perform error handling on sender results, sending can definitely fail
-                debug!(message = "send result", result = result.is_ok());
-               },
-               bulwark_wasm_sdk::Outcome::Restricted => {
-                let result = block_request(&sender, &decision_components).await;
-                // TODO: must perform error handling on sender results, sending can definitely fail
-                debug!(message = "send result", result = result.is_ok());
+        bulwark_wasm_sdk::Outcome::Trusted
+        | bulwark_wasm_sdk::Outcome::Accepted
+        // suspected requests are monitored but not rejected
+        | bulwark_wasm_sdk::Outcome::Suspected => {
+            let result = allow_request(&sender, &decision_components).await;
+            // TODO: must perform proper error handling on sender results, sending can fail
+            if let Err(err) = result {
+                debug!(message = format!("send error: {}", err));
+            }
+        },
+        bulwark_wasm_sdk::Outcome::Restricted => {
+            info!(message = "process response", status = 403);
+            let result = block_request(&sender, &decision_components).await;
+            // TODO: must perform proper error handling on sender results, sending can fail
+            if let Err(err) = result {
+                debug!(message = format!("send error: {}", err));
+            }
         },
     }
 
@@ -702,10 +678,12 @@ async fn handle_request_phase_decision(
 
     if let Ok(http_resp) = prepare_response(&mut stream).await {
         let http_resp = Arc::new(http_resp);
+        let status = http_resp.status();
 
         handle_response_phase_decision(
             sender,
             execute_response_phase(plugin_instances.clone(), http_resp, timeout_duration).await,
+            status,
             // TODO: get thresholds from config
             Thresholds::default(),
             plugin_instances.clone(),
@@ -718,27 +696,57 @@ async fn handle_request_phase_decision(
 async fn handle_response_phase_decision(
     sender: UnboundedSender<Result<ProcessingResponse, Status>>,
     decision_components: DecisionComponents,
+    response_status: StatusCode,
     thresholds: Thresholds,
     plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
     timeout_duration: std::time::Duration,
 ) {
-    let outcome = decision_components
-        .decision
+    let decision = decision_components.decision;
+    let outcome = decision
         .outcome(thresholds.trust, thresholds.suspicious, thresholds.restrict)
         .unwrap();
+
+    info!(
+        message = "combine decision",
+        accept = decision.accept(),
+        restrict = decision.restrict(),
+        unknown = decision.unknown(),
+        score = decision.pignistic().restrict(),
+        outcome = match outcome {
+            bulwark_wasm_sdk::Outcome::Trusted => "trusted",
+            bulwark_wasm_sdk::Outcome::Accepted => "accepted",
+            bulwark_wasm_sdk::Outcome::Suspected => "suspected",
+            bulwark_wasm_sdk::Outcome::Restricted => "restricted",
+        },
+        // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
+        tags = decision_components
+            .tags
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<&str>>()
+            .to_vec()
+            .join(","),
+    );
+
     match outcome {
         bulwark_wasm_sdk::Outcome::Trusted
         | bulwark_wasm_sdk::Outcome::Accepted
         // suspected requests are monitored but not rejected
         | bulwark_wasm_sdk::Outcome::Suspected => {
+            info!(message = "process response", status = u16::from(response_status));
             let result = allow_response(&sender, &decision_components).await;
-            // TODO: must perform error handling on sender results, sending can definitely fail
-            debug!(message = "send result", result = result.is_ok());
+            // TODO: must perform proper error handling on sender results, sending can fail
+            if let Err(err) = result {
+                debug!(message = format!("send error: {}", err));
+            }
         },
         bulwark_wasm_sdk::Outcome::Restricted => {
+            info!(message = "process response", status = 403);
             let result = block_response(&sender, &decision_components).await;
-            // TODO: must perform error handling on sender results, sending can definitely fail
-            debug!(message = "send result", result = result.is_ok());
+            // TODO: must perform proper error handling on sender results, sending can fail
+            if let Err(err) = result {
+                debug!(message = format!("send error: {}", err));
+            }
         }
     }
 
@@ -756,16 +764,8 @@ fn handle_decision_feedback(
     plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
     timeout_duration: std::time::Duration,
 ) {
-    for plugin_instance in plugin_instances.clone() {
-        let response_phase_child_span: Span;
-        {
-            let plugin_instance = plugin_instance.lock().unwrap();
-            response_phase_child_span = tracing::debug_span!(
-                "executing on_decision_feedback phase",
-                // TODO: figure out why this isn't displayed in the logs
-                plugin = plugin_instance.plugin_reference(),
-            );
-        }
+    for plugin_instance in plugin_instances {
+        let response_phase_child_span = tracing::info_span!("execute on_decision_feedback",);
         {
             // Make sure the plugin instance knows about the final combined decision
             let mut plugin_instance = plugin_instance.lock().unwrap();

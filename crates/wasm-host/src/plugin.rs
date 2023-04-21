@@ -337,7 +337,7 @@ impl Plugin {
         path: impl AsRef<Path>,
         config: &bulwark_config::Plugin,
     ) -> Result<Self, PluginLoadError> {
-        let name = path.as_ref().display().to_string();
+        let name = config.reference.clone();
         Self::from_module(name, config, |engine| -> Result<Module, PluginLoadError> {
             let module = Module::from_file(engine, &path)?;
             Ok(module)
@@ -419,7 +419,7 @@ impl PluginInstance {
         })
     }
 
-    pub fn get_weight(&self) -> f64 {
+    pub fn weight(&self) -> f64 {
         self.plugin.config.weight
     }
 

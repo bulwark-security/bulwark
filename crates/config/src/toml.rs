@@ -364,7 +364,7 @@ mod tests {
         path = "default.toml"
 
         [[plugin]]
-        ref = "evil-bit"
+        ref = "evil_bit"
         path = "bulwark-evil-bit.wasm"
 
         [[preset]]
@@ -392,7 +392,7 @@ mod tests {
         assert_eq!(root.includes.get(0).unwrap().path, "default.toml");
 
         assert_eq!(root.plugins.len(), 1);
-        assert_eq!(root.plugins.get(0).unwrap().reference, "evil-bit");
+        assert_eq!(root.plugins.get(0).unwrap().reference, "evil_bit");
         assert_eq!(root.plugins.get(0).unwrap().path, "bulwark-evil-bit.wasm");
         assert_eq!(
             root.plugins.get(0).unwrap().config,
@@ -426,7 +426,7 @@ mod tests {
         assert_eq!(root.thresholds.trust, crate::DEFAULT_TRUST_THRESHOLD);
 
         assert_eq!(root.plugins.len(), 2);
-        assert_eq!(root.plugins.get(0).unwrap().reference, "evil-bit");
+        assert_eq!(root.plugins.get(0).unwrap().reference, "evil_bit");
         assert_eq!(root.plugins.get(0).unwrap().path, "bulwark-evil-bit.wasm");
         assert_eq!(
             root.plugins.get(0).unwrap().config,
@@ -435,17 +435,17 @@ mod tests {
 
         assert_eq!(root.presets.len(), 2);
         assert_eq!(root.presets.get(0).unwrap().reference, "default");
-        assert_eq!(root.presets.get(1).unwrap().reference, "starter-preset");
+        assert_eq!(root.presets.get(1).unwrap().reference, "starter_preset");
         assert_eq!(
             root.presets.get(0).unwrap().plugins,
             vec![
-                crate::config::Reference::Plugin("evil-bit".to_string()),
-                crate::config::Reference::Preset("starter-preset".to_string())
+                crate::config::Reference::Plugin("evil_bit".to_string()),
+                crate::config::Reference::Preset("starter_preset".to_string())
             ]
         );
         assert_eq!(
             root.presets.get(1).unwrap().plugins,
-            vec![crate::config::Reference::Plugin("blank-slate".to_string())]
+            vec![crate::config::Reference::Plugin("blank_slate".to_string())]
         );
 
         assert_eq!(root.resources.len(), 2);
