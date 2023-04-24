@@ -1,9 +1,6 @@
 use bulwark_wasm_sdk::Decision;
 use bulwark_wasm_sdk::MassFunction;
-use sfv::{
-    BareItem, Decimal, Dictionary, FromPrimitive, InnerList, Item, List, ListEntry, Parameters,
-    SerializeValue,
-};
+use sfv::{BareItem, Decimal, Dictionary, FromPrimitive, Item, List, ListEntry, SerializeValue};
 
 // TODO: capture the entire outcome: accepted/suspicious/restricted + threshold values
 // TODO: should this error for invalid Decision values?

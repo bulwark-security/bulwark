@@ -1,28 +1,28 @@
 // TODO: switch to wasmtime::component::bindgen!
 wit_bindgen_wasmtime::export!("../../bulwark-host.wit");
 
-use crate::{
-    ContextInstantiationError, PluginExecutionError, PluginInstantiationError, PluginLoadError,
+use {
+    crate::{
+        ContextInstantiationError, PluginExecutionError, PluginInstantiationError, PluginLoadError,
+    },
+    bulwark_host::{DecisionInterface, HeaderInterface, OutcomeInterface},
+    bulwark_wasm_sdk::{Decision, MassFunction, Outcome},
+    chrono::Utc,
+    redis::Commands,
+    std::{
+        collections::{BTreeSet, HashMap},
+        convert::From,
+        net::IpAddr,
+        ops::DerefMut,
+        path::Path,
+        sync::{Arc, Mutex, MutexGuard},
+    },
+    url::Url,
+    wasmtime::{AsContextMut, Config, Engine, Instance, Linker, Module, Store},
+    wasmtime_wasi::{WasiCtx, WasiCtxBuilder},
 };
-use bulwark_wasm_sdk::{Decision, MassFunction, Outcome};
-use chrono::Utc;
-use redis::Commands;
-use std::collections::{BTreeSet, HashMap};
-use std::ops::DerefMut;
-use std::path::Path;
-use std::sync::MutexGuard;
-use std::{
-    convert::From,
-    net::IpAddr,
-    sync::{Arc, Mutex},
-};
-use url::{ParseError, Url};
-use wasmtime::{AsContextMut, Config, Engine, Instance, Linker, Module, Store};
-use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
 extern crate redis;
-
-use self::bulwark_host::{DecisionInterface, HeaderInterface, OutcomeInterface};
 
 pub struct RemoteIP(pub IpAddr);
 pub struct ForwardedIP(pub IpAddr);
@@ -242,7 +242,6 @@ impl Default for ScriptRegistry {
 
 pub struct RequestContext {
     wasi: WasiCtx,
-    plugin_reference: String,
     config: Arc<Vec<u8>>,
     permissions: bulwark_config::Permissions,
     /// params are shared between all plugin instances for a single request
@@ -279,7 +278,6 @@ impl RequestContext {
         Ok(RequestContext {
             wasi,
             redis_info,
-            plugin_reference: plugin.reference.clone(),
             config: Arc::new(plugin.guest_config()),
             permissions: plugin.permissions(),
             params,

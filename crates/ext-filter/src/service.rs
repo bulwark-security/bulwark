@@ -1,24 +1,16 @@
 use std::net::IpAddr;
 
-use bulwark_config::Thresholds;
-use bulwark_wasm_host::{ForwardedIP, PluginExecutionError, RemoteIP};
-use bulwark_wasm_sdk::BodyChunk;
-use forwarded_header_value::ForwardedHeaderValue;
-use http::StatusCode;
-use tokio::task::JoinHandle;
-use tracing::Span;
-
 use {
     crate::{
         serialize_decision_sfv, serialize_tags_sfv, FilterProcessingError,
         MultiPluginInstantiationError,
     },
-    bulwark_config::Config,
+    bulwark_config::{Config, Thresholds},
     bulwark_wasm_host::{
-        DecisionComponents, Plugin, PluginInstance, PluginLoadError, RedisInfo, RequestContext,
-        ScriptRegistry,
+        DecisionComponents, ForwardedIP, Plugin, PluginExecutionError, PluginInstance,
+        PluginLoadError, RedisInfo, RequestContext, ScriptRegistry,
     },
-    bulwark_wasm_sdk::{Decision, MassFunction},
+    bulwark_wasm_sdk::{BodyChunk, Decision, MassFunction},
     envoy_control_plane::envoy::{
         config::core::v3::{HeaderMap, HeaderValue, HeaderValueOption},
         r#type::v3::HttpStatus,
@@ -28,10 +20,12 @@ use {
             ProcessingRequest, ProcessingResponse,
         },
     },
+    forwarded_header_value::ForwardedHeaderValue,
     futures::{
         channel::mpsc::{SendError, UnboundedSender},
         SinkExt, Stream,
     },
+    http::StatusCode,
     matchit::Router,
     std::{
         collections::HashSet,
@@ -43,7 +37,7 @@ use {
     },
     tokio::{sync::RwLock, task::JoinSet, time::timeout},
     tonic::{Request, Response, Status, Streaming},
-    tracing::{debug, error, info, instrument, trace, warn, Instrument},
+    tracing::{debug, error, info, instrument, warn, Instrument},
 };
 
 extern crate redis;
@@ -53,7 +47,6 @@ type ExternalProcessorStream =
 type PluginList = Vec<Arc<Plugin>>;
 
 struct RouteTarget {
-    value: String,
     plugins: PluginList,
     timeout: Option<u64>,
 }
@@ -106,8 +99,8 @@ impl BulwarkProcessor {
             router
                 .insert(
                     resource.route.clone(),
+                    // TODO: the route target will probably need access to the route itself in the future
                     RouteTarget {
-                        value: resource.route.clone(),
                         timeout: resource.timeout,
                         plugins,
                     },
@@ -191,9 +184,10 @@ impl ExternalProcessor for BulwarkProcessor {
                             )
                             .await;
                         }
-                        Err(err) => {
-                            // TODO: figure out how to handle trailing slash errors, silent failure is probably undesirable
+                        Err(_) => {
+                            // TODO: figure out how best to handle trailing slash errors, silent failure is probably undesirable
                             error!(uri = http_req.uri().to_string(), message = "match error");
+                            // TODO: panic is undesirable, need to figure out if we should be returning a Status or changing the response or doing something else
                             panic!("match error");
                         }
                     };
@@ -516,10 +510,11 @@ async fn prepare_request(
     // TODO: determine client IP address, pass it through as an extension
     if let Some(header_msg) = get_request_headers(stream).await {
         // TODO: currently this information isn't used and isn't accessible to the plugin environment yet
-        let authority = get_header_value(&header_msg.headers, ":authority").ok_or_else(|| {
+        // TODO: does this go into a request extension?
+        let _authority = get_header_value(&header_msg.headers, ":authority").ok_or_else(|| {
             FilterProcessingError::Error(anyhow::anyhow!("Missing HTTP authority"))
         })?;
-        let scheme = get_header_value(&header_msg.headers, ":scheme")
+        let _scheme = get_header_value(&header_msg.headers, ":scheme")
             .ok_or_else(|| FilterProcessingError::Error(anyhow::anyhow!("Missing HTTP scheme")))?;
 
         let method =

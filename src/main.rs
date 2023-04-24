@@ -20,7 +20,7 @@ use {
     tonic::transport::Server,
     tower_http::normalize_path::NormalizePathLayer,
     tower_layer::Layer,
-    tracing::{debug, error, info, instrument, trace, warn, Instrument},
+    tracing::error,
     tracing_forest::ForestLayer,
     tracing_log::LogTracer,
     tracing_subscriber::layer::SubscriberExt,

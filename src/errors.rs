@@ -1,5 +1,3 @@
-use std::convert::From;
-
 #[derive(thiserror::Error, Debug)]
 pub enum CliArgumentError {
     #[error("invalid log format: {0}")]
