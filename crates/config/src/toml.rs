@@ -1,3 +1,9 @@
+//! The `toml` module provides TOML deserialization and parsing for Bulwark's configuration files.
+//!
+//! It closely mirrors the [`bulwark_config::Config`](crate::Config) hierarchy and can convert to it with the
+//! [`From`] trait. Due to the need for multiple serialization mappings, TOML deserialization is not done
+//! directly in the [`bulwark_config`](crate) module's structs.
+
 use {
     crate::ConfigFileError,
     serde::{Deserialize, Serialize},
@@ -38,14 +44,14 @@ struct Service {
 
 /// The default port for the primary service.
 ///
-/// See DEFAULT_PORT.
+/// See [`DEFAULT_PORT`].
 fn default_port() -> u16 {
     crate::DEFAULT_PORT
 }
 
 /// The default port for the internal admin service.
 ///
-/// See DEFAULT_ADMIN_PORT.
+/// See [`DEFAULT_ADMIN_PORT`].
 fn default_admin_port() -> u16 {
     crate::DEFAULT_ADMIN_PORT
 }

@@ -103,10 +103,19 @@ where
         )
     }
 
+    /// Rescales a [`MassFunction`] to ensure all component values are in the 0.0-1.0 range and sum to 1.0.
+    ///
+    /// It will preserve the relative relationship between [`accept`](MassFunction::accept) and
+    /// [`restrict`](MassFunction::restrict).
     fn scale(&self) -> Self {
         self.scale_min_unknown(0.0)
     }
 
+    /// Rescales a [`MassFunction`] to ensure all component values are in the 0.0-1.0 range and sum to 1.0 while
+    /// ensuring that the [`unknown`](MassFunction::unknown) value is at least `min`.
+    ///
+    /// It will preserve the relative relationship between [`accept`](MassFunction::accept) and
+    /// [`restrict`](MassFunction::restrict).
     fn scale_min_unknown(&self, min: f64) -> Self {
         let d = self.fill_unknown().clamp();
         let mut sum = d.accept() + d.restrict() + d.unknown();
@@ -131,12 +140,18 @@ where
         Self::new(accept, restrict, unknown)
     }
 
+    /// Multiplies the [`accept`](MassFunction::accept) and [`restrict`](MassFunction::restrict) by the `factor`
+    /// parameter, replacing the [`unknown`](MassFunction::unknown) value with the remainder.
+    ///
+    /// Weights below 1.0 will reduce the weight of a [`MassFunction`], while weights above 1.0 will increase it.
+    /// A 1.0 weight has no effect on the result, aside from scaling it to a valid range if necessary.
     fn weight(&self, factor: f64) -> Self {
         Self::new(self.accept() * factor, self.restrict() * factor, 0.0).scale()
     }
 
-    // pairwise_combine performs the conjunctive combination of two decisions
-    // helper function for combine
+    /// Performs the conjunctive combination of two decisions.
+    ///
+    /// It is a helper function for [`combine`](MassFunction::combine).
     fn pairwise_combine(left: &Self, right: &Self) -> Self {
         // The mass assigned to the null hypothesis due to non-intersection.
         let nullh = left.accept() * right.restrict() + left.restrict() * right.accept();
@@ -166,13 +181,12 @@ where
         vals.into_iter().min()
     }
 
-    // combine takes the Murphy average of a set of decisions,
-    // returning a new decision as the result.
-    //
-    // The Murphy average rule takes the mean value of each focal element across
-    // all mass functions to create a new mass function. This new mass function
-    // is then combined conjunctively with itself N times where N is the total
-    // number of functions that were averaged together.
+    /// Calculates the Murphy average of a set of decisions, returning a new [`MassFunction`] as the result.
+    ///
+    /// The Murphy average rule takes the mean value of each focal element across
+    /// all mass functions to create a new mass function. This new mass function
+    /// is then combined conjunctively with itself N times where N is the total
+    /// number of functions that were averaged together.
     fn combine<'a, I>(decisions: I) -> Self
     where
         Self: 'a,
