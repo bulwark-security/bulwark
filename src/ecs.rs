@@ -1,3 +1,19 @@
+//! Partial implementation of the [Elastic Common Schema (ECS)](https://www.elastic.co/guide/en/ecs/current/ecs-reference.html) for the [`tracing_forest::Formatter`].
+//!
+//! Bulwark's concurrent execution of plugins would otherwise make some logging presentations unintelligible,
+//! and [`tracing_forest`] exists to remedy that. The default [`Pretty`](tracing_forest::printer::Pretty)
+//! formatter is a multi-line logger that is easy to visually scan and excellent for local debugging. However
+//! it is unsuitable for production logging use-cases where logs could be interleaved from multiple instances.
+//! This formatter eliminates that problem by condensing multiple events and spans into a single structured JSON
+//! ECS event that typically maps one-to-one with incoming requests. This produces a new-line-delimited JSON log.
+//!
+//! This module does not currently attempt to implement the entirety of ECS as not all ECS fields are generated
+//! by Bulwark and most of the implementation would go unused. The module's non-reusable implementation further
+//! limits the value of a complete implementation.
+//!
+//! The ECS format also allows Bulwark's logs to be cross-referenced with logs from other services that are
+//! either emitted as ECS or normalized to it.
+
 use {
     chrono::{DateTime, Utc},
     quoted_string::spec::{PartialCodePoint, QuotingClass},
@@ -8,12 +24,30 @@ use {
     tracing_forest::Formatter,
 };
 
+/// The ECS formatter converts a [`Tree`](tracing_forest::tree::Tree) into a formatted [`String`] to be displayed.
+///
+/// The formatter expects log messages to be short, known messages emitted by Bulwark and therefore it is
+/// not a reusable component.
+///
+/// An [`EcsFormatter`] is used with a [`ForestLayer`](tracing_forest::ForestLayer) and a [`Printer`](tracing_forest::Printer).
+/// It is composed by a [`Registry`](tracing_subscriber::Registry) into a [`Subscriber`](tracing_core::subscriber::Subscriber).
+///
+/// # Example
+///
+/// This would print log messages in ECS format to stdout.
+///
+/// ```
+/// let layer = tracing_forest::ForestLayer::from(
+///     tracing_forest::Printer::new().formatter(EcsFormatter),
+/// )
+/// ```
 #[derive(Debug)]
 pub struct EcsFormatter;
 
 impl Formatter for EcsFormatter {
     type Error = fmt::Error;
 
+    /// Parse a [`tracing_forest::tree::Tree`] and format it as a [`String`] for display.
     fn fmt(&self, tree: &Tree) -> Result<String, fmt::Error> {
         let mut ecs_event = EcsEvent::default();
         EcsFormatter::parse_tree(tree, None, &mut ecs_event)?;
@@ -84,6 +118,7 @@ impl EcsFormatter {
         }
     }
 
+    /// Parses `"load plugin"` messages emitted when a plugin is first loaded into the WASM VM.
     fn parse_load_plugin_event(event: &Event, ecs_event: &mut EcsEvent) -> fmt::Result {
         for field in event.fields().iter() {
             match field.key() {
@@ -108,6 +143,7 @@ impl EcsFormatter {
         Ok(())
     }
 
+    /// Parses `"process request"` messages emitted whenever a request is received.
     fn parse_process_request_event(event: &Event, ecs_event: &mut EcsEvent) -> fmt::Result {
         // TODO: probably worth having some control over verbosity
         let mut event_meta = ecs_event.event.clone().unwrap_or_default();
@@ -158,6 +194,7 @@ impl EcsFormatter {
         Ok(())
     }
 
+    /// Parses `"process response"` messages emitted whenever a response is received.
     fn parse_process_response_event(event: &Event, ecs_event: &mut EcsEvent) -> fmt::Result {
         // TODO: probably worth having some control over verbosity
         let mut event_meta = ecs_event.event.clone().unwrap_or_default();
@@ -185,6 +222,7 @@ impl EcsFormatter {
         Ok(())
     }
 
+    /// Parses `"plugin decision"` messages emitted after each request and response phase.
     fn parse_plugin_decision_event(event: &Event, ecs_event: &mut EcsEvent) -> fmt::Result {
         let mut plugin_field_set = EcsBulwarkDecisionFieldSet::default();
         let mut reference_name: Option<String> = None;
@@ -217,6 +255,13 @@ impl EcsFormatter {
             }
         }
 
+        // These messages may be sent up to twice for each plugin, once for the request phase and once for
+        // the response phase. If there is a message for both phases, the response phase information will
+        // overwrite the previous request phase information. This may ultimately prove to be a problematic
+        // design. It's optimizing for verbosity and total log transfer, but it's lossy by discarding values
+        // that are superceded by decisions in later phases. Since decisions values from earlier phases are
+        // carried to the next phase, it should still always report the decision values that contributed to
+        // the final decision.
         if let Some(reference_name) = reference_name {
             let mut bulwark = ecs_event.bulwark.clone().unwrap_or_default();
             let mut plugins = bulwark.plugins.clone().unwrap_or_default();
@@ -233,6 +278,11 @@ impl EcsFormatter {
         Ok(())
     }
 
+    /// Parses `"combine decision"` messages emitted for request and response phases which combine individual
+    /// plugin decisions into an ensemble decision.
+    ///
+    /// The decision outcome based on the configured decision thresholds and the combined set of all tags emitted
+    /// by the plugins is also parsed from these messages.
     fn parse_combine_decision_event(event: &Event, ecs_event: &mut EcsEvent) -> fmt::Result {
         for field in event.fields().iter() {
             match field.key() {
@@ -282,6 +332,7 @@ impl EcsFormatter {
         Ok(())
     }
 
+    /// Parses unrecognized messages on a "best effort" basis. Not currently implemented.
     fn parse_unknown_event(event: &Event, _ecs_event: &mut EcsEvent) -> fmt::Result {
         for _field in event.fields().iter() {
             // TODO: make best guesses? right now these should rarely happen at info and debug level and user can switch to forest if needed
@@ -289,6 +340,7 @@ impl EcsFormatter {
         Ok(())
     }
 
+    /// Parses a [`Span`] into an [`EcsEvent`]. Barely implemented.
     fn parse_span(
         span: &Span,
         duration_root: Option<f64>,
@@ -302,26 +354,6 @@ impl EcsFormatter {
         }
 
         Ok(())
-    }
-}
-
-struct DurationDisplay(f64);
-
-// Taken from chrono
-impl fmt::Display for DurationDisplay {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut t = self.0;
-        for unit in ["ns", "µs", "ms", "s"] {
-            if t < 10.0 {
-                return write!(f, "{:.2}{}", t, unit);
-            } else if t < 100.0 {
-                return write!(f, "{:.1}{}", t, unit);
-            } else if t < 1000.0 {
-                return write!(f, "{:.0}{}", t, unit);
-            }
-            t /= 1000.0;
-        }
-        write!(f, "{:.0}s", t * 1000.0)
     }
 }
 

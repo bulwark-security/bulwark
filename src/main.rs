@@ -27,18 +27,26 @@ use {
     tracing_subscriber::{EnvFilter, Registry},
 };
 
+/// Parses Bulwark's command-line arguments into a usable struct.
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// Log levels: [trace][debug][info][warning|warn][error][critical][off]
+    /// Log levels:
+    /// - `error`
+    /// - `warn`
+    /// - `info`
+    /// - `debug`
+    /// - `trace`
     ///
-    /// Default is [info]
+    /// Default is `info`.
     #[arg(short, long)]
     log_level: Option<String>,
 
-    /// Log formats: [ecs][forest]
+    /// Log formats:
+    /// - `ecs`
+    /// - `forest`
     ///
-    /// Default is [ecs]
+    /// Default is `ecs`.
     #[arg(short, long)]
     log_format: Option<String>,
 
@@ -46,6 +54,7 @@ struct Cli {
     command: Option<Commands>,
 }
 
+/// The subcommands supported by the Bulwark CLI.
 #[derive(Subcommand)]
 enum Commands {
     /// Launch as an Envoy external filter
@@ -148,12 +157,21 @@ async fn probe_handler(
     )
 }
 
+/// An [`EnvFilter`] pattern to limit matched log events to error events.
 const ERROR_FILTER: &str = "error";
+/// An [`EnvFilter`] pattern to limit matched log events to warning events.
 const WARN_FILTER: &str = "warn";
+/// An [`EnvFilter`] pattern to limit matched log events to informational events.
 const INFO_FILTER: &str = "info";
-// The debug filter is more selective due to libraries increasing log verbosity too quickly
+/// An [`EnvFilter`] pattern to limit matched log events to debug events.
+///
+/// The debug filter is more selective due to libraries increasing log verbosity too quickly.
+/// It filters out several libraries that would otherwise have low relevance in debug logs.
+/// The unfiltered behavior can still be accessed by specifying `debug,` with a trailing comma
+/// as the log level argument.
 const DEBUG_FILTER: &str =
     "debug,cranelift_codegen=info,wasmtime_cranelift=info,reqwest=info,hyper=info,h2=info";
+/// An [`EnvFilter`] pattern to limit matched log events to trace events.
 const TRACE_FILTER: &str = "trace";
 
 #[tokio::main]

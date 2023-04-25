@@ -259,6 +259,7 @@ dependencies = [
  "tower-layer",
  "tracing",
  "tracing-appender",
+ "tracing-core",
  "tracing-forest",
  "tracing-futures",
  "tracing-log",
