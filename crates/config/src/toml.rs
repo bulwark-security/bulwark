@@ -1,8 +1,7 @@
 //! The `toml` module provides TOML deserialization and parsing for Bulwark's configuration files.
-//!
-//! It closely mirrors the [`bulwark_config::Config`](crate::Config) hierarchy and can convert to it with the
-//! [`From`] trait. Due to the need for multiple serialization mappings, TOML deserialization is not done
-//! directly in the [`bulwark_config`](crate) module's structs.
+
+// Due to the need for multiple serialization mappings, TOML deserialization is not done
+// directly in the [`bulwark_config`](crate) module's structs.
 
 use {
     crate::ConfigFileError,
@@ -263,7 +262,7 @@ struct Resource {
     timeout: Option<u64>,
 }
 
-/// Loads a TOML config file into a Config structure.
+/// Loads a TOML config file into a [`Config`](crate::Config) structure.
 pub fn load_config<'a, P>(path: &'a P) -> Result<crate::Config, ConfigFileError>
 where
     P: 'a + ?Sized + AsRef<Path>,
