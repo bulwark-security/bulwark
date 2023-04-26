@@ -3,7 +3,7 @@ use std::net::IpAddr;
 use {
     crate::{
         serialize_decision_sfv, serialize_tags_sfv, PluginGroupInstantiationError,
-        PrepareRequestError, PrepareResponseError,
+        PrepareRequestError, PrepareResponseError, ProcessingMessageError, SfvError,
     },
     bulwark_config::{Config, Thresholds},
     bulwark_wasm_host::{
@@ -21,10 +21,7 @@ use {
         },
     },
     forwarded_header_value::ForwardedHeaderValue,
-    futures::{
-        channel::mpsc::{SendError, UnboundedSender},
-        SinkExt, Stream,
-    },
+    futures::{channel::mpsc::UnboundedSender, SinkExt, Stream},
     http::StatusCode,
     matchit::Router,
     std::{
@@ -767,19 +764,21 @@ fn handle_decision_feedback(
 async fn allow_request(
     mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
     decision_components: &DecisionComponents,
-) -> Result<(), SendError> {
+) -> Result<(), ProcessingMessageError> {
     // Send back a response that changes the request header for the HTTP target.
     let mut req_headers_cr = CommonResponse::default();
     add_set_header(
         &mut req_headers_cr,
         "Bulwark-Decision",
-        &serialize_decision_sfv(decision_components.decision),
+        &serialize_decision_sfv(decision_components.decision)
+            .map_err(|err| SfvError::Serialization(err.to_string()))?,
     );
     if !decision_components.tags.is_empty() {
         add_set_header(
             &mut req_headers_cr,
             "Bulwark-Tags",
-            &serialize_tags_sfv(decision_components.tags.clone()),
+            &serialize_tags_sfv(decision_components.tags.clone())
+                .map_err(|err| SfvError::Serialization(err.to_string()))?,
         );
     }
     let req_headers_resp = ProcessingResponse {
@@ -790,14 +789,14 @@ async fn allow_request(
         )),
         ..Default::default()
     };
-    sender.send(Ok(req_headers_resp)).await
+    Ok(sender.send(Ok(req_headers_resp)).await?)
 }
 
 async fn block_request(
     mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
     // TODO: this will be used in the future
     _decision_components: &DecisionComponents,
-) -> Result<(), SendError> {
+) -> Result<(), ProcessingMessageError> {
     // Send back a response indicating the request has been blocked.
     let req_headers_resp = ProcessingResponse {
         response: Some(processing_response::Response::ImmediateResponse(
@@ -813,28 +812,28 @@ async fn block_request(
         )),
         ..Default::default()
     };
-    sender.send(Ok(req_headers_resp)).await
+    Ok(sender.send(Ok(req_headers_resp)).await?)
 }
 
 async fn allow_response(
     mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
     // TODO: this will be used in the future
     _decision_components: &DecisionComponents,
-) -> Result<(), SendError> {
+) -> Result<(), ProcessingMessageError> {
     let resp_headers_resp = ProcessingResponse {
         response: Some(processing_response::Response::RequestHeaders(
             HeadersResponse { response: None },
         )),
         ..Default::default()
     };
-    sender.send(Ok(resp_headers_resp)).await
+    Ok(sender.send(Ok(resp_headers_resp)).await?)
 }
 
 async fn block_response(
     mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
     // TODO: this will be used in the future
     _decision_components: &DecisionComponents,
-) -> Result<(), SendError> {
+) -> Result<(), ProcessingMessageError> {
     // Send back a response indicating the request has been blocked.
     let resp_headers_resp = ProcessingResponse {
         response: Some(processing_response::Response::ImmediateResponse(
@@ -850,7 +849,7 @@ async fn block_response(
         )),
         ..Default::default()
     };
-    sender.send(Ok(resp_headers_resp)).await
+    Ok(sender.send(Ok(resp_headers_resp)).await?)
 }
 
 async fn get_request_headers(stream: &mut Streaming<ProcessingRequest>) -> Option<HttpHeaders> {

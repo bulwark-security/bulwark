@@ -1,5 +1,4 @@
 use bulwark_wasm_host::{ContextInstantiationError, PluginInstantiationError};
-use http::method::InvalidMethod;
 
 /// Returned when trying to instantiate a plugin group and either the request context for a plugin or the plugin
 /// itself returns an instantiation error.
@@ -16,7 +15,7 @@ pub enum PluginGroupInstantiationError {
 #[derive(thiserror::Error, Debug)]
 pub enum PrepareRequestError {
     #[error(transparent)]
-    InvalidMethod(#[from] InvalidMethod),
+    InvalidMethod(#[from] http::method::InvalidMethod),
     #[error(transparent)]
     Http(#[from] http::Error),
     #[error("missing http method pseudo-header")]
@@ -41,4 +40,22 @@ pub enum PrepareResponseError {
     MissingStatus,
     #[error("missing envoy headers")]
     MissingHeaders,
+}
+
+/// Returned when serializing tags or [`Decision`](bulwark_wasm_sdk::Decision) values into [SFV](sfv).
+#[derive(thiserror::Error, Debug)]
+pub enum SfvError {
+    #[error("could not serialize to structured field value: {0}")]
+    Serialization(String),
+}
+
+/// Returned when performing an action that sends a
+/// [`ProcessingRequest`](envoy_control_plane::envoy::service::ext_proc::v3::ProcessingRequest) or a
+/// [`ProcessingResponse`](envoy_control_plane::envoy::service::ext_proc::v3::ProcessingResponse).
+#[derive(thiserror::Error, Debug)]
+pub enum ProcessingMessageError {
+    #[error(transparent)]
+    Send(#[from] futures::channel::mpsc::SendError),
+    #[error(transparent)]
+    Sfv(#[from] SfvError),
 }

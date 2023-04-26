@@ -5,7 +5,10 @@ use sfv::{BareItem, Decimal, Dictionary, FromPrimitive, Item, List, ListEntry, S
 // TODO: capture the entire outcome: accepted/suspicious/restricted + threshold values
 // TODO: should this error for invalid Decision values?
 
-pub(crate) fn serialize_decision_sfv(decision: Decision) -> String {
+/// Serialize a combined [`Decision`] into a [SFV](sfv) header value to be sent with the request to the interior service.
+pub(crate) fn serialize_decision_sfv(
+    decision: Decision,
+) -> std::result::Result<String, &'static str> {
     let accept_value = Item::new(BareItem::Decimal(
         Decimal::from_f64(decision.accept()).unwrap(),
     ));
@@ -21,17 +24,17 @@ pub(crate) fn serialize_decision_sfv(decision: Decision) -> String {
     dict.insert("restrict".into(), restrict_value.into());
     dict.insert("unknown".into(), unknown_value.into());
 
-    dict.serialize_value().unwrap()
+    dict.serialize_value()
 }
 
 // TODO: return a Result because error handling is necessary here
 
-pub(crate) fn serialize_tags_sfv(tags: Vec<String>) -> String {
+pub(crate) fn serialize_tags_sfv(tags: Vec<String>) -> std::result::Result<String, &'static str> {
     let list: List = tags
         .iter()
         .map(|tag| ListEntry::from(Item::new(BareItem::Token(tag.to_string()))))
         .collect::<Vec<ListEntry>>();
-    list.serialize_value().unwrap()
+    list.serialize_value()
 }
 
 #[cfg(test)]
@@ -42,19 +45,19 @@ mod tests {
     #[test]
     fn test_serialize_decision_sfv() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(
-            serialize_decision_sfv(Decision::new(0.0, 0.0, 1.0)),
+            serialize_decision_sfv(Decision::new(0.0, 0.0, 1.0))?,
             "accept=0.0, restrict=0.0, unknown=1.0"
         );
         assert_eq!(
-            serialize_decision_sfv(Decision::new(0.0, 1.0, 0.0)),
+            serialize_decision_sfv(Decision::new(0.0, 1.0, 0.0))?,
             "accept=0.0, restrict=1.0, unknown=0.0"
         );
         assert_eq!(
-            serialize_decision_sfv(Decision::new(1.0, 0.0, 0.0)),
+            serialize_decision_sfv(Decision::new(1.0, 0.0, 0.0))?,
             "accept=1.0, restrict=0.0, unknown=0.0"
         );
         assert_eq!(
-            serialize_decision_sfv(Decision::new(0.333, 0.333, 0.333)),
+            serialize_decision_sfv(Decision::new(0.333, 0.333, 0.333))?,
             "accept=0.333, restrict=0.333, unknown=0.333"
         );
 
@@ -68,13 +71,13 @@ mod tests {
         //     serialize_tags_sfv(vec![]),
         //     "accept=0.0, restrict=0.0, unknown=1.0"
         // );
-        assert_eq!(serialize_tags_sfv(vec!["hello".to_string()]), "hello");
+        assert_eq!(serialize_tags_sfv(vec!["hello".to_string()])?, "hello");
         assert_eq!(
-            serialize_tags_sfv(vec!["a".to_string(), "b".to_string(), "c".to_string()]),
+            serialize_tags_sfv(vec!["a".to_string(), "b".to_string(), "c".to_string()])?,
             "a, b, c"
         );
         assert_eq!(
-            serialize_tags_sfv(vec!["first-item".to_string(), "second-item".to_string()]),
+            serialize_tags_sfv(vec!["first-item".to_string(), "second-item".to_string()])?,
             "first-item, second-item"
         );
         // TODO: handling for disallowed characters
