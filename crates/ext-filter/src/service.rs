@@ -2,8 +2,8 @@ use std::net::IpAddr;
 
 use {
     crate::{
-        serialize_decision_sfv, serialize_tags_sfv, FilterProcessingError,
-        MultiPluginInstantiationError,
+        serialize_decision_sfv, serialize_tags_sfv, PluginGroupInstantiationError,
+        PrepareRequestError, PrepareResponseError,
     },
     bulwark_config::{Config, Thresholds},
     bulwark_wasm_host::{
@@ -208,7 +208,7 @@ fn instantiate_plugins(
     redis_info: Option<Arc<RedisInfo>>,
     http_req: Arc<bulwark_wasm_sdk::Request>,
     params: matchit::Params,
-) -> Result<Vec<Arc<Mutex<PluginInstance>>>, MultiPluginInstantiationError> {
+) -> Result<Vec<Arc<Mutex<PluginInstance>>>, PluginGroupInstantiationError> {
     let mut plugin_instances = Vec::with_capacity(plugins.len());
     let mut shared_params = bulwark_wasm_sdk::Map::new();
     for (key, value) in params.iter() {
@@ -506,24 +506,21 @@ fn execute_on_decision_feedback(
 async fn prepare_request(
     stream: &mut Streaming<ProcessingRequest>,
     proxy_hops: usize,
-) -> Result<bulwark_wasm_sdk::Request, FilterProcessingError> {
-    // TODO: determine client IP address, pass it through as an extension
+) -> Result<bulwark_wasm_sdk::Request, PrepareRequestError> {
     if let Some(header_msg) = get_request_headers(stream).await {
         // TODO: currently this information isn't used and isn't accessible to the plugin environment yet
         // TODO: does this go into a request extension?
-        let _authority = get_header_value(&header_msg.headers, ":authority").ok_or_else(|| {
-            FilterProcessingError::Error(anyhow::anyhow!("Missing HTTP authority"))
-        })?;
+        let _authority = get_header_value(&header_msg.headers, ":authority")
+            .ok_or(PrepareRequestError::MissingAuthority)?;
         let _scheme = get_header_value(&header_msg.headers, ":scheme")
-            .ok_or_else(|| FilterProcessingError::Error(anyhow::anyhow!("Missing HTTP scheme")))?;
+            .ok_or(PrepareRequestError::MissingScheme)?;
 
-        let method =
-            http::Method::from_str(get_header_value(&header_msg.headers, ":method").ok_or_else(
-                || FilterProcessingError::Error(anyhow::anyhow!("Missing HTTP method")),
-            )?)?;
-        let request_uri = get_header_value(&header_msg.headers, ":path").ok_or_else(|| {
-            FilterProcessingError::Error(anyhow::anyhow!("Missing HTTP request URI"))
-        })?;
+        let method = http::Method::from_str(
+            get_header_value(&header_msg.headers, ":method")
+                .ok_or(PrepareRequestError::MissingMethod)?,
+        )?;
+        let request_uri = get_header_value(&header_msg.headers, ":path")
+            .ok_or(PrepareRequestError::MissingPath)?;
         let mut request = http::Request::builder();
         // TODO: read the request body
         let request_chunk = bulwark_wasm_sdk::BodyChunk {
@@ -545,7 +542,7 @@ async fn prepare_request(
             None => {}
         }
 
-        // TODO: remote IP should probably be received via an external attribute, but that's not currently supported by envoy
+        // TODO: remote IP should probably be received via an external attribute, but that doesn't seem to be currently supported by envoy?
         // NOTE: header keys must be sent in lower case
         if let Some(forwarded) = get_header_value(&header_msg.headers, "forwarded") {
             if let Some(ip_addr) = parse_forwarded_ip(forwarded, proxy_hops) {
@@ -557,22 +554,17 @@ async fn prepare_request(
             }
         }
 
-        return Ok(request.body(request_chunk).unwrap());
+        return Ok(request.body(request_chunk)?);
     }
-    // TODO: what exactly should happen here?
-    Err(FilterProcessingError::Error(anyhow::anyhow!(
-        "Nothing useful happened"
-    )))
+    Err(PrepareRequestError::MissingHeaders)
 }
 
 async fn prepare_response(
     stream: &mut Streaming<ProcessingRequest>,
-) -> Result<bulwark_wasm_sdk::Response, FilterProcessingError> {
-    // TODO: determine client IP address, pass it through as an extension
+) -> Result<bulwark_wasm_sdk::Response, PrepareResponseError> {
     if let Some(header_msg) = get_response_headers(stream).await {
-        // TODO: make this an int? status builder function might not care though?
         let status = get_header_value(&header_msg.headers, ":status")
-            .ok_or_else(|| FilterProcessingError::Error(anyhow::anyhow!("Missing HTTP status")))?;
+            .ok_or(PrepareResponseError::MissingStatus)?;
 
         let mut response = http::Response::builder();
         // TODO: read the response body
@@ -594,12 +586,9 @@ async fn prepare_response(
             }
             None => {}
         }
-        return Ok(response.body(response_chunk).unwrap());
+        return Ok(response.body(response_chunk)?);
     }
-    // TODO: what exactly should happen here?
-    Err(FilterProcessingError::Error(anyhow::anyhow!(
-        "Nothing useful happened"
-    )))
+    Err(PrepareResponseError::MissingHeaders)
 }
 
 async fn handle_request_phase_decision(
