@@ -52,7 +52,7 @@ struct RouteTarget {
     timeout: Option<u64>,
 }
 
-/// The `BulwarkProcessor` struct implements the primary envoy processing service logic via the [`ExternalProcessor`] trait.
+/// The `BulwarkProcessor` implements the primary envoy processing service logic via the [`ExternalProcessor`] trait.
 ///
 /// The [`process`](BulwarkProcessor::process) function is the main request handler.
 #[derive(Clone)]

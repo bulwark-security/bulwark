@@ -27,8 +27,7 @@ pub(crate) fn serialize_decision_sfv(
     dict.serialize_value()
 }
 
-// TODO: return a Result because error handling is necessary here
-
+/// Serialize a tag [`Vec`] into a [SFV](sfv) header value to be sent with the request to the interior service.
 pub(crate) fn serialize_tags_sfv(tags: Vec<String>) -> std::result::Result<String, &'static str> {
     let list: List = tags
         .iter()

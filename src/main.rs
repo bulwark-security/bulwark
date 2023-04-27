@@ -276,7 +276,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         health_state.ready = true;
                     }
                     Server::builder()
-                        .add_service(ext_filter.clone()) // ExternalProcessorServer is clonable but BulwarkProcessor is not
+                        .add_service(ext_filter)
                         .serve(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port)) // TODO: make socket addr configurable?
                         .await
                         .map_err(ServiceError::ExtFilterService)
