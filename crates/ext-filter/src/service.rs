@@ -55,7 +55,6 @@ struct RouteTarget {
 /// The `BulwarkProcessor` implements the primary envoy processing service logic via the [`ExternalProcessor`] trait.
 ///
 /// The [`process`](BulwarkProcessor::process) function is the main request handler.
-#[derive(Clone)]
 pub struct BulwarkProcessor {
     // TODO: may need to have a plugin registry at some point
     router: Arc<RwLock<Router<RouteTarget>>>,
