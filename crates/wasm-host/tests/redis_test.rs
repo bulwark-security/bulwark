@@ -35591,7 +35591,7 @@ fn test_rate_limit_logic() -> Result<(), Box<dyn std::error::Error>> {
         RequestContext::new(plugin.clone(), redis_info.clone(), params, request.clone())?;
     let mut plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
     plugin_instance.start()?;
-    let mut decision_components = plugin_instance.get_decision();
+    let mut decision_components = plugin_instance.decision();
     assert_eq!(decision_components.decision.accept, 0.0);
     assert_eq!(decision_components.decision.restrict, 0.0);
     assert_eq!(decision_components.decision.unknown, 1.0);
@@ -35603,7 +35603,7 @@ fn test_rate_limit_logic() -> Result<(), Box<dyn std::error::Error>> {
             RequestContext::new(plugin.clone(), redis_info.clone(), params, request.clone())?;
         let mut plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
         plugin_instance.start()?;
-        decision_components = plugin_instance.get_decision();
+        decision_components = plugin_instance.decision();
     }
     assert_eq!(decision_components.decision.accept, 0.0);
     assert_eq!(decision_components.decision.restrict, 1.0);

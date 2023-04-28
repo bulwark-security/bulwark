@@ -461,7 +461,7 @@ impl BulwarkProcessor {
                 // Make sure the plugin instance knows about the response
                 let mut plugin_instance = plugin_instance.lock().unwrap();
                 let response = response.clone();
-                plugin_instance.set_response(response);
+                plugin_instance.record_response(response);
             }
             let decision_components = decision_components.clone();
             response_phase_tasks.spawn(
@@ -566,7 +566,7 @@ impl BulwarkProcessor {
                 _ => Err(e)?,
             }
         }
-        Ok(plugin_instance.get_decision())
+        Ok(plugin_instance.decision())
     }
 
     fn execute_on_response_decision(
@@ -582,7 +582,7 @@ impl BulwarkProcessor {
                 _ => Err(e)?,
             }
         }
-        Ok(plugin_instance.get_decision())
+        Ok(plugin_instance.decision())
     }
 
     fn execute_on_decision_feedback(
@@ -764,7 +764,7 @@ impl BulwarkProcessor {
             {
                 // Make sure the plugin instance knows about the final combined decision
                 let mut plugin_instance = plugin_instance.lock().unwrap();
-                plugin_instance.set_combined_decision(&decision_components, outcome);
+                plugin_instance.record_combined_decision(&decision_components, outcome);
             }
             tokio::spawn(
                 timeout(timeout_duration, async move {
