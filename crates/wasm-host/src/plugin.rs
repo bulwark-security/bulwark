@@ -6,7 +6,7 @@ use {
         ContextInstantiationError, PluginExecutionError, PluginInstantiationError, PluginLoadError,
     },
     bulwark_host::{DecisionInterface, HeaderInterface, OutcomeInterface},
-    bulwark_wasm_sdk::{Decision, MassFunction, Outcome},
+    bulwark_wasm_sdk::{Decision, Outcome},
     chrono::Utc,
     redis::Commands,
     std::{
@@ -106,16 +106,20 @@ impl From<IpAddr> for bulwark_host::IpInterface {
 
 impl From<DecisionInterface> for Decision {
     fn from(decision: DecisionInterface) -> Self {
-        Decision::new(decision.accept, decision.restrict, decision.unknown)
+        Decision {
+            accept: decision.accept,
+            restrict: decision.restrict,
+            unknown: decision.unknown,
+        }
     }
 }
 
 impl From<Decision> for DecisionInterface {
     fn from(decision: Decision) -> Self {
         DecisionInterface {
-            accept: decision.accept(),
-            restrict: decision.restrict(),
-            unknown: decision.unknown(),
+            accept: decision.accept,
+            restrict: decision.restrict,
+            unknown: decision.unknown,
         }
     }
 }

@@ -1,5 +1,4 @@
 use bulwark_wasm_sdk::Decision;
-use bulwark_wasm_sdk::MassFunction;
 use sfv::{BareItem, Decimal, Dictionary, FromPrimitive, Item, List, ListEntry, SerializeValue};
 
 // TODO: capture the entire outcome: accepted/suspicious/restricted + threshold values
@@ -10,13 +9,13 @@ pub(crate) fn serialize_decision_sfv(
     decision: Decision,
 ) -> std::result::Result<String, &'static str> {
     let accept_value = Item::new(BareItem::Decimal(
-        Decimal::from_f64(decision.accept()).unwrap(),
+        Decimal::from_f64(decision.accept).unwrap(),
     ));
     let restrict_value = Item::new(BareItem::Decimal(
-        Decimal::from_f64(decision.restrict()).unwrap(),
+        Decimal::from_f64(decision.restrict).unwrap(),
     ));
     let unknown_value = Item::new(BareItem::Decimal(
-        Decimal::from_f64(decision.unknown()).unwrap(),
+        Decimal::from_f64(decision.unknown).unwrap(),
     ));
 
     let mut dict = Dictionary::new();
@@ -44,19 +43,35 @@ mod tests {
     #[test]
     fn test_serialize_decision_sfv() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(
-            serialize_decision_sfv(Decision::new(0.0, 0.0, 1.0))?,
+            serialize_decision_sfv(Decision {
+                accept: 0.0,
+                restrict: 0.0,
+                unknown: 1.0
+            })?,
             "accept=0.0, restrict=0.0, unknown=1.0"
         );
         assert_eq!(
-            serialize_decision_sfv(Decision::new(0.0, 1.0, 0.0))?,
+            serialize_decision_sfv(Decision {
+                accept: 0.0,
+                restrict: 1.0,
+                unknown: 0.0
+            })?,
             "accept=0.0, restrict=1.0, unknown=0.0"
         );
         assert_eq!(
-            serialize_decision_sfv(Decision::new(1.0, 0.0, 0.0))?,
+            serialize_decision_sfv(Decision {
+                accept: 1.0,
+                restrict: 0.0,
+                unknown: 0.0
+            })?,
             "accept=1.0, restrict=0.0, unknown=0.0"
         );
         assert_eq!(
-            serialize_decision_sfv(Decision::new(0.333, 0.333, 0.333))?,
+            serialize_decision_sfv(Decision {
+                accept: 0.333,
+                restrict: 0.333,
+                unknown: 0.333
+            })?,
             "accept=0.333, restrict=0.333, unknown=0.333"
         );
 

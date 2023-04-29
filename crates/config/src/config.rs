@@ -119,7 +119,7 @@ pub struct Plugin {
     pub path: String,
     /// A weight to multiply this plugin's decision values by.
     ///
-    /// A 1.0 value has no effect on the decision. See [`bulwark_wasm_sdk::MassFunction::weight`].
+    /// A 1.0 value has no effect on the decision. See [`bulwark_decision::Decision::weight`].
     pub weight: f64,
     // TODO: this might be better represented as a valuable::Mappable / valuable::Value
     /// JSON-serializable configuration passed into the plugin environment.

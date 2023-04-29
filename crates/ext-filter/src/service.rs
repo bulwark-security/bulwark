@@ -10,7 +10,7 @@ use {
         DecisionComponents, ForwardedIP, Plugin, PluginExecutionError, PluginInstance,
         PluginLoadError, RedisInfo, RequestContext, ScriptRegistry,
     },
-    bulwark_wasm_sdk::{BodyChunk, Decision, MassFunction},
+    bulwark_wasm_sdk::{BodyChunk, Decision},
     envoy_control_plane::envoy::{
         config::core::v3::{HeaderMap, HeaderValue, HeaderValueOption},
         r#type::v3::HttpStatus,
@@ -398,10 +398,10 @@ impl BulwarkProcessor {
                         info!(
                             message = "plugin decision",
                             name = plugin_instance.plugin_reference(),
-                            accept = decision.accept(),
-                            restrict = decision.restrict(),
-                            unknown = decision.unknown(),
-                            score = decision.pignistic().restrict(),
+                            accept = decision.accept,
+                            restrict = decision.restrict,
+                            unknown = decision.unknown,
+                            score = decision.pignistic().restrict,
                         );
                     }
                     let mut decision_components = decision_components.lock().unwrap();
@@ -440,7 +440,7 @@ impl BulwarkProcessor {
                 .flat_map(|dc| dc.tags.clone())
                 .collect();
         }
-        let decision = Decision::combine(&decision_vec);
+        let decision = Decision::combine_murphy(&decision_vec);
 
         DecisionComponents {
             decision,
@@ -479,10 +479,10 @@ impl BulwarkProcessor {
                         info!(
                             message = "plugin decision",
                             name = plugin_instance.plugin_reference(),
-                            accept = decision.accept(),
-                            restrict = decision.restrict(),
-                            unknown = decision.unknown(),
-                            score = decision.pignistic().restrict(),
+                            accept = decision.accept,
+                            restrict = decision.restrict,
+                            unknown = decision.unknown,
+                            score = decision.pignistic().restrict,
                         );
                     }
                     let mut decision_components = decision_components.lock().unwrap();
@@ -521,7 +521,7 @@ impl BulwarkProcessor {
                 .flat_map(|dc| dc.tags.clone())
                 .collect();
         }
-        let decision = Decision::combine(&decision_vec);
+        let decision = Decision::combine_murphy(&decision_vec);
 
         DecisionComponents {
             decision,
@@ -616,10 +616,10 @@ impl BulwarkProcessor {
 
         info!(
             message = "combine decision",
-            accept = decision.accept(),
-            restrict = decision.restrict(),
-            unknown = decision.unknown(),
-            score = decision.pignistic().restrict(),
+            accept = decision.accept,
+            restrict = decision.restrict,
+            unknown = decision.unknown,
+            score = decision.pignistic().restrict,
             outcome = match outcome {
                 bulwark_wasm_sdk::Outcome::Trusted => "trusted",
                 bulwark_wasm_sdk::Outcome::Accepted => "accepted",
@@ -703,10 +703,10 @@ impl BulwarkProcessor {
 
         info!(
             message = "combine decision",
-            accept = decision.accept(),
-            restrict = decision.restrict(),
-            unknown = decision.unknown(),
-            score = decision.pignistic().restrict(),
+            accept = decision.accept,
+            restrict = decision.restrict,
+            unknown = decision.unknown,
+            score = decision.pignistic().restrict,
             outcome = match outcome {
                 bulwark_wasm_sdk::Outcome::Trusted => "trusted",
                 bulwark_wasm_sdk::Outcome::Accepted => "accepted",

@@ -51,4 +51,5 @@ members = [
     "crates/ext-filter",
     "crates/wasm-host",
     "crates/wasm-sdk",
+    "crates/decision",
 ]
