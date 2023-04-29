@@ -714,7 +714,104 @@ impl bulwark_host::BulwarkHost for RequestContext {
         self.client_ip
     }
 
+    /// Begins an outbound request. Returns a request ID used by `add_request_header` and `set_request_body`.
+    ///
+    /// # Arguments
+    ///
+    /// * `method` - The HTTP method
+    /// * `uri` - The absolute URI of the resource to request
+    fn prepare_request(&mut self, method: &str, uri: &str) -> u64 {
+        let allowed_http_domains = self
+            .permissions
+            .http
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<String>>();
+        let parsed_uri = Url::parse(uri).unwrap();
+        let requested_domain = parsed_uri.domain().unwrap();
+        if !allowed_http_domains.contains(&requested_domain.to_string()) {
+            panic!("access to http resource denied");
+        }
+        let mut outbound_requests = self.outbound_http.lock().unwrap();
+        let method = match method.to_ascii_uppercase().as_str() {
+            "GET" => reqwest::Method::GET,
+            "HEAD" => reqwest::Method::HEAD,
+            "POST" => reqwest::Method::POST,
+            "PUT" => reqwest::Method::PUT,
+            "PATCH" => reqwest::Method::PATCH,
+            "DELETE" => reqwest::Method::DELETE,
+            "OPTIONS" => reqwest::Method::OPTIONS,
+            "TRACE" => reqwest::Method::TRACE,
+            _ => panic!("unsupported http method"),
+        };
+        let builder = self.http_client.request(method, uri);
+        let index: u64 = outbound_requests.len().try_into().unwrap();
+        outbound_requests.insert(index, builder);
+        (outbound_requests.len() - 1).try_into().unwrap()
+    }
+
+    /// Adds a request header to an outbound HTTP request.
+    ///
+    /// # Arguments
+    ///
+    /// * `request_id` - The request ID received from `prepare_request`.
+    /// * `name` - The header name.
+    /// * `value` - The header value bytes.
+    fn add_request_header(&mut self, request_id: u64, name: &str, value: &[u8]) {
+        let mut outbound_requests = self.outbound_http.lock().unwrap();
+        // remove/insert to avoid move issues
+        let mut builder = outbound_requests.remove(&request_id).unwrap();
+        builder = builder.header(name, value);
+        outbound_requests.insert(request_id, builder);
+    }
+
+    /// Sets the request body, if any. Returns the response.
+    ///
+    /// This function is still required even if the request does not have a body. An empty body is acceptable.
+    ///
+    /// # Arguments
+    ///
+    /// * `request_id` - The request ID received from `prepare_request`.
+    /// * `body` - The request body in bytes or an empty slice for no body.
+    fn set_request_body(
+        &mut self,
+        request_id: u64,
+        body: &[u8],
+    ) -> bulwark_host::ResponseInterface {
+        // TODO: handle basic error scenarios like timeouts
+        let mut outbound_requests = self.outbound_http.lock().unwrap();
+        // remove/insert to avoid move issues
+        let builder = outbound_requests.remove(&request_id).unwrap();
+        let builder = builder.body(body.to_vec());
+
+        let response = builder.send().unwrap();
+        let status: u32 = response.status().as_u16().try_into().unwrap();
+        // need to read headers before body because retrieving body bytes will move the response
+        let headers: Vec<HeaderInterface> = response
+            .headers()
+            .iter()
+            .map(|(name, value)| HeaderInterface {
+                name: name.to_string(),
+                value: value.as_bytes().to_vec(),
+            })
+            .collect();
+        let body = response.bytes().unwrap().to_vec();
+        let content_length: u64 = body.len().try_into().unwrap();
+        bulwark_host::ResponseInterface {
+            status,
+            headers,
+            chunk: body,
+            chunk_start: 0,
+            chunk_length: content_length,
+            end_of_stream: true,
+        }
+    }
+
     /// Records the decision value the plugin wants to return.
+    ///
+    /// # Arguments
+    ///
+    /// * `decision` - The [`Decision`] output of the plugin.
     fn set_decision(&mut self, decision: bulwark_host::DecisionInterface) {
         self.accept = decision.accept;
         self.restrict = decision.restrict;
@@ -723,6 +820,10 @@ impl bulwark_host::BulwarkHost for RequestContext {
     }
 
     /// Records the tags the plugin wants to associate with its decision.
+    ///
+    /// # Arguments
+    ///
+    /// * `tags` - The list of tags to associate with a [`Decision`].
     fn set_tags(&mut self, tags: Vec<&str>) {
         self.tags = tags
             .iter()
@@ -888,99 +989,6 @@ impl bulwark_host::BulwarkHost for RequestContext {
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
         conn.expire(key, ttl.try_into().unwrap()).unwrap()
-    }
-
-    /// Begins an outbound request. Returns a request ID used by `add_request_header` and `set_request_body`.
-    ///
-    /// # Arguments
-    ///
-    /// * `method` - The HTTP method
-    /// * `uri` - The absolute URI of the resource to request
-    fn prepare_request(&mut self, method: &str, uri: &str) -> u64 {
-        let allowed_http_domains = self
-            .permissions
-            .http
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<String>>();
-        let parsed_uri = Url::parse(uri).unwrap();
-        let requested_domain = parsed_uri.domain().unwrap();
-        if !allowed_http_domains.contains(&requested_domain.to_string()) {
-            panic!("access to http resource denied");
-        }
-        let mut outbound_requests = self.outbound_http.lock().unwrap();
-        let method = match method.to_ascii_uppercase().as_str() {
-            "GET" => reqwest::Method::GET,
-            "HEAD" => reqwest::Method::HEAD,
-            "POST" => reqwest::Method::POST,
-            "PUT" => reqwest::Method::PUT,
-            "PATCH" => reqwest::Method::PATCH,
-            "DELETE" => reqwest::Method::DELETE,
-            "OPTIONS" => reqwest::Method::OPTIONS,
-            "TRACE" => reqwest::Method::TRACE,
-            _ => panic!("unsupported http method"),
-        };
-        let builder = self.http_client.request(method, uri);
-        let index: u64 = outbound_requests.len().try_into().unwrap();
-        outbound_requests.insert(index, builder);
-        (outbound_requests.len() - 1).try_into().unwrap()
-    }
-
-    /// Adds a request header to an outbound HTTP request.
-    ///
-    /// # Arguments
-    ///
-    /// * `request_id` - The request ID received from `prepare_request`.
-    /// * `name` - The header name.
-    /// * `value` - The header value bytes.
-    fn add_request_header(&mut self, request_id: u64, name: &str, value: &[u8]) {
-        let mut outbound_requests = self.outbound_http.lock().unwrap();
-        // remove/insert to avoid move issues
-        let mut builder = outbound_requests.remove(&request_id).unwrap();
-        builder = builder.header(name, value);
-        outbound_requests.insert(request_id, builder);
-    }
-
-    /// Sets the request body, if any. Returns the response.
-    ///
-    /// This function is still required even if the request does not have a body. An empty body is acceptable.
-    ///
-    /// # Arguments
-    ///
-    /// * `request_id` - The request ID received from `prepare_request`.
-    /// * `body` - The request body in bytes or an empty slice for no body.
-    fn set_request_body(
-        &mut self,
-        request_id: u64,
-        body: &[u8],
-    ) -> bulwark_host::ResponseInterface {
-        // TODO: handle basic error scenarios like timeouts
-        let mut outbound_requests = self.outbound_http.lock().unwrap();
-        // remove/insert to avoid move issues
-        let builder = outbound_requests.remove(&request_id).unwrap();
-        let builder = builder.body(body.to_vec());
-
-        let response = builder.send().unwrap();
-        let status: u32 = response.status().as_u16().try_into().unwrap();
-        // need to read headers before body because retrieving body bytes will move the response
-        let headers: Vec<HeaderInterface> = response
-            .headers()
-            .iter()
-            .map(|(name, value)| HeaderInterface {
-                name: name.to_string(),
-                value: value.as_bytes().to_vec(),
-            })
-            .collect();
-        let body = response.bytes().unwrap().to_vec();
-        let content_length: u64 = body.len().try_into().unwrap();
-        bulwark_host::ResponseInterface {
-            status,
-            headers,
-            chunk: body,
-            chunk_start: 0,
-            chunk_length: content_length,
-            end_of_stream: true,
-        }
     }
 
     /// Increments a rate limit, returning the number of attempts so far and the expiration time.

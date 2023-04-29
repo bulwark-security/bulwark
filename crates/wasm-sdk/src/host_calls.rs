@@ -1,5 +1,4 @@
 // TODO: the host/guest wit files seem to be why the latest version switched to one generate macro?
-
 // TODO: switch to wasmtime::component::bindgen!
 wit_bindgen_rust::import!("../../bulwark-host.wit");
 
@@ -11,23 +10,49 @@ use {
     validator::{Validate, ValidationErrors},
 };
 
-pub use crate::{Decision, Outcome};
-pub use bulwark_host::check_rate_limit;
-pub use bulwark_host::get_combined_tags;
-pub use bulwark_host::get_remote_state;
-pub use bulwark_host::increment_rate_limit;
-pub use bulwark_host::increment_remote_state;
-pub use bulwark_host::increment_remote_state_by;
-pub use bulwark_host::set_remote_state;
-pub use bulwark_host::set_remote_ttl;
-pub use bulwark_host::set_tags; // TODO: use BTreeSet for merging sorted tag lists
-pub use http::{Extensions, Method, Uri, Version};
-
 use self::bulwark_host::DecisionInterface;
 
+pub use crate::{Decision, Outcome};
+pub use http::{Extensions, Method, StatusCode, Uri, Version};
+pub use serde_json::{Map, Value};
+
+/// An HTTP request combines a head consisting of a [`Method`], [`Uri`], and headers with a [`BodyChunk`], which provides
+/// access to the first chunk of a request body.
 pub type Request = http::Request<BodyChunk>;
+/// An HTTP response combines a head consisting of a [`StatusCode`] and headers with a [`BodyChunk`], which provides
+/// access to the first chunk of a response body.
 pub type Response = http::Response<BodyChunk>;
 
+// NOTE: fields are documented via Markdown instead of normal rustdoc because the underlying type is from the macro.
+/// A `Breaker` contains the values needed to implement a circuit-breaker pattern within a plugin.
+///
+/// # Fields
+///
+/// * `generation` - The number of times a breaker has been incremented within the expiration window.
+/// * `successes` - The number of total success outcomes tracked within the expiration window.
+/// * `failures` - The number of total failure outcomes tracked within the expiration window.
+/// * `consecutive_successes` - The number of consecutive success outcomes.
+/// * `consecutive_failures` - The number of consecutive failure outcomes.
+/// * `expiration` - The expiration timestamp in seconds since the epoch.
+pub type Breaker = bulwark_host::BreakerInterface;
+/// A `Rate` contains the values needed to implement a rate-limiter pattern within a plugin.
+///
+/// # Fields
+///
+/// * `attempts` - The number of attempts made within the expiration window.
+/// * `expiration` - The expiration timestamp in seconds since the epoch.
+pub type Rate = bulwark_host::RateInterface;
+
+/// The first chunk of an HTTP body.
+///
+/// Bulwark does not send the entire body to the guest plugin environment. This limitation limits the impact of
+/// copying a large number of bytes from the host into guest VMs. A full body copy would be required for each
+/// plugin for every request or response otherwise.
+///
+/// This has consequences for any plugin that wants to parse the body it receives. Some data formats like JSON
+/// may be significantly more difficult to work with if only partially received, and streaming parsers which may be
+/// more tolerant to trunctation are recommended in such cases. There will be some situations where this limitation
+/// prevents useful parsing entirely and plugins may need to make use of the `unknown` result value to express this.
 pub struct BodyChunk {
     pub end_of_stream: bool,
     pub size: u64,
@@ -36,6 +61,7 @@ pub struct BodyChunk {
     pub content: Vec<u8>,
 }
 
+/// An empty HTTP body
 pub const NO_BODY: BodyChunk = BodyChunk {
     end_of_stream: true,
     size: 0,
@@ -95,16 +121,26 @@ impl From<bulwark_host::OutcomeInterface> for Outcome {
     }
 }
 
+// NOTE: `pub use` pattern would be better than inlined functions, but apparently that can't be rustdoc'd?
+
 // TODO: might need either get_remote_addr or an extension on the request for non-forwarded IP address
 
-pub use serde_json::{Map, Value};
-
-pub fn get_config() -> serde_json::Value {
+/// Returns the guest environment's configuration value as a JSON [`Value`].
+///
+/// By convention this will return a [`Value::Object`].
+pub fn get_config() -> Value {
     let raw_config = bulwark_host::get_config();
     serde_json::from_slice(&raw_config).unwrap()
 }
 
-pub fn get_config_value(key: &str) -> Option<serde_json::Value> {
+/// Returns a named guest environment configuration value as a JSON [`Value`].
+///
+/// A shortcut for calling [`get_config`], reading it as an `Object`, and then retrieving a named [`Value`] from it.
+///
+/// # Arguments
+///
+/// * `key` - A key indexing into a configuration [`Map`]
+pub fn get_config_value(key: &str) -> Option<Value> {
     // TODO: this should return a result
     let raw_config = bulwark_host::get_config();
     let object: serde_json::Value = serde_json::from_slice(&raw_config).unwrap();
@@ -114,29 +150,57 @@ pub fn get_config_value(key: &str) -> Option<serde_json::Value> {
     }
 }
 
-pub fn get_param_value(key: &str) -> serde_json::Value {
+/// Returns a named value from the request context's params.
+///
+/// # Arguments
+///
+/// * `key` - The key name corresponding to the param value.
+pub fn get_param_value(key: &str) -> Value {
     // TODO: this should return a result
     let raw_value = bulwark_host::get_param_value(key);
     let value: serde_json::Value = serde_json::from_slice(&raw_value).unwrap();
     value
 }
 
-pub fn set_param_value(key: &str, value: serde_json::Value) {
+/// Set a named value in the request context's params.
+///
+/// # Arguments
+///
+/// * `key` - The key name corresponding to the param value.
+/// * `value` - The value to record. Values are serialized JSON.
+pub fn set_param_value(key: &str, value: Value) {
     // TODO: this should return a result
     let json = serde_json::to_vec(&value).unwrap();
     bulwark_host::set_param_value(key, &json);
 }
 
+/// Returns a named environment variable value as a [`String`].
+///
+/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+/// the environment variable being requested. This function will panic if permission has not been granted.
+///
+/// # Arguments
+///
+/// * `key` - The environment variable name. Case-sensitive.
 pub fn get_env(key: &str) -> String {
     // TODO: this should return a result
     String::from_utf8(bulwark_host::get_env_bytes(key)).unwrap()
 }
 
+/// Returns a named environment variable value as bytes.
+///
+/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+/// the environment variable being requested. This function will panic if permission has not been granted.
+///
+/// # Arguments
+///
+/// * `key` - The environment variable name. Case-sensitive.
 pub fn get_env_bytes(key: &str) -> Vec<u8> {
     // TODO: this should return a result
     bulwark_host::get_env_bytes(key)
 }
 
+/// Returns the incoming request.
 pub fn get_request() -> Request {
     let raw_request: bulwark_host::RequestInterface = bulwark_host::get_request();
     let chunk: Vec<u8> = raw_request.chunk;
@@ -159,6 +223,7 @@ pub fn get_request() -> Request {
         .unwrap()
 }
 
+/// Returns the response received from the interior service.
 pub fn get_response() -> Response {
     let raw_response: bulwark_host::ResponseInterface = bulwark_host::get_response();
     let chunk: Vec<u8> = raw_response.chunk;
@@ -178,10 +243,19 @@ pub fn get_response() -> Response {
         .unwrap()
 }
 
+/// Returns the originating client's IP address, if available.
 pub fn get_client_ip() -> Option<IpAddr> {
     bulwark_host::get_client_ip().map(|ip| ip.into())
 }
 
+/// Sends an outbound HTTP request.
+///
+/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+/// the host being requested. This function will panic if permission has not been granted.
+///
+/// # Arguments
+///
+/// * `request` - The HTTP request to send.
 pub fn send_request(request: Request) -> Response {
     let request_id = bulwark_host::prepare_request(
         request.method().as_str(),
@@ -202,6 +276,11 @@ pub fn send_request(request: Request) -> Response {
     Response::from(response)
 }
 
+/// Records the decision value the plugin wants to return.
+///
+/// # Arguments
+///
+/// * `decision` - The [`Decision`] output of the plugin.
 pub fn set_decision(decision: Decision) -> Result<(), ValidationErrors> {
     decision.validate()?;
     bulwark_host::set_decision(DecisionInterface {
@@ -212,12 +291,182 @@ pub fn set_decision(decision: Decision) -> Result<(), ValidationErrors> {
     Ok(())
 }
 
+/// Records the tags the plugin wants to associate with its decision.
+///
+/// # Arguments
+///
+/// * `tags` - The list of tags to associate with a [`Decision`]
+#[inline]
+pub fn set_tags(tags: &[&str]) {
+    // TODO: use BTreeSet for merging sorted tag lists?
+    bulwark_host::set_tags(tags)
+}
+
+/// Returns the combined decision, if available.
+///
+/// Typically used in the feedback phase.
 pub fn get_combined_decision() -> Decision {
     // TODO: Option<Decision> ?
     bulwark_host::get_combined_decision().into()
 }
 
+/// Returns the combined set of tags associated with a decision, if available.
+///
+/// Typically used in the feedback phase.
+#[inline]
+pub fn get_combined_tags() -> Vec<String> {
+    bulwark_host::get_combined_tags()
+}
+
+/// Returns the outcome of the combined decision, if available.
+///
+/// Typically used in the feedback phase.
 pub fn get_outcome() -> Outcome {
     // TODO: Option<Outcome> ?
     bulwark_host::get_outcome().into()
+}
+
+/// Returns the named state value retrieved from Redis.
+///
+/// Also used to retrieve a counter value.
+///
+/// # Arguments
+///
+/// * `key` - The key name corresponding to the state value.
+#[inline]
+pub fn get_remote_state(key: &str) -> Vec<u8> {
+    bulwark_host::get_remote_state(key)
+}
+
+/// Set a named value in Redis.
+///
+/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+/// the prefix of the key being requested. This function will panic if permission has not been granted.
+///
+/// # Arguments
+///
+/// * `key` - The key name corresponding to the state value.
+/// * `value` - The value to record. Values are byte strings, but may be interpreted differently by Redis depending on context.
+#[inline]
+pub fn set_remote_state(key: &str, value: &[u8]) {
+    bulwark_host::set_remote_state(key, value)
+}
+
+/// Increments a named counter in Redis.
+///
+/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+/// the prefix of the key being requested. This function will panic if permission has not been granted.
+///
+/// # Arguments
+///
+/// * `key` - The key name corresponding to the state counter.
+#[inline]
+pub fn increment_remote_state(key: &str) -> i64 {
+    bulwark_host::increment_remote_state(key)
+}
+
+/// Increments a named counter in Redis by a specified delta value.
+///
+/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+/// the prefix of the key being requested. This function will panic if permission has not been granted.
+///
+/// # Arguments
+///
+/// * `key` - The key name corresponding to the state counter.
+/// * `delta` - The amount to increase the counter by.
+#[inline]
+pub fn increment_remote_state_by(key: &str, delta: i64) -> i64 {
+    bulwark_host::increment_remote_state_by(key, delta)
+}
+
+/// Sets an expiration on a named value in Redis.
+///
+/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+/// the prefix of the key being requested. This function will panic if permission has not been granted.
+///
+/// # Arguments
+///
+/// * `key` - The key name corresponding to the state value.
+/// * `ttl` - The time-to-live for the value in seconds.
+#[inline]
+pub fn set_remote_ttl(key: &str, ttl: i64) {
+    bulwark_host::set_remote_ttl(key, ttl)
+}
+
+// TODO: needs an example
+/// Increments a rate limit, returning the number of attempts so far and the expiration time.
+///
+/// The rate limiter is a counter over a period of time. At the end of the period, it will expire,
+/// beginning a new period. Window periods should be set to the longest amount of time that a client should
+/// be locked out for. The plugin is responsible for performing all rate-limiting logic with the counter
+/// value it receives.
+///
+/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+/// the prefix of the key being requested. This function will panic if permission has not been granted.
+///
+/// # Arguments
+///
+/// * `key` - The key name corresponding to the state counter.
+/// * `delta` - The amount to increase the counter by.
+/// * `window` - How long each period should be in seconds.
+#[inline]
+pub fn increment_rate_limit(key: &str, delta: i64, window: i64) -> Rate {
+    bulwark_host::increment_rate_limit(key, delta, window)
+}
+
+/// Checks a rate limit, returning the number of attempts so far and the expiration time.
+///
+/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+/// the prefix of the key being requested. This function will panic if permission has not been granted.
+///
+/// See [`increment_rate_limit`].
+///
+/// # Arguments
+///
+/// * `key` - The key name corresponding to the state counter.
+#[inline]
+pub fn check_rate_limit(key: &str) -> Rate {
+    bulwark_host::check_rate_limit(key)
+}
+
+/// Increments a circuit breaker, returning the generation count, success count, failure count,
+/// consecutive success count, consecutive failure count, and expiration time.
+///
+/// The plugin is responsible for performing all circuit-breaking logic with the counter
+/// values it receives. The host environment does as little as possible to maximize how much
+/// control the plugin has over the behavior of the breaker.
+///
+/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+/// the prefix of the key being requested. This function will panic if permission has not been granted.
+///
+/// # Arguments
+///
+/// * `key` - The key name corresponding to the state counter.
+/// * `success_delta` - The amount to increase the success counter by. Generally zero on failure.
+/// * `failure_delta` - The amount to increase the failure counter by. Generally zero on success.
+/// * `window` - How long each period should be in seconds.
+#[inline]
+pub fn increment_breaker(
+    key: &str,
+    success_delta: i64,
+    failure_delta: i64,
+    window: i64,
+) -> Breaker {
+    bulwark_host::increment_breaker(key, success_delta, failure_delta, window)
+}
+
+/// Checks a circuit breaker, returning the generation count, success count, failure count,
+/// consecutive success count, consecutive failure count, and expiration time.
+///
+/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+/// the prefix of the key being requested. This function will panic if permission has not been granted.
+///
+/// See [`increment_breaker`].
+///
+/// # Arguments
+///
+/// * `key` - The key name corresponding to the state counter.
+#[inline]
+pub fn check_breaker(key: &str) -> Breaker {
+    bulwark_host::check_breaker(key)
 }

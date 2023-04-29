@@ -1,3 +1,4 @@
+/// Returned when a threshold is either out-of-order or out-of-range.
 #[derive(thiserror::Error, Debug)]
 pub enum ThresholdError {
     #[error("invalid threshold order, must be trust < accept < suspicious < restrict")]

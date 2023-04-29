@@ -1,5 +1,7 @@
 use crate::ThresholdError;
 
+/// Represents a value from a continuous range taken from the [`pignistic`](MassFunction::pignistic)
+/// transformation as a category that can be used to select a response to an operation.
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Outcome {
     Trusted,
@@ -8,6 +10,14 @@ pub enum Outcome {
     Restricted,
 }
 
+/// `MassFunction` is a two-state [Dempster-Shafer](https://en.wikipedia.org/wiki/Dempster%E2%80%93Shafer_theory) mass
+/// function that represents whether an operation should be accepted or restricted. The power set is represented
+/// by the `unknown` value.
+///
+/// This representation allows for a fairly intuitive way of characterizing evidence in favor of or against
+/// blocking an operation, while capturing uncertainty. Limiting to two states rather than a wider range of
+/// classification possibilities allows for better performance optimizations, simplifies code readability, and
+/// enables useful transformations like reweighting.
 pub trait MassFunction
 where
     Self: std::marker::Sized,
@@ -17,7 +27,9 @@ where
     fn restrict(&self) -> f64;
     fn unknown(&self) -> f64;
 
-    // Pignistic reassigns unknown mass evenly to accept and restrict.
+    /// Reassigns unknown mass evenly to accept and restrict.
+    ///
+    /// This function is used to convert to a form that is useful in producing a final outcome.
     fn pignistic(&self) -> Self {
         Self::new(
             self.accept() + self.unknown() / 2.0,
@@ -26,11 +38,35 @@ where
         )
     }
 
+    /// Checks the [`accept`](MassFunction::accept) value after [`pignistic`](MassFunction::pignistic)
+    /// transformation against a threshold value. `true` if above the threshold.
+    ///
+    /// # Arguments
+    ///
+    /// * `threshold` -
     fn accepted(&self, threshold: f64) -> bool {
         let p = self.pignistic();
         p.accept() >= threshold
     }
 
+    /// Checks the [`restrict`](MassFunction::restrict) value after [`pignistic`](MassFunction::pignistic)
+    /// transformation against several threshold values.
+    ///
+    /// The [`Outcome`]s are arranged in ascending order: `Trusted` < `Accepted` < `Suspected` < `Restricted`
+    ///
+    /// Does not take an `accept` threshold to simplify validation. Returns [`ThresholdError`] if threshold values are
+    /// either out-of-order or out-of-range. Thresholds must be between 0.0 and 1.0.
+    ///
+    /// # Arguments
+    ///
+    /// * `trust` - The `trust` threshold is an upper-bound threshold. If the `restrict` value is below it, the
+    ///     operation is `Trusted`.
+    /// * `suspicious` - The `suspicious` threshold is a lower-bound threshold that also defines the accepted range.
+    ///     If the `restrict` value is above the `trust` threshold and below the `suspicious` threshold, the operation
+    ///     is `Accepted`. If the `restrict` value is above the `suspicious` threshold but below the `restrict`
+    ///     threshold, the operation is `Suspected`.
+    /// * `restrict` -  The `restricted` threshold is a lower-bound threshold. If the `restrict` value is above it,
+    ///     the operation is `Restricted`.
     fn outcome(
         &self,
         trust: f64,
@@ -59,10 +95,20 @@ where
         }
     }
 
+    /// Clamps all values to the 0.0 to 1.0 range.
+    ///
+    /// Does not guarantee that values will sum to 1.0.
     fn clamp(&self) -> Self {
         self.clamp_min_unknown(0.0)
     }
 
+    /// Clamps all values to the 0.0 to 1.0 range, guaranteeing that the unknown value will be at least `min`.
+    ///
+    /// Does not guarantee that values will sum to 1.0.
+    ///
+    /// # Arguments
+    ///
+    /// * `min` - The minimum [`unknown`](MassFunction::unknown) value.
     fn clamp_min_unknown(&self, min: f64) -> Self {
         let mut accept: f64 = self.accept();
         let mut restrict: f64 = self.restrict();
@@ -90,6 +136,8 @@ where
         Self::new(accept, restrict, unknown)
     }
 
+    /// If the component values sum to less than 1.0, assigns the remainder to the
+    /// [`unknown`](MassFunction::unknown) value.
     fn fill_unknown(&self) -> Self {
         let sum = self.accept() + self.restrict() + self.unknown();
         Self::new(
@@ -116,6 +164,10 @@ where
     ///
     /// It will preserve the relative relationship between [`accept`](MassFunction::accept) and
     /// [`restrict`](MassFunction::restrict).
+    ///
+    /// # Arguments
+    ///
+    /// * `min` - The minimum [`unknown`](MassFunction::unknown) value.
     fn scale_min_unknown(&self, min: f64) -> Self {
         let d = self.fill_unknown().clamp();
         let mut sum = d.accept() + d.restrict() + d.unknown();
@@ -145,6 +197,11 @@ where
     ///
     /// Weights below 1.0 will reduce the weight of a [`MassFunction`], while weights above 1.0 will increase it.
     /// A 1.0 weight has no effect on the result, aside from scaling it to a valid range if necessary.
+    ///
+    /// # Arguments
+    ///
+    /// * `factor` - A scale factor used to multiply the [`accept`](MassFunction::accept) and
+    ///     [`restrict`](MassFunction::restrict) values.
     fn weight(&self, factor: f64) -> Self {
         Self::new(self.accept() * factor, self.restrict() * factor, 0.0).scale()
     }
@@ -152,6 +209,11 @@ where
     /// Performs the conjunctive combination of two decisions.
     ///
     /// It is a helper function for [`combine`](MassFunction::combine).
+    ///
+    /// # Arguments
+    ///
+    /// * `left` - The first [`MassFunction`] of the pair.
+    /// * `right` - The second [`MassFunction`] of the pair.
     fn pairwise_combine(left: &Self, right: &Self) -> Self {
         // The mass assigned to the null hypothesis due to non-intersection.
         let nullh = left.accept() * right.restrict() + left.restrict() * right.accept();
@@ -174,19 +236,15 @@ where
         )
     }
 
-    fn find_min<'a, I>(vals: I) -> Option<&'a u32>
-    where
-        I: IntoIterator<Item = &'a u32>,
-    {
-        vals.into_iter().min()
-    }
-
     /// Calculates the Murphy average of a set of decisions, returning a new [`MassFunction`] as the result.
     ///
-    /// The Murphy average rule takes the mean value of each focal element across
+    /// The Murphy average rule[^1] takes the mean value of each focal element across
     /// all mass functions to create a new mass function. This new mass function
     /// is then combined conjunctively with itself N times where N is the total
     /// number of functions that were averaged together.
+    ///
+    /// [^1]: Catherine K. Murphy. 2000. Combining belief functions when evidence conflicts.
+    ///     Decision Support Systems 29, 1 (2000), 1-9. DOI:<https://doi.org/10.1016/s0167-9236(99)00084-6>
     fn combine<'a, I>(decisions: I) -> Self
     where
         Self: 'a,

@@ -5,7 +5,18 @@ use validator::{Validate, ValidationError};
 // including them as fields and handling them separately, we allow
 // the Decision type to be Copy-able and we avoid unnecessary cloning
 // that would otherwise need to be done when operating on a Decision.
+// It also potentially allows for Decision to be used in other contexts.
 
+// TODO: Does it make sense to split Decision and MassFunction? Decision no longer does anything but validation.
+
+/// A two-state [Dempster-Shafer](https://en.wikipedia.org/wiki/Dempster%E2%80%93Shafer_theory) mass
+/// function that represents whether an operation should be accepted or restricted. The power set is represented
+/// by the `unknown` value.
+///
+/// This representation allows for a fairly intuitive way of characterizing evidence in favor of or against
+/// blocking an operation, while capturing uncertainty. Limiting to two states rather than a wider range of
+/// classification possibilities allows for better performance optimizations, simplifies code readability, and
+/// enables useful transformations like reweighting.
 #[derive(Debug, Validate, Copy, Clone)]
 #[validate(schema(function = "validate_sum", skip_on_field_errors = false))]
 pub struct Decision {
@@ -17,6 +28,7 @@ pub struct Decision {
     pub unknown: f64,
 }
 
+/// Validates that a `Decision`'s components correctly sum to 1.0.
 fn validate_sum(decision: &Decision) -> Result<(), ValidationError> {
     let sum = decision.accept + decision.restrict + decision.unknown;
     if sum < 0.0 - 2.0 * f64::EPSILON {
@@ -31,6 +43,7 @@ fn validate_sum(decision: &Decision) -> Result<(), ValidationError> {
 }
 
 impl MassFunction for Decision {
+    /// Creates a new `Decision` from component values.
     fn new(accept: f64, restrict: f64, unknown: f64) -> Self {
         Decision {
             accept,

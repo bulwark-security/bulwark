@@ -1,3 +1,5 @@
+//! This crate provides the logic for Bulwark's guest environment.
+
 mod decision;
 mod errors;
 mod host_calls;
