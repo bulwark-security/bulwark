@@ -567,7 +567,7 @@ mod tests {
             restrict: 0.0,
             unknown: 0.0,
         }
-        .weight(0.0),
+        .weight(1.0),
         true,
         accept = 0.0,
         restrict = 0.0,
@@ -624,6 +624,20 @@ mod tests {
             unknown: 2.0,
         }
         .weight(1.0),
+        true,
+        accept = 0.50,
+        restrict = 0.50,
+        unknown = 0.0
+    );
+
+    test_decision!(
+        weight_two_by_two,
+        Decision {
+            accept: 2.0,
+            restrict: 2.0,
+            unknown: 2.0,
+        }
+        .weight(2.0),
         true,
         accept = 0.50,
         restrict = 0.50,
