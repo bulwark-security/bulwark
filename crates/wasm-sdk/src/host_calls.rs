@@ -291,6 +291,28 @@ pub fn set_decision(decision: Decision) -> Result<(), ValidationErrors> {
     Ok(())
 }
 
+/// Records a decision indicating that the plugin wants to accept a request.
+///
+/// This function is sugar for `set_decision(1.0, 0.0, 0.0)` and should be used in conjunction with a weight value.
+pub fn set_accepted() {
+    bulwark_host::set_decision(DecisionInterface {
+        accept: 1.0,
+        restrict: 0.0,
+        unknown: 0.0,
+    });
+}
+
+/// Records a decision indicating that the plugin wants to restrict a request.
+///
+/// This function is sugar for `set_decision(0.0, 1.0, 0.0)` and should be used in conjunction with a weight value.
+pub fn set_restricted() {
+    bulwark_host::set_decision(DecisionInterface {
+        accept: 1.0,
+        restrict: 0.0,
+        unknown: 0.0,
+    });
+}
+
 /// Records the tags the plugin wants to associate with its decision.
 ///
 /// # Arguments
