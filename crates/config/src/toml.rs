@@ -259,6 +259,7 @@ struct Preset {
 struct Resource {
     route: String,
     plugins: Vec<String>,
+    // TODO: default timeout
     timeout: Option<u64>,
 }
 

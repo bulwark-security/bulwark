@@ -100,7 +100,6 @@ impl ExternalProcessor for BulwarkProcessor {
                     let route_result = router.at(http_req.uri().path());
                     // TODO: router needs to point to a struct that bundles the plugin set and associated config like timeout duration
                     // TODO: put default timeout in a constant somewhere central
-                    // TODO: figure out timeout from optional resource-specific timeout or central default
                     let mut timeout_duration = Duration::from_millis(10);
                     match route_result {
                         Ok(route_match) => {
