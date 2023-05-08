@@ -27,26 +27,19 @@ use {
     tracing_subscriber::{EnvFilter, Registry},
 };
 
-/// Parses Bulwark's command-line arguments into a usable struct.
+/// bulwark-cli launches and interacts with the Bulwark service.
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// Log levels:
-    /// - `error`
-    /// - `warn`
-    /// - `info`
-    /// - `debug`
-    /// - `trace`
+    /// Log levels: error, warn, info, debug, trace
     ///
-    /// Default is `info`.
+    /// Default is "info".
     #[arg(short, long)]
     log_level: Option<String>,
 
-    /// Log formats:
-    /// - `ecs`
-    /// - `forest`
+    /// Log formats: ecs, forest
     ///
-    /// Default is `ecs`.
+    /// Default is "ecs".
     #[arg(short, long)]
     log_format: Option<String>,
 
