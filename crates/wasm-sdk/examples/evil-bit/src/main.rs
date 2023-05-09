@@ -1,6 +1,9 @@
 use bulwark_wasm_sdk::*;
 
-fn main() {
+fn main() {}
+
+#[no_mangle]
+fn on_request_decision() {
     let request = get_request();
     let evil_header = request.headers().get("Evil");
     if let Some(value) = evil_header {
