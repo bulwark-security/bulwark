@@ -15,6 +15,7 @@ use self::bulwark_host::DecisionInterface;
 pub use crate::{Decision, Outcome};
 pub use http::{Extensions, Method, StatusCode, Uri, Version};
 pub use serde_json::{Map, Value};
+use validator::HasLen;
 
 /// An HTTP request combines a head consisting of a [`Method`], [`Uri`], and headers with a [`BodyChunk`], which provides
 /// access to the first chunk of a request body.
@@ -121,84 +122,42 @@ impl From<bulwark_host::OutcomeInterface> for Outcome {
     }
 }
 
-// NOTE: `pub use` pattern would be better than inlined functions, but apparently that can't be rustdoc'd?
-
-// TODO: might need either get_remote_addr or an extension on the request for non-forwarded IP address
-
-/// Returns the guest environment's configuration value as a JSON [`Value`].
-///
-/// By convention this will return a [`Value::Object`].
-pub fn get_config() -> Value {
-    let raw_config = bulwark_host::get_config();
-    serde_json::from_slice(&raw_config).unwrap()
-}
-
-/// Returns a named guest environment configuration value as a JSON [`Value`].
-///
-/// A shortcut for calling [`get_config`], reading it as an `Object`, and then retrieving a named [`Value`] from it.
-///
-/// # Arguments
-///
-/// * `key` - A key indexing into a configuration [`Map`]
-pub fn get_config_value(key: &str) -> Option<Value> {
-    // TODO: this should return a result
-    let raw_config = bulwark_host::get_config();
-    let object: serde_json::Value = serde_json::from_slice(&raw_config).unwrap();
-    match object {
-        Value::Object(v) => v.get(&key.to_string()).cloned(),
-        _ => panic!("unexpected config value"),
+impl From<&str> for BodyChunk {
+    fn from(content: &str) -> Self {
+        BodyChunk {
+            end_of_stream: true,
+            size: content.length(),
+            start: 0,
+            content: content.as_bytes().to_owned(),
+        }
     }
 }
 
-/// Returns a named value from the request context's params.
-///
-/// # Arguments
-///
-/// * `key` - The key name corresponding to the param value.
-pub fn get_param_value(key: &str) -> Value {
-    // TODO: this should return a result
-    let raw_value = bulwark_host::get_param_value(key);
-    let value: serde_json::Value = serde_json::from_slice(&raw_value).unwrap();
-    value
+impl From<String> for BodyChunk {
+    fn from(content: String) -> Self {
+        BodyChunk {
+            end_of_stream: true,
+            size: content.length(),
+            start: 0,
+            content: content.into_bytes(),
+        }
+    }
 }
 
-/// Set a named value in the request context's params.
-///
-/// # Arguments
-///
-/// * `key` - The key name corresponding to the param value.
-/// * `value` - The value to record. Values are serialized JSON.
-pub fn set_param_value(key: &str, value: Value) {
-    // TODO: this should return a result
-    let json = serde_json::to_vec(&value).unwrap();
-    bulwark_host::set_param_value(key, &json);
+impl From<Vec<u8>> for BodyChunk {
+    fn from(content: Vec<u8>) -> Self {
+        BodyChunk {
+            end_of_stream: true,
+            size: content.length(),
+            start: 0,
+            content,
+        }
+    }
 }
 
-/// Returns a named environment variable value as a [`String`].
-///
-/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
-/// the environment variable being requested. This function will panic if permission has not been granted.
-///
-/// # Arguments
-///
-/// * `key` - The environment variable name. Case-sensitive.
-pub fn get_env(key: &str) -> String {
-    // TODO: this should return a result
-    String::from_utf8(bulwark_host::get_env_bytes(key)).unwrap()
-}
+// NOTE: `pub use` pattern would be better than inlined functions, but apparently that can't be rustdoc'd?
 
-/// Returns a named environment variable value as bytes.
-///
-/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
-/// the environment variable being requested. This function will panic if permission has not been granted.
-///
-/// # Arguments
-///
-/// * `key` - The environment variable name. Case-sensitive.
-pub fn get_env_bytes(key: &str) -> Vec<u8> {
-    // TODO: this should return a result
-    bulwark_host::get_env_bytes(key)
-}
+// TODO: might need either get_remote_addr or an extension on the request for non-forwarded IP address
 
 /// Returns the incoming request.
 pub fn get_request() -> Request {
@@ -248,32 +207,79 @@ pub fn get_client_ip() -> Option<IpAddr> {
     bulwark_host::get_client_ip().map(|ip| ip.into())
 }
 
-/// Sends an outbound HTTP request.
-///
-/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
-/// the host being requested. This function will panic if permission has not been granted.
+/// Returns a named value from the request context's params.
 ///
 /// # Arguments
 ///
-/// * `request` - The HTTP request to send.
-pub fn send_request(request: Request) -> Response {
-    let request_id = bulwark_host::prepare_request(
-        request.method().as_str(),
-        request.uri().to_string().as_str(),
-    );
-    for (name, value) in request.headers() {
-        bulwark_host::add_request_header(request_id, name.as_str(), value.as_bytes());
+/// * `key` - The key name corresponding to the param value.
+pub fn get_param_value(key: &str) -> Value {
+    // TODO: this should return a result
+    let raw_value = bulwark_host::get_param_value(key);
+    let value: serde_json::Value = serde_json::from_slice(&raw_value).unwrap();
+    value
+}
+
+/// Set a named value in the request context's params.
+///
+/// # Arguments
+///
+/// * `key` - The key name corresponding to the param value.
+/// * `value` - The value to record. Values are serialized JSON.
+pub fn set_param_value(key: &str, value: Value) {
+    // TODO: this should return a result
+    let json = serde_json::to_vec(&value).unwrap();
+    bulwark_host::set_param_value(key, &json);
+}
+
+/// Returns the guest environment's configuration value as a JSON [`Value`].
+///
+/// By convention this will return a [`Value::Object`].
+pub fn get_config() -> Value {
+    let raw_config = bulwark_host::get_config();
+    serde_json::from_slice(&raw_config).unwrap()
+}
+
+/// Returns a named guest environment configuration value as a JSON [`Value`].
+///
+/// A shortcut for calling [`get_config`], reading it as an `Object`, and then retrieving a named [`Value`] from it.
+///
+/// # Arguments
+///
+/// * `key` - A key indexing into a configuration [`Map`]
+pub fn get_config_value(key: &str) -> Option<Value> {
+    // TODO: this should return a result
+    let raw_config = bulwark_host::get_config();
+    let object: serde_json::Value = serde_json::from_slice(&raw_config).unwrap();
+    match object {
+        Value::Object(v) => v.get(&key.to_string()).cloned(),
+        _ => panic!("unexpected config value"),
     }
-    let chunk = request.body();
-    if !chunk.end_of_stream {
-        panic!("the entire request body must be available");
-    } else if chunk.start != 0 {
-        panic!("chunk start must be 0");
-    } else if chunk.size > 16384 {
-        panic!("the entire request body must be 16384 bytes or less");
-    }
-    let response = bulwark_host::set_request_body(request_id, &chunk.content);
-    Response::from(response)
+}
+
+/// Returns a named environment variable value as a [`String`].
+///
+/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+/// the environment variable being requested. This function will panic if permission has not been granted.
+///
+/// # Arguments
+///
+/// * `key` - The environment variable name. Case-sensitive.
+pub fn get_env(key: &str) -> String {
+    // TODO: this should return a result
+    String::from_utf8(bulwark_host::get_env_bytes(key)).unwrap()
+}
+
+/// Returns a named environment variable value as bytes.
+///
+/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+/// the environment variable being requested. This function will panic if permission has not been granted.
+///
+/// # Arguments
+///
+/// * `key` - The environment variable name. Case-sensitive.
+pub fn get_env_bytes(key: &str) -> Vec<u8> {
+    // TODO: this should return a result
+    bulwark_host::get_env_bytes(key)
 }
 
 /// Records the decision value the plugin wants to return.
@@ -346,6 +352,34 @@ pub fn get_combined_tags() -> Vec<String> {
 pub fn get_outcome() -> Outcome {
     // TODO: Option<Outcome> ?
     bulwark_host::get_outcome().into()
+}
+
+/// Sends an outbound HTTP request.
+///
+/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+/// the host being requested. This function will panic if permission has not been granted.
+///
+/// # Arguments
+///
+/// * `request` - The HTTP request to send.
+pub fn send_request(request: Request) -> Response {
+    let request_id = bulwark_host::prepare_request(
+        request.method().as_str(),
+        request.uri().to_string().as_str(),
+    );
+    for (name, value) in request.headers() {
+        bulwark_host::add_request_header(request_id, name.as_str(), value.as_bytes());
+    }
+    let chunk = request.body();
+    if !chunk.end_of_stream {
+        panic!("the entire request body must be available");
+    } else if chunk.start != 0 {
+        panic!("chunk start must be 0");
+    } else if chunk.size > 16384 {
+        panic!("the entire request body must be 16384 bytes or less");
+    }
+    let response = bulwark_host::set_request_body(request_id, &chunk.content);
+    Response::from(response)
 }
 
 /// Returns the named state value retrieved from Redis.
