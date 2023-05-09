@@ -24,7 +24,7 @@ fn build_wit_bindings() {
 
 #[allow(unused_must_use)]
 fn build_test_example_wasm(name: &str) {
-    let dest_path = Path::new("./test");
+    let dest_path = Path::new("./tests");
     let sdk_path = Path::new("../wasm-sdk");
     let binding = sdk_path.join("examples").join(name);
     let example_path = binding.as_path();
