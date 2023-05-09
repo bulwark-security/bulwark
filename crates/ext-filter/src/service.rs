@@ -308,7 +308,7 @@ impl BulwarkProcessor {
         let mut shared_params = bulwark_wasm_sdk::Map::new();
         for (key, value) in params.iter() {
             let wrapped_value = bulwark_wasm_sdk::Value::String(value.to_string());
-            shared_params.insert(key.to_string(), wrapped_value);
+            shared_params.insert(format!("param.{}", key), wrapped_value);
         }
         let shared_params = Arc::new(Mutex::new(shared_params));
         for plugin in plugins {
