@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 bulwark-ext-processor = { path = "crates/ext-processor" }
 bulwark-config = { path = "crates/config" }
-anyhow = "1.0.66"
 thiserror = "1.0.37"
 clap = { version = "4.0.29", features = ["derive"] }
 clap_complete = "4.0.6"

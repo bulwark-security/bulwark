@@ -1,12 +1,10 @@
-use wasi_common::StringArrayError;
-
 /// Returned when an attempt to load a plugin fails.
 #[derive(thiserror::Error, Debug)]
 pub enum PluginLoadError {
     #[error(transparent)]
-    Error(#[from] anyhow::Error), // TODO: eliminate if possible
+    WasiError(#[from] wasi_common::Error),
     #[error(transparent)]
-    StringArray(#[from] StringArrayError),
+    StringArray(#[from] wasi_common::StringArrayError),
     #[error("at least one resource required")]
     ResourceMissing,
 }
@@ -15,20 +13,20 @@ pub enum PluginLoadError {
 #[derive(thiserror::Error, Debug)]
 pub enum PluginInstantiationError {
     #[error(transparent)]
-    Error(#[from] anyhow::Error), // TODO: eliminate if possible
+    WasiError(#[from] wasi_common::Error),
+    #[error(transparent)]
+    StringArray(#[from] wasi_common::StringArrayError),
     #[error(transparent)]
     ContextInstantiation(#[from] ContextInstantiationError),
-    #[error(transparent)]
-    StringArray(#[from] StringArrayError),
 }
 
 /// Returned when an attempt to execute a function within a plugin environment fails.
 #[derive(thiserror::Error, Debug)]
 pub enum PluginExecutionError {
     #[error(transparent)]
-    Error(#[from] anyhow::Error), // TODO: eliminate if possible
+    WasiError(#[from] wasi_common::Error),
     #[error(transparent)]
-    StringArray(#[from] StringArrayError),
+    StringArray(#[from] wasi_common::StringArrayError),
     #[error("function not implemented '{expected:?}'")]
     NotImplementedError { expected: String },
 }
@@ -37,5 +35,5 @@ pub enum PluginExecutionError {
 #[derive(thiserror::Error, Debug)]
 pub enum ContextInstantiationError {
     #[error(transparent)]
-    StringArray(#[from] StringArrayError),
+    StringArray(#[from] wasi_common::StringArrayError),
 }

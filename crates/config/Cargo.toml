@@ -8,6 +8,5 @@ bulwark-decision = { path = "../decision" }
 serde = { version = "1.0.149", features = ["std", "serde_derive"] }
 serde_json = "1.0.93"
 toml = { version = "0.5.9", features = ["preserve_order"] }
-anyhow = "1.0.66"
 thiserror = "1.0.37"
 chrono = { version = "0.4.23", features = ["serde"] }
