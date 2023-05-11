@@ -6,8 +6,8 @@ pub enum CliArgumentError {
 
 #[derive(thiserror::Error, Debug)]
 pub enum ServiceError {
-    #[error("error starting envoy external filter service: {0}")]
-    ExtFilterService(tonic::transport::Error),
+    #[error("error starting envoy external processor service: {0}")]
+    ExtProcessorService(tonic::transport::Error),
     #[error("error starting admin service: {0}")]
     AdminService(hyper::Error),
 }

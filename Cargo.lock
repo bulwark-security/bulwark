@@ -238,7 +238,7 @@ dependencies = [
  "anyhow",
  "axum",
  "bulwark-config",
- "bulwark-ext-filter",
+ "bulwark-ext-processor",
  "chrono",
  "clap 4.1.4",
  "clap_complete",
@@ -291,7 +291,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "bulwark-ext-filter"
+name = "bulwark-ext-processor"
 version = "0.1.0"
 dependencies = [
  "anyhow",

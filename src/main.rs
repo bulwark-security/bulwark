@@ -5,7 +5,7 @@ mod errors;
 
 use {
     axum::{extract::Path, extract::State, http::StatusCode, response::Json, routing::get, Router},
-    bulwark_ext_filter::BulwarkProcessor,
+    bulwark_ext_processor::BulwarkProcessor,
     clap::{Parser, Subcommand},
     color_eyre::eyre::Result,
     envoy_control_plane::envoy::service::ext_proc::v3::external_processor_server::ExternalProcessorServer,
@@ -50,8 +50,8 @@ struct Cli {
 /// The subcommands supported by the Bulwark CLI.
 #[derive(Subcommand)]
 enum Commands {
-    /// Launch as an Envoy external filter
-    ExtFilter {
+    /// Launch as an Envoy external processor
+    ExtProcessor {
         /// Sets a custom config file
         #[arg(short, long, value_name = "FILE")]
         config: PathBuf,
@@ -219,7 +219,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // You can check for the existence of subcommands, and if found use their
     // matches just as you would the top level cmd
     match &cli.command {
-        Some(Commands::ExtFilter { config }) => {
+        Some(Commands::ExtProcessor { config }) => {
             let mut service_tasks: JoinSet<std::result::Result<(), ServiceError>> = JoinSet::new();
 
             let config_root = bulwark_config::toml::load_config(config)?;
@@ -272,7 +272,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .add_service(ext_filter)
                         .serve(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port)) // TODO: make socket addr configurable?
                         .await
-                        .map_err(ServiceError::ExtFilterService)
+                        .map_err(ServiceError::ExtProcessorService)
                 });
             }
 
