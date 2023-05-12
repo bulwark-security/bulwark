@@ -37,7 +37,7 @@ jobs:
         uses: swatinem/rust-cache@v2
 
       - name: Run clippy
-        run: cargo clippy --no-deps --workspace --all-targets
+        run: cargo clippy --no-deps --workspace --all-targets -- --deny warnings
 
   test:
     strategy:
