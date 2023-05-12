@@ -755,7 +755,7 @@ impl BulwarkProcessor {
                     // TODO: must perform proper error handling on sender results, sending can fail
                     if let Err(err) = result {
                         debug!(message = format!("send error: {}", err));
-                    }   
+                    }
                 }
             }
         }
