@@ -3,6 +3,7 @@
 /// The root of a Bulwark configuration.
 ///
 /// Wraps all child configuration structures and provides the internal representation of Bulwark's configuration.
+#[derive(Debug)]
 pub struct Config {
     /// Configuration for the services being launched.
     pub service: Service,
@@ -48,6 +49,7 @@ impl Config {
 }
 
 /// Configuration for the services being launched.
+#[derive(Debug)]
 pub struct Service {
     /// The port for the primary service.
     pub port: u16,
@@ -76,8 +78,10 @@ pub const DEFAULT_ADMIN_PORT: u16 = 8090;
 /// No threshold is necessary for the default `allowed` outcome because it is defined by the range between the
 /// `suspicious` threshold and the `trusted` threshold. The thresholds must have values in descending order, with
 /// `restrict` > `suspicious` > `trusted`. None of the threshold values may be equal.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Thresholds {
+    /// True if the primary service should take no action in response to restrict decisions.
+    pub observe_only: bool,
     /// Any decision value above the `restrict` threshold will cause the corresponding request to be blocked.
     pub restrict: f64,
     /// Any decision value above the `suspicious` threshold will cause the corresponding request to be flagged as
@@ -88,6 +92,8 @@ pub struct Thresholds {
     pub trust: f64,
 }
 
+/// The default [`Thresholds::observe_only`] value.
+pub const DEFAULT_OBSERVE_ONLY: bool = false;
 /// The default [`Thresholds::restrict`] value.
 pub const DEFAULT_RESTRICT_THRESHOLD: f64 = 0.8;
 /// The default [`Thresholds::suspicious`] value.
@@ -99,6 +105,7 @@ impl Default for Thresholds {
     /// Default decision thresholds.
     fn default() -> Self {
         Self {
+            observe_only: DEFAULT_OBSERVE_ONLY,
             restrict: DEFAULT_RESTRICT_THRESHOLD,
             suspicious: DEFAULT_SUSPICIOUS_THRESHOLD,
             trust: DEFAULT_TRUST_THRESHOLD,
@@ -109,7 +116,7 @@ impl Default for Thresholds {
 /// The configuration for an individual plugin.
 ///
 /// This structure will be wrapped by structs in the host environment.
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Plugin {
     /// The plugin reference key. Should be limited to ASCII lowercase a-z plus underscores.
     pub reference: String,
@@ -145,7 +152,7 @@ impl Plugin {
 }
 
 /// The permissions granted to an associated plugin.
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Permissions {
     /// A list of environment variables a plugin may acquire values for.
     ///
@@ -162,7 +169,7 @@ pub struct Permissions {
 }
 
 /// A mapping between a reference identifier and a list of plugins that form a preset plugin group.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Preset {
     /// The preset reference key. Should be limited to ASCII lowercase a-z plus underscores.
     pub reference: String,
@@ -202,7 +209,7 @@ impl Preset {
 }
 
 /// A mapping between a route pattern and the plugins that should be run for matching requests.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Resource {
     /// The route pattern used to match requests with.
     ///

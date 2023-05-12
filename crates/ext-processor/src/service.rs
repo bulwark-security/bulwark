@@ -625,6 +625,7 @@ impl BulwarkProcessor {
                 bulwark_wasm_sdk::Outcome::Suspected => "suspected",
                 bulwark_wasm_sdk::Outcome::Restricted => "restricted",
             },
+            observe_only = thresholds.observe_only,
             // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
             tags = decision_components
                 .tags
@@ -647,26 +648,32 @@ impl BulwarkProcessor {
                 }
             },
             bulwark_wasm_sdk::Outcome::Restricted => {
-                info!(message = "process response", status = 403);
-                let result = Self::block_request(&sender, &decision_components).await;
-                // TODO: must perform proper error handling on sender results, sending can fail
-                if let Err(err) = result {
-                    debug!(message = format!("send error: {}", err));
+                if !thresholds.observe_only {
+                    info!(message = "process response", status = 403);
+                    let result = Self::block_request(&sender, &decision_components).await;
+                    // TODO: must perform proper error handling on sender results, sending can fail
+                    if let Err(err) = result {
+                        debug!(message = format!("send error: {}", err));
+                    }
+
+                    // Normally we initiate feedback after the response phase, but if we skip the response phase
+                    // we need to do it here instead.
+                    Self::handle_decision_feedback(
+                        decision_components,
+                        outcome,
+                        plugin_instances,
+                        timeout_duration,
+                    );
+                    // Short-circuit if restricted, we can skip the response phase
+                    return;
+                } else {
+                    let result = Self::allow_request(&sender, &decision_components).await;
+                    // TODO: must perform proper error handling on sender results, sending can fail
+                    if let Err(err) = result {
+                        debug!(message = format!("send error: {}", err));
+                    }
                 }
             },
-        }
-
-        if outcome == bulwark_wasm_sdk::Outcome::Restricted {
-            // Normally we initiate feedback after the response phase, but if we skip the response phase
-            // we need to do it here instead.
-            Self::handle_decision_feedback(
-                decision_components,
-                outcome,
-                plugin_instances,
-                timeout_duration,
-            );
-            // Short-circuit if restricted, we can skip the response phase
-            return;
         }
 
         if let Ok(http_resp) = Self::prepare_response(&mut stream).await {
@@ -678,8 +685,7 @@ impl BulwarkProcessor {
                 Self::execute_response_phase(plugin_instances.clone(), http_resp, timeout_duration)
                     .await,
                 status,
-                // TODO: get thresholds from config
-                Thresholds::default(),
+                thresholds,
                 plugin_instances.clone(),
                 timeout_duration,
             )
@@ -712,6 +718,7 @@ impl BulwarkProcessor {
                 bulwark_wasm_sdk::Outcome::Suspected => "suspected",
                 bulwark_wasm_sdk::Outcome::Restricted => "restricted",
             },
+            observe_only = thresholds.observe_only,
             // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
             tags = decision_components
                 .tags
@@ -735,11 +742,20 @@ impl BulwarkProcessor {
                 }
             },
             bulwark_wasm_sdk::Outcome::Restricted => {
-                info!(message = "process response", status = 403);
-                let result = Self::block_response(&sender, &decision_components).await;
-                // TODO: must perform proper error handling on sender results, sending can fail
-                if let Err(err) = result {
-                    debug!(message = format!("send error: {}", err));
+                if !thresholds.observe_only {
+                    info!(message = "process response", status = 403);
+                    let result = Self::block_response(&sender, &decision_components).await;
+                    // TODO: must perform proper error handling on sender results, sending can fail
+                    if let Err(err) = result {
+                        debug!(message = format!("send error: {}", err));
+                    }
+                } else {
+                    info!(message = "process response", status = u16::from(response_status));
+                    let result = Self::allow_response(&sender, &decision_components).await;
+                    // TODO: must perform proper error handling on sender results, sending can fail
+                    if let Err(err) = result {
+                        debug!(message = format!("send error: {}", err));
+                    }   
                 }
             }
         }

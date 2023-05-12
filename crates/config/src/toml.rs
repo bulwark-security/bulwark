@@ -97,12 +97,19 @@ impl From<Service> for crate::Service {
 /// The TOML serialization for a Thresholds structure.
 #[derive(Serialize, Deserialize)]
 struct Thresholds {
+    #[serde(default = "default_observe_only")]
+    observe_only: bool,
     #[serde(default = "default_restrict_threshold")]
     restrict: f64,
     #[serde(default = "default_suspicious_threshold")]
     suspicious: f64,
     #[serde(default = "default_trust_threshold")]
     trust: f64,
+}
+
+/// The default for whether the primary service should take no action in response to restrict decisions.
+fn default_observe_only() -> bool {
+    crate::DEFAULT_OBSERVE_ONLY
 }
 
 /// The default threshold for restricting a request.
@@ -123,6 +130,7 @@ fn default_trust_threshold() -> f64 {
 impl Default for Thresholds {
     fn default() -> Self {
         Self {
+            observe_only: default_observe_only(),
             restrict: default_restrict_threshold(),
             suspicious: default_suspicious_threshold(),
             trust: default_trust_threshold(),
@@ -133,6 +141,7 @@ impl Default for Thresholds {
 impl From<Thresholds> for crate::Thresholds {
     fn from(thresholds: Thresholds) -> Self {
         Self {
+            observe_only: thresholds.observe_only,
             restrict: thresholds.restrict,
             suspicious: thresholds.suspicious,
             trust: thresholds.trust,

@@ -284,6 +284,20 @@ impl EcsFormatter {
     /// The decision outcome based on the configured decision thresholds and the combined set of all tags emitted
     /// by the plugins is also parsed from these messages.
     fn parse_combine_decision_event(event: &Event, ecs_event: &mut EcsEvent) -> fmt::Result {
+        // If the service is in observe-only mode, don't report events as denied
+        // Fields aren't sorted, scanning because we can't binary search
+        let observe_only = event
+            .fields()
+            .iter()
+            .find_map(|f| {
+                if f.key() == "observe_only" {
+                    Some(f.value() == "true")
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default();
+
         for field in event.fields().iter() {
             match field.key() {
                 "accept" => {}
@@ -305,7 +319,7 @@ impl EcsFormatter {
 
                     // TODO: in the future it may be possible for user-defined handling of outcome and may require changes here
                     let mut event_meta = ecs_event.event.clone().unwrap_or_default();
-                    if unquoted_outcome.to_ascii_lowercase() == "restricted" {
+                    if unquoted_outcome.to_ascii_lowercase() == "restricted" && !observe_only {
                         event_meta.type_ = Some(vec![String::from("denied")]);
                     } else {
                         event_meta.type_ = Some(vec![String::from("allowed")]);
