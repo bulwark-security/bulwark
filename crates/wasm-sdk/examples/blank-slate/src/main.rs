@@ -16,7 +16,8 @@ fn on_request_decision() {
         accept: 0.0,
         restrict: 0.0,
         unknown: 1.0,
-    });
+    })
+    .expect("decision should be valid");
     set_tags(&[]);
 }
 

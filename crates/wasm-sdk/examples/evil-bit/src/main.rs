@@ -12,7 +12,8 @@ fn on_request_decision() {
                 accept: 0.0,
                 restrict: 1.0,
                 unknown: 0.0,
-            });
+            })
+            .expect("decision should be valid");
             set_tags(&["evil"]);
             return;
         }
@@ -21,5 +22,6 @@ fn on_request_decision() {
         accept: 0.0,
         restrict: 0.0,
         unknown: 1.0,
-    });
+    })
+    .expect("decision should be valid");
 }
