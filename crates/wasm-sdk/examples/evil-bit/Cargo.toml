@@ -2,7 +2,15 @@
 name = "bulwark-evil-bit"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0 WITH LLVM-exception"
+homepage = "https://bulwark.security/"
+repository = "https://github.com/bulwark-security/bulwark"
+keywords = ["bulwark", "security", "fraud", "webassembly", "wasm"]
+categories = ["wasm"]
 publish = false
+
+[badges]
+maintenance = { status = "experimental" }
 
 [dependencies]
 wit-bindgen-rust = { git = "https://github.com/bytecodealliance/wit-bindgen.git", rev = "cb871cfa1ee460b51eb1d144b175b9aab9c50aba" } # 0.2.0, aka wit-bindgen-guest-rust

@@ -2,6 +2,15 @@
 name = "bulwark-ext-processor"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0 WITH LLVM-exception"
+homepage = "https://bulwark.security/"
+repository = "https://github.com/bulwark-security/bulwark"
+readme = "README.md"
+keywords = ["bulwark", "security", "fraud", "webassembly", "wasm"]
+categories = ["wasm"]
+
+[badges]
+maintenance = { status = "experimental" }
 
 [dependencies]
 bulwark-config = { path = "../config" }
