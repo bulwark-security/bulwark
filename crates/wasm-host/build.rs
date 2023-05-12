@@ -32,13 +32,13 @@ fn build_test_example_wasm(name: &str) {
 
     // ensure we don't copy in old builds
     Command::new("cargo")
-        .args(&["clean", "--target", "wasm32-wasi", "--release"])
+        .args(["clean", "--target", "wasm32-wasi", "--release"])
         .current_dir(example_path)
         .status()
         .unwrap();
 
     let status = Command::new("cargo")
-        .args(&["build", "--target", "wasm32-wasi", "--release"])
+        .args(["build", "--target", "wasm32-wasi", "--release"])
         .current_dir(example_path)
         .status()
         .unwrap();
