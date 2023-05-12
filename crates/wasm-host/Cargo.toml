@@ -13,8 +13,8 @@ categories = ["wasm"]
 maintenance = { status = "experimental" }
 
 [dependencies]
-bulwark-wasm-sdk = { path = "../wasm-sdk" }
-bulwark-config = { path = "../config" }
+bulwark-wasm-sdk = { path = "../wasm-sdk", version = "0.1.0" }
+bulwark-config = { path = "../config", version = "0.1.0" }
 thiserror = "1.0.37"
 wasi-common = "0.39.1"
 wasmtime = "0.39.1"

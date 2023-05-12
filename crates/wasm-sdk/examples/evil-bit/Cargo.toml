@@ -14,7 +14,7 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 wit-bindgen-rust = { git = "https://github.com/bytecodealliance/wit-bindgen.git", rev = "cb871cfa1ee460b51eb1d144b175b9aab9c50aba" } # 0.2.0, aka wit-bindgen-guest-rust
-bulwark-wasm-sdk = { path = "../.." }
+bulwark-wasm-sdk = { path = "../..", version = "0.1.0" }
 
 [profile.release]
 lto = true

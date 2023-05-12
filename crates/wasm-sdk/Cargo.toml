@@ -13,7 +13,7 @@ categories = ["wasm"]
 maintenance = { status = "experimental" }
 
 [dependencies]
-bulwark-decision = { path = "../decision" }
+bulwark-decision = { path = "../decision", version = "0.1.0" }
 thiserror = "1.0.37"
 http = "0.2"
 validator = { version = "0.12", features = ["derive"] }
