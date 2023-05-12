@@ -1261,6 +1261,7 @@ mod tests {
         let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
         let mut typical_plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
         typical_plugin_instance.start()?;
+        typical_plugin_instance.handle_request_decision()?;
         let typical_decision = typical_plugin_instance.decision();
         assert_eq!(typical_decision.decision.accept, 0.0);
         assert_eq!(typical_decision.decision.restrict, 0.0);
@@ -1285,6 +1286,7 @@ mod tests {
         let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
         let mut evil_plugin_instance = PluginInstance::new(plugin, request_context)?;
         evil_plugin_instance.start()?;
+        evil_plugin_instance.handle_request_decision()?;
         let evil_decision = evil_plugin_instance.decision();
         assert_eq!(evil_decision.decision.accept, 0.0);
         assert_eq!(evil_decision.decision.restrict, 1.0);
