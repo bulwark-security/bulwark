@@ -19,6 +19,26 @@ jobs:
 
       - run: cargo fmt --check
 
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+          override: true
+          target: wasm32-wasi
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Run clippy
+        run: cargo clippy --no-deps --workspace --all-targets
+
   test:
     strategy:
       fail-fast: false
@@ -43,11 +63,7 @@ jobs:
           target: wasm32-wasi
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-
-      - if: runner.os != 'windows'
-        name: Run clippy
-        run: cargo clippy --no-deps --workspace --all-targets
+        uses: swatinem/rust-cache@v2
 
       - name: Run bulwark tests
         uses: actions-rs/cargo@v1
