@@ -111,6 +111,16 @@ impl From<bulwark_host::DecisionInterface> for Decision {
     }
 }
 
+impl From<Decision> for bulwark_host::DecisionInterface {
+    fn from(decision: Decision) -> Self {
+        bulwark_host::DecisionInterface {
+            accept: decision.accept,
+            restrict: decision.restrict,
+            unknown: decision.unknown,
+        }
+    }
+}
+
 impl From<bulwark_host::OutcomeInterface> for Outcome {
     fn from(outcome: bulwark_host::OutcomeInterface) -> Self {
         match outcome {
@@ -299,24 +309,42 @@ pub fn set_decision(decision: Decision) -> Result<(), ValidationErrors> {
 
 /// Records a decision indicating that the plugin wants to accept a request.
 ///
-/// This function is sugar for `set_decision(1.0, 0.0, 0.0)` and should be used in conjunction with a weight value.
-pub fn set_accepted() {
-    bulwark_host::set_decision(DecisionInterface {
-        accept: 1.0,
-        restrict: 0.0,
-        unknown: 0.0,
-    });
+/// This function is sugar for `set_decision(Decision { value, 0.0, 0.0 }.scale())`
+/// If used with a 1.0 value it should be given a weight in its config.
+///
+/// # Arguments
+///
+/// * `value` - The `accept` value to set.
+pub fn set_accepted(value: f64) {
+    bulwark_host::set_decision(
+        Decision {
+            accept: value,
+            restrict: 0.0,
+            unknown: 0.0,
+        }
+        .scale()
+        .into(),
+    );
 }
 
 /// Records a decision indicating that the plugin wants to restrict a request.
 ///
-/// This function is sugar for `set_decision(0.0, 1.0, 0.0)` and should be used in conjunction with a weight value.
-pub fn set_restricted() {
-    bulwark_host::set_decision(DecisionInterface {
-        accept: 1.0,
-        restrict: 0.0,
-        unknown: 0.0,
-    });
+/// This function is sugar for `set_decision(Decision { 0.0, value, 0.0 }.scale())`.
+/// If used with a 1.0 value it should be given a weight in its config.
+///
+/// # Arguments
+///
+/// * `value` - The `restrict` value to set.
+pub fn set_restricted(value: f64) {
+    bulwark_host::set_decision(
+        Decision {
+            accept: 0.0,
+            restrict: value,
+            unknown: 0.0,
+        }
+        .scale()
+        .into(),
+    );
 }
 
 /// Records the tags the plugin wants to associate with its decision.
