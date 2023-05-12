@@ -52,3 +52,7 @@ members = [
     "crates/wasm-sdk",
     "crates/decision",
 ]
+
+[profile.test]
+opt-level = 2
+codegen-units = 8
