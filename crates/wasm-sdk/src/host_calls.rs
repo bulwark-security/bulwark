@@ -335,6 +335,8 @@ pub fn set_remote_state(key: &str, value: &[u8]) {
 
 /// Increments a named counter in Redis.
 ///
+/// Returns the value of the counter after it's incremented.
+///
 /// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
 /// the prefix of the key being requested. This function will panic if permission has not been granted.
 ///
@@ -347,6 +349,8 @@ pub fn increment_remote_state(key: &str) -> i64 {
 }
 
 /// Increments a named counter in Redis by a specified delta value.
+///
+/// Returns the value of the counter after it's incremented.
 ///
 /// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
 /// the prefix of the key being requested. This function will panic if permission has not been granted.
