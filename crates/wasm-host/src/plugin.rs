@@ -236,13 +236,15 @@ impl Default for ScriptRegistry {
                 local consec_failures = 0
                 if success_delta > 0 then
                     successes = redis.call("incrby", success_key, success_delta)
-                    failures = tonumber(redis.call("get", failure_key))
+                    failures = tonumber(redis.call("get", failure_key)) or 0
                     consec_successes = redis.call("incrby", consec_success_key, success_delta)
-                    consec_failures = redis.call("set", consec_failure_key, 0)
+                    redis.call("set", consec_failure_key, 0)
+                    consec_failures = 0
                 else
                     successes = tonumber(redis.call("get", success_key))
-                    failures = redis.call("incrby", failure_key, failure_delta)
-                    consec_successes = redis.call("set", consec_success_key, 0)
+                    failures = redis.call("incrby", failure_key, failure_delta) or 0
+                    redis.call("set", consec_success_key, 0)
+                    consec_successes = 0
                     consec_failures = redis.call("incrby", consec_failure_key, failure_delta)
                 end
                 redis.call("expireat", generation_key, expiration + 1)
@@ -264,10 +266,10 @@ impl Default for ScriptRegistry {
                 if not generation then
                     return { nil, nil, nil, nil, nil, nil }
                 end
-                local successes = tonumber(redis.call("get", success_key))
-                local failures = tonumber(redis.call("get", failure_key))
-                local consec_successes = tonumber(redis.call("get", consec_success_key))
-                local consec_failures = tonumber(redis.call("get", consec_failure_key))
+                local successes = tonumber(redis.call("get", success_key)) or 0
+                local failures = tonumber(redis.call("get", failure_key)) or 0
+                local consec_successes = tonumber(redis.call("get", consec_success_key)) or 0
+                local consec_failures = tonumber(redis.call("get", consec_failure_key)) or 0
                 local expiration = tonumber(redis.call("expiretime", success_key)) - 1
                 return { generation, successes, failures, consec_successes, consec_failures, expiration }
                 "#,
