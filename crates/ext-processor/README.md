@@ -1,4 +1,4 @@
-# Bulwark
+# Bulwark Envoy External Processor
 
 Automated security decision making under uncertainty.
 
@@ -11,9 +11,8 @@ while unburdening product application logic from the increased complexity of dom
 
 A complete overview may be found in Bulwark's [documentation](https://docs.bulwark.security/).
 
-## Getting Help
+## External Processor
 
-To start, check if the answer to your question can be found in any of the [guides](https://docs.bulwark.security/guides)
-or [API documentation](https://docs.bulwark.security/api/reference). If you aren't able to find an answer there, check
-the Bulwark project's [discussion forum](https://github.com/bulwark-security/bulwark/discussions). We would love to try
-to answer your question.
+The `bulwark-ext-processor` crate is responsible for exposing a service that implements the
+[Envoy external processing API](https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/http/ext_proc/v3/ext_proc.proto).
+It connects Envoy to Bulwark's WebAssembly host environment.
