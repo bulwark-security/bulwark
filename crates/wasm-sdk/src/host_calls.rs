@@ -1,11 +1,11 @@
 use {
-    std::{net::IpAddr, str::FromStr},
+    std::{net::IpAddr, str, str::FromStr},
     validator::{Validate, ValidationErrors},
 };
 
 use crate::bulwark_host::DecisionInterface;
 
-pub use crate::{Decision, Outcome};
+pub use crate::{Decision, Outcome, ParseCounterError};
 pub use http::{Extensions, Method, StatusCode, Uri, Version};
 pub use serde_json::{Map, Value};
 
@@ -35,6 +35,12 @@ pub type Breaker = crate::bulwark_host::BreakerInterface;
 /// * `attempts` - The number of attempts made within the expiration window.
 /// * `expiration` - The expiration timestamp in seconds since the epoch.
 pub type Rate = crate::bulwark_host::RateInterface;
+
+/// The number of successes or failures to increment the breaker by.
+pub enum BreakerDelta {
+    Success(i64),
+    Failure(i64),
+}
 
 /// The first chunk of an HTTP body.
 ///
@@ -319,6 +325,16 @@ pub fn get_remote_state(key: &str) -> Vec<u8> {
     crate::bulwark_host::get_remote_state(key)
 }
 
+/// Parses a counter value from state stored as a string.
+///
+/// # Arguments
+///
+/// * `value` - The string representation of a counter.
+#[inline]
+pub fn parse_counter(value: Vec<u8>) -> Result<i64, ParseCounterError> {
+    Ok(str::from_utf8(value.as_slice())?.parse::<i64>()?)
+}
+
 /// Set a named value in Redis.
 ///
 /// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
@@ -430,13 +446,11 @@ pub fn check_rate_limit(key: &str) -> Rate {
 /// * `success_delta` - The amount to increase the success counter by. Generally zero on failure.
 /// * `failure_delta` - The amount to increase the failure counter by. Generally zero on success.
 /// * `window` - How long each period should be in seconds.
-#[inline]
-pub fn increment_breaker(
-    key: &str,
-    success_delta: i64,
-    failure_delta: i64,
-    window: i64,
-) -> Breaker {
+pub fn increment_breaker(key: &str, delta: BreakerDelta, window: i64) -> Breaker {
+    let (success_delta, failure_delta) = match delta {
+        BreakerDelta::Success(d) => (d, 0),
+        BreakerDelta::Failure(d) => (0, d),
+    };
     crate::bulwark_host::increment_breaker(key, success_delta, failure_delta, window)
 }
 

@@ -4,10 +4,12 @@
 // TODO: switch to wasmtime::component::bindgen!
 wit_bindgen_rust::import!("../../bulwark-host.wit");
 
+mod errors;
 mod from;
 mod host_calls;
 
 pub use bulwark_decision::*;
+pub use errors::*;
 pub use from::*;
 pub use host_calls::*;
 
