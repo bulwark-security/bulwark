@@ -463,9 +463,26 @@ pub fn check_rate_limit(key: &str) -> Rate {
 /// # Arguments
 ///
 /// * `key` - The key name corresponding to the state counter.
-/// * `success_delta` - The amount to increase the success counter by. Generally zero on failure.
-/// * `failure_delta` - The amount to increase the failure counter by. Generally zero on success.
+/// * `delta` - The amount to increase the success or failure counter by.
 /// * `window` - How long each period should be in seconds.
+///
+/// # Examples
+///
+/// ```no_run
+/// use bulwark_wasm_sdk::{increment_breaker, BreakerDelta};
+///
+/// let key = "client.ip:192.168.0.1";
+/// let failure = true;
+/// let breaker = increment_breaker(
+///     key,
+///     if !failure {
+///         BreakerDelta::Success(1)
+///     } else {
+///         BreakerDelta::Failure(1)
+///     },
+///     60 * 60, // 1 hour
+/// );
+/// ```
 pub fn increment_breaker(key: &str, delta: BreakerDelta, window: i64) -> Breaker {
     let (success_delta, failure_delta) = match delta {
         BreakerDelta::Success(d) => (d, 0),
