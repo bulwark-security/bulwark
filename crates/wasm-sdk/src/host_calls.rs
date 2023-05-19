@@ -256,9 +256,13 @@ pub fn set_restricted(value: f64) {
 ///
 /// * `tags` - The list of tags to associate with a [`Decision`]
 #[inline]
-pub fn set_tags(tags: &[&str]) {
+pub fn set_tags<'a, I>(tags: I)
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    let tags = tags.into_iter().collect::<Vec<&str>>();
     // TODO: use BTreeSet for merging sorted tag lists?
-    crate::bulwark_host::set_tags(tags)
+    crate::bulwark_host::set_tags(tags.as_slice())
 }
 
 /// Returns the combined decision, if available.

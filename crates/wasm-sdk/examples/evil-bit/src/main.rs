@@ -14,7 +14,7 @@ fn on_request_decision() {
                 unknown: 0.0,
             })
             .expect("decision should be valid");
-            set_tags(&["evil"]);
+            set_tags(["evil"]);
             return;
         }
     }
