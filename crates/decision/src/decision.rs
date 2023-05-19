@@ -167,14 +167,20 @@ impl Decision {
     /// If the component values sum to less than 1.0, assigns the remainder to the
     /// [`unknown`](Decision::unknown) value.
     pub fn fill_unknown(&self) -> Self {
-        let sum = self.accept + self.restrict + self.unknown;
+        // Check for negative unknown values, much of this function's behavior becomes unintuitive otherwise.
+        let unknown = if self.unknown + f64::EPSILON >= 0.0 {
+            self.unknown
+        } else {
+            0.0
+        };
+        let sum = self.accept + self.restrict + unknown;
         Self {
             accept: self.accept,
             restrict: self.restrict,
-            unknown: if sum < 1.0 {
+            unknown: if sum - f64::EPSILON <= 1.0 {
                 1.0 - self.accept - self.restrict
             } else {
-                self.unknown
+                unknown
             },
         }
     }
@@ -491,6 +497,62 @@ mod tests {
     );
 
     test_decision!(
+        fill_unknown_zero,
+        Decision {
+            accept: 0.0,
+            restrict: 0.0,
+            unknown: 0.0,
+        }
+        .fill_unknown(),
+        true,
+        accept = 0.0,
+        restrict = 0.0,
+        unknown = 1.0
+    );
+
+    test_decision!(
+        fill_unknown_normal,
+        Decision {
+            accept: 0.25,
+            restrict: 0.25,
+            unknown: 0.1,
+        }
+        .fill_unknown(),
+        true,
+        accept = 0.25,
+        restrict = 0.25,
+        unknown = 0.5
+    );
+
+    test_decision!(
+        fill_unknown_over_one,
+        Decision {
+            accept: 0.5,
+            restrict: 0.5,
+            unknown: 0.5,
+        }
+        .fill_unknown(),
+        false,
+        accept = 0.5,
+        restrict = 0.5,
+        unknown = 0.5
+    );
+
+    test_decision!(
+        fill_unknown_mixed,
+        Decision {
+            accept: 2.0,
+            restrict: 2.0,
+            unknown: -3.5,
+        }
+        .fill_unknown(),
+        false,
+        accept = 2.0,
+        restrict = 2.0,
+        unknown = 0.0
+    );
+
+    test_decision!(
         scale_zero,
         Decision {
             accept: 0.0,
@@ -544,6 +606,20 @@ mod tests {
         accept = 0.3333333333333333,
         restrict = 0.3333333333333333,
         unknown = 0.3333333333333333
+    );
+
+    test_decision!(
+        scale_mixed,
+        Decision {
+            accept: 2.0,
+            restrict: 2.0,
+            unknown: -3.5,
+        }
+        .scale(),
+        true,
+        accept = 0.5,
+        restrict = 0.5,
+        unknown = 0.0
     );
 
     test_decision!(
