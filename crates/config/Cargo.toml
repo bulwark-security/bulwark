@@ -1,0 +1,25 @@
+[package]
+name = "bulwark-config"
+description = "Configuration for the Bulwark security engine."
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0 WITH LLVM-exception"
+homepage = "https://bulwark.security/"
+repository = "https://github.com/bulwark-security/bulwark"
+readme = "README.md"
+keywords = ["bulwark", "configuration"]
+categories = ["wasm"]
+
+[badges]
+maintenance = { status = "experimental" }
+
+[dependencies]
+bulwark-decision = { path = "../decision", version = "0.1.0" }
+chrono = { version = "0.4.23", features = ["serde"] }
+lazy_static = "1.4.0"
+regex = "1.8.1"
+serde = { version = "1.0.149", features = ["std", "serde_derive"] }
+serde_json = "1.0.93"
+thiserror = "1.0.37"
+toml = { version = "0.5.9", features = ["preserve_order"] }
+validator = { version = "0.12", features = ["derive"] }

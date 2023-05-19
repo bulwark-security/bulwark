@@ -1,0 +1,27 @@
+[service]
+port = 10002
+remote_state = "redis://127.0.0.1:6379"
+
+[thresholds]
+restrict = 0.75
+
+[[include]]
+path = "include.toml"
+
+[[plugin]]
+ref = "evil_bit"
+path = "bulwark-evil-bit.wasm"
+
+[[preset]]
+ref = "default"
+plugins = ["evil_bit", "starter_preset"]
+
+[[resource]]
+route = "/"
+plugins = ["default"]
+timeout = 25
+
+[[resource]]
+route = "/*params"
+plugins = ["default"]
+timeout = 25

@@ -1,4 +1,4 @@
-# Bulwark
+# Bulwark WebAssembly Host
 
 Automated security decision making under uncertainty.
 
@@ -11,9 +11,7 @@ while unburdening product application logic from the increased complexity of dom
 
 A complete overview may be found in Bulwark's [documentation](https://docs.bulwark.security/).
 
-## Getting Help
+## WebAssembly Host
 
-To start, check if the answer to your question can be found in any of the [guides](https://docs.bulwark.security/guides)
-or [API documentation](https://docs.bulwark.security/api/reference). If you aren't able to find an answer there, check
-the Bulwark project's [discussion forum](https://github.com/bulwark-security/bulwark/discussions). We would love to try
-to answer your question.
+Bulwark's WebAssembly (WASM) host environment loads and compiles plugins, tracks a request context for each
+incoming request and plugin, and provides implementations of the host functions needed by Bulwark plugin guests.

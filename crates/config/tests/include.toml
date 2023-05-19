@@ -1,0 +1,8 @@
+[[plugin]]
+ref = "blank_slate"
+path = "bulwark-blank-slate.wasm"
+config = {}
+
+[[preset]]
+ref = "starter_preset"
+plugins = ["blank_slate"]

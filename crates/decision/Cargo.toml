@@ -1,0 +1,22 @@
+[package]
+name = "bulwark-decision"
+description = "Decision-making under uncertainty for the Bulwark security engine."
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0 WITH LLVM-exception"
+homepage = "https://bulwark.security/"
+repository = "https://github.com/bulwark-security/bulwark"
+readme = "README.md"
+keywords = ["bulwark", "security", "fraud", "detection"]
+categories = ["wasm"]
+
+[badges]
+maintenance = { status = "experimental" }
+
+[dependencies]
+thiserror = "1.0.37"
+validator = { version = "0.12", features = ["derive"] }
+approx = "0.4"
+
+[dev-dependencies]
+cfg-if = "1.0"

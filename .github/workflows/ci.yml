@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt
+
+      - run: cargo fmt --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+          override: true
+          target: wasm32-wasi
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Run clippy
+        run: cargo clippy --no-deps --workspace --all-targets -- --deny warnings
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        rust_version:
+          - stable
+        os:
+          - ubuntu-latest
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust_version }}
+          components: clippy
+          override: true
+          target: wasm32-wasi
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Run bulwark tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p bulwark-cli -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk
