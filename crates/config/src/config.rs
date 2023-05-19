@@ -1,5 +1,6 @@
 //! The config module provides the internal representation of Bulwark's configuration.
 
+use crate::ResolutionError;
 use regex::Regex;
 use serde::Serialize;
 use validator::Validate;
@@ -243,7 +244,10 @@ impl Resource {
     ///   `Resource`s do not maintain their own references to their parent [`Config`] so this must be passed in.
     ///
     /// See [`Config::plugin`] and [`Config::preset`].
-    pub fn resolve_plugins<'a>(&'a self, config: &'a Config) -> Vec<&Plugin> {
+    pub fn resolve_plugins<'a>(
+        &'a self,
+        config: &'a Config,
+    ) -> Result<Vec<&Plugin>, ResolutionError> {
         let mut plugins: Vec<&Plugin> = Vec::with_capacity(self.plugins.len());
         for reference in &self.plugins {
             match reference {
@@ -259,11 +263,11 @@ impl Resource {
                     }
                 }
                 Reference::Missing(ref_name) => {
-                    panic!("missing reference '{}'", ref_name);
+                    return Err(ResolutionError::Missing(ref_name.to_string()));
                 }
             }
         }
-        plugins
+        Ok(plugins)
     }
 }
 

@@ -177,7 +177,7 @@ impl BulwarkProcessor {
             return Err(PluginLoadError::ResourceMissing);
         }
         for resource in &config.resources {
-            let plugin_configs = resource.resolve_plugins(&config);
+            let plugin_configs = resource.resolve_plugins(&config)?;
             let mut plugins: PluginList = Vec::with_capacity(plugin_configs.len());
             for plugin_config in plugin_configs {
                 // TODO: pass in the plugin config

@@ -5,6 +5,8 @@ pub enum PluginLoadError {
     WasiError(#[from] wasi_common::Error),
     #[error(transparent)]
     StringArray(#[from] wasi_common::StringArrayError),
+    #[error(transparent)]
+    Resolution(#[from] bulwark_config::ResolutionError),
     #[error("at least one resource required")]
     ResourceMissing,
 }
