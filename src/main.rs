@@ -167,21 +167,16 @@ const DEBUG_FILTER: &str =
 /// An [`EnvFilter`] pattern to limit matched log events to trace events.
 const TRACE_FILTER: &str = "trace";
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // TODO: tokio runtime builder to control runtime parameters
-
-    let cli = Cli::parse();
-
+fn init_tracing(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     color_eyre::install()?;
 
     LogTracer::init().expect("log tracer init failed");
 
-    let log_level = cli.log_level.unwrap_or_else(|| "info".to_string());
-    let log_format = cli.log_format.unwrap_or_else(|| "ecs".to_string());
+    let log_level: &str = cli.log_level.as_ref().map_or("info", |ll| ll.as_str());
+    let log_format: &str = cli.log_format.as_ref().map_or("ecs", |lf| lf.as_str());
     let mut ecs_layer = None;
     let mut forest_layer = None;
-    match log_format.as_str() {
+    match log_format {
         "ecs" => {
             ecs_layer = Some(ForestLayer::from(
                 tracing_forest::Printer::new().formatter(crate::ecs::EcsFormatter),
@@ -194,7 +189,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         _ => {
             Err(crate::errors::CliArgumentError::InvalidLogFormat(
-                log_format,
+                log_format.to_string(),
             ))?;
         }
     }
@@ -211,10 +206,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "info" => INFO_FILTER,
                 "debug" => DEBUG_FILTER,
                 "trace" => TRACE_FILTER,
-                _ => log_level.as_str(),
+                _ => log_level,
             },
         ));
     tracing::subscriber::set_global_default(subscriber).unwrap();
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // TODO: tokio runtime builder to control runtime parameters
+
+    let cli = Cli::parse();
+    init_tracing(&cli)?;
 
     // You can check for the existence of subcommands, and if found use their
     // matches just as you would the top level cmd
