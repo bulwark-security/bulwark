@@ -11,6 +11,13 @@ pub enum ConfigFileError {
     Validations(#[from] validator::ValidationErrors),
 }
 
+/// This error will be returned if an attempt to serialize a config structure fails.
+#[derive(thiserror::Error, Debug)]
+pub enum ConfigSerializationError {
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+}
+
 /// This error will be returned if attempting to resolve references fails.
 #[derive(thiserror::Error, Debug)]
 pub enum ResolutionError {

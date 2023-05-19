@@ -1,6 +1,6 @@
 //! The config module provides the internal representation of Bulwark's configuration.
 
-use crate::ResolutionError;
+use crate::{ConfigSerializationError, ResolutionError};
 use regex::Regex;
 use serde::Serialize;
 use validator::Validate;
@@ -156,10 +156,9 @@ pub const DEFAULT_PLUGIN_WEIGHT: f64 = 1.0;
 
 impl Plugin {
     /// Serializes the [`config`](Plugin::config) value to JSON bytes.
-    pub fn config_to_json(&self) -> Vec<u8> {
+    pub fn config_to_json(&self) -> Result<Vec<u8>, ConfigSerializationError> {
         let obj = serde_json::Value::Object(self.config.clone());
-        // TODO: probably should return a result instead of panicking
-        serde_json::to_vec(&obj).unwrap()
+        Ok(serde_json::to_vec(&obj)?)
     }
 }
 

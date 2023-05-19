@@ -5,6 +5,7 @@ use {
     crate::{
         ContextInstantiationError, PluginExecutionError, PluginInstantiationError, PluginLoadError,
     },
+    bulwark_config::ConfigSerializationError,
     bulwark_host::{DecisionInterface, HeaderInterface, OutcomeInterface},
     bulwark_wasm_sdk::{Decision, Outcome},
     chrono::Utc,
@@ -344,7 +345,7 @@ impl RequestContext {
         Ok(RequestContext {
             wasi,
             redis_info,
-            config: Arc::new(plugin.guest_config()),
+            config: Arc::new(plugin.guest_config()?),
             permissions: plugin.permissions(),
             params,
             request: bulwark_host::RequestInterface::from(request),
@@ -444,7 +445,7 @@ impl Plugin {
     }
 
     /// Makes the guest's configuration available as serialized JSON bytes.
-    fn guest_config(&self) -> Vec<u8> {
+    fn guest_config(&self) -> Result<Vec<u8>, ConfigSerializationError> {
         // TODO: should guest config be required or optional?
         self.config.config_to_json()
     }
