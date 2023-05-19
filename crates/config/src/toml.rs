@@ -33,26 +33,55 @@ struct Config {
 /// The TOML serialization for a Service config structure.
 #[derive(Serialize, Deserialize)]
 struct Service {
-    #[serde(default)]
+    #[serde(default = "default_port")]
     port: u16,
-    #[serde(default)]
+    #[serde(default = "default_admin_port")]
     admin_port: u16,
-    #[serde(default)]
+    #[serde(default = "default_admin")]
     admin: bool,
-    #[serde(default)]
+    #[serde(default = "default_remote_state")]
     remote_state: Option<String>,
-    #[serde(default)]
+    #[serde(default = "default_proxy_hops")]
     proxy_hops: u8,
+}
+
+/// The default port for the primary service.
+///
+/// See [`DEFAULT_PORT`].
+fn default_port() -> u16 {
+    crate::DEFAULT_PORT
+}
+
+/// The default port for the internal admin service.
+///
+/// See [`DEFAULT_ADMIN_PORT`].
+fn default_admin_port() -> u16 {
+    crate::DEFAULT_ADMIN_PORT
+}
+
+/// The default for whether the admin service should be enabled or not.
+fn default_admin() -> bool {
+    true
+}
+
+/// The default for the network address to access remote state.
+fn default_remote_state() -> Option<String> {
+    None
+}
+
+/// The default number of internal proxy hops expected in front of Bulwark.
+fn default_proxy_hops() -> u8 {
+    0
 }
 
 impl Default for Service {
     fn default() -> Self {
         Self {
-            port: crate::DEFAULT_PORT,
-            admin_port: crate::DEFAULT_ADMIN_PORT,
-            admin: true,
-            remote_state: None,
-            proxy_hops: 0,
+            port: default_port(),
+            admin_port: default_admin_port(),
+            admin: default_admin(),
+            remote_state: default_remote_state(),
+            proxy_hops: default_proxy_hops(),
         }
     }
 }
@@ -72,23 +101,43 @@ impl From<Service> for crate::Service {
 /// The TOML serialization for a Thresholds structure.
 #[derive(Serialize, Deserialize)]
 struct Thresholds {
-    #[serde(default)]
+    #[serde(default = "default_observe_only")]
     observe_only: bool,
-    #[serde(default)]
+    #[serde(default = "default_restrict_threshold")]
     restrict: f64,
-    #[serde(default)]
+    #[serde(default = "default_suspicious_threshold")]
     suspicious: f64,
-    #[serde(default)]
+    #[serde(default = "default_trust_threshold")]
     trust: f64,
+}
+
+/// The default for whether the primary service should take no action in response to restrict decisions.
+fn default_observe_only() -> bool {
+    crate::DEFAULT_OBSERVE_ONLY
+}
+
+/// The default threshold for restricting a request.
+fn default_restrict_threshold() -> f64 {
+    crate::DEFAULT_RESTRICT_THRESHOLD
+}
+
+/// The default threshold for treating a request as suspicious.
+fn default_suspicious_threshold() -> f64 {
+    crate::DEFAULT_SUSPICIOUS_THRESHOLD
+}
+
+/// The default threshold for trusting a request.
+fn default_trust_threshold() -> f64 {
+    crate::DEFAULT_TRUST_THRESHOLD
 }
 
 impl Default for Thresholds {
     fn default() -> Self {
         Self {
-            observe_only: crate::DEFAULT_OBSERVE_ONLY,
-            restrict: crate::DEFAULT_RESTRICT_THRESHOLD,
-            suspicious: crate::DEFAULT_SUSPICIOUS_THRESHOLD,
-            trust: crate::DEFAULT_TRUST_THRESHOLD,
+            observe_only: default_observe_only(),
+            restrict: default_restrict_threshold(),
+            suspicious: default_suspicious_threshold(),
+            trust: default_trust_threshold(),
         }
     }
 }
