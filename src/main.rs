@@ -254,8 +254,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
             }
 
-            tokio::task::yield_now().await;
-
             let bulwark_processor = BulwarkProcessor::new(config_root)?;
             let ext_filter = ExternalProcessorServer::new(bulwark_processor);
 
