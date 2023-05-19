@@ -225,7 +225,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let config_root = bulwark_config::toml::load_config(config)?;
             let port = config_root.service.port;
             let admin_port = config_root.service.admin_port;
-            let admin_enabled = config_root.service.admin;
+            let admin_enabled = config_root.service.admin_enabled;
             let health_state = Arc::new(Mutex::new(HealthState {
                 started: false,
                 ready: false,

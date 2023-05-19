@@ -38,7 +38,7 @@ struct Service {
     #[serde(default = "default_admin_port")]
     admin_port: u16,
     #[serde(default = "default_admin")]
-    admin: bool,
+    admin_enabled: bool,
     #[serde(default = "default_remote_state")]
     remote_state: Option<String>,
     #[serde(default = "default_proxy_hops")]
@@ -79,7 +79,7 @@ impl Default for Service {
         Self {
             port: default_port(),
             admin_port: default_admin_port(),
-            admin: default_admin(),
+            admin_enabled: default_admin(),
             remote_state: default_remote_state(),
             proxy_hops: default_proxy_hops(),
         }
@@ -91,7 +91,7 @@ impl From<Service> for crate::Service {
         Self {
             port: service.port,
             admin_port: service.admin_port,
-            admin: service.admin,
+            admin_enabled: service.admin_enabled,
             remote_state: service.remote_state.clone(),
             proxy_hops: service.proxy_hops,
         }

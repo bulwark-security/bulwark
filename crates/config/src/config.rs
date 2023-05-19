@@ -65,7 +65,7 @@ pub struct Service {
     /// The port for the admin service and health checks.
     pub admin_port: u16,
     /// True if the admin service is enabled, false otherwise.
-    pub admin: bool,
+    pub admin_enabled: bool,
     /// The URI for the external Redis state store.
     pub remote_state: Option<String>,
     /// The number of trusted proxy hops expected to be exterior to Bulwark.
