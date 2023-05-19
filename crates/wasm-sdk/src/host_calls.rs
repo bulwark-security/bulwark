@@ -255,12 +255,23 @@ pub fn set_restricted(value: f64) {
 /// # Arguments
 ///
 /// * `tags` - The list of tags to associate with a [`Decision`]
+///
+/// # Examples
+///
+/// All of these are valid:
+/// ```
+/// set_tags(["tag"]);
+/// set_tags(vec!["tag"]);
+/// set_tags([String::from("tag")]);
+/// set_tags(vec![String::from("tag")]);
+/// // Clear tags, rarely needed
+/// set_tags::<[_; 0], String>([]);
+/// set_tags::<Vec<_>, String>(vec![]);
+/// ```
 #[inline]
-pub fn set_tags<'a, I>(tags: I)
-where
-    I: IntoIterator<Item = &'a str>,
-{
-    let tags = tags.into_iter().collect::<Vec<&str>>();
+pub fn set_tags<I: IntoIterator<Item = V>, V: Into<String>>(tags: I) {
+    let tags: Vec<String> = tags.into_iter().map(|s| s.into()).collect();
+    let tags: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
     // TODO: use BTreeSet for merging sorted tag lists?
     crate::bulwark_host::set_tags(tags.as_slice())
 }

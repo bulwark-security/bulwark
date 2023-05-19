@@ -18,7 +18,7 @@ fn on_request_decision() {
         unknown: 1.0,
     })
     .expect("decision should be valid");
-    set_tags([]);
+    set_tags(["blank-slate"]);
 }
 
 // Uncomment to process responses from the interior service.
