@@ -46,35 +46,6 @@ jobs:
           command: clippy
           args: --no-deps --workspace --all-targets -- --deny warnings
 
-  package:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          components: clippy
-          override: true
-          target: wasm32-wasi
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-
-      - name: Run bulwark build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: -p bulwark-cli -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk
-
-      - name: Run bulwark package dry-run
-        uses: actions-rs/cargo@v1
-        with:
-          command: package
-          args: -p bulwark-cli -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk
-
   test:
     strategy:
       fail-fast: false
@@ -105,4 +76,4 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -p bulwark-cli -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk
+          args: -p bulwark-config -p bulwark-decision -p bulwark-wasm-sdk -p bulwark-wasm-host -p bulwark-ext-processor -p bulwark-cli
