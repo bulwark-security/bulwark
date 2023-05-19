@@ -259,7 +259,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             let bulwark_processor = BulwarkProcessor::new(config_root)?;
-            let ext_filter = ExternalProcessorServer::new(bulwark_processor);
+            let ext_processor = ExternalProcessorServer::new(bulwark_processor);
 
             {
                 let health_state = health_state.clone();
@@ -271,7 +271,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         health_state.ready = true;
                     }
                     Server::builder()
-                        .add_service(ext_filter)
+                        .add_service(ext_processor)
                         .serve(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port)) // TODO: make socket addr configurable?
                         .await
                         .map_err(ServiceError::ExtProcessorService)
