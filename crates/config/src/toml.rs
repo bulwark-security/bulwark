@@ -216,10 +216,7 @@ fn toml_value_to_json(value: toml::Value) -> serde_json::Value {
         toml::Value::Boolean(v) => serde_json::Value::Bool(v),
         toml::Value::Datetime(v) => {
             // TODO: probably should return a result instead of panicking
-            // TODO: should we always convert to UTC, make this configurable, or just leave time-zone as-is and hope system time is UTC?
-            let ts = chrono::DateTime::parse_from_rfc3339(v.to_string().as_str())
-                .unwrap()
-                .with_timezone(&chrono::Utc);
+            let ts = chrono::DateTime::parse_from_rfc3339(v.to_string().as_str()).unwrap();
             serde_json::Value::String(ts.to_rfc3339())
         }
         toml::Value::Array(v) => {
