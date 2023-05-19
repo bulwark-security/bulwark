@@ -322,10 +322,13 @@ version = "0.1.0"
 dependencies = [
  "bulwark-decision",
  "chrono",
+ "lazy_static",
+ "regex",
  "serde",
  "serde_json",
  "thiserror",
  "toml",
+ "validator",
 ]
 
 [[package]]

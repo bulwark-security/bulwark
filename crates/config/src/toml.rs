@@ -3,11 +3,15 @@
 // Due to the need for multiple serialization mappings, TOML deserialization is not done
 // directly in the [`bulwark_config`](crate) module's structs.
 
-use {
-    crate::ConfigFileError,
-    serde::{Deserialize, Serialize},
-    std::{fs, path::Path},
-};
+use crate::ConfigFileError;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::{fs, path::Path};
+use validator::Validate;
+
+lazy_static! {
+    static ref RE_VALID_REFERENCE: Regex = Regex::new(r"^[_a-z]+$").unwrap();
+}
 
 /// The TOML serialization for a Config structure.
 #[derive(Serialize, Deserialize, Default)]
@@ -156,12 +160,15 @@ struct Include {
 }
 
 /// The TOML serialization for a Plugin structure.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Validate, Serialize, Deserialize, Clone)]
 struct Plugin {
     #[serde(rename(serialize = "ref", deserialize = "ref"))]
+    #[validate(length(min = 1), regex(path = "RE_VALID_REFERENCE"))]
     reference: String,
+    #[validate(length(min = 1))]
     path: String,
     #[serde(default = "default_plugin_weight")]
+    #[validate(range(min = 0.0))]
     weight: f64,
     #[serde(default)]
     config: toml::map::Map<String, toml::Value>,
@@ -256,10 +263,12 @@ impl From<TomlPermissions> for crate::config::Permissions {
 }
 
 /// The TOML serialization for a Preset structure.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Validate, Serialize, Deserialize, Clone)]
 struct Preset {
     #[serde(rename(serialize = "ref", deserialize = "ref"))]
+    #[validate(length(min = 1), regex(path = "RE_VALID_REFERENCE"))]
     reference: String,
+    #[validate(length(min = 1))]
     plugins: Vec<String>,
 }
 
@@ -322,6 +331,12 @@ where
 
     // Load the raw serialization format and resolve includes
     let root = load_config_recursive(path)?;
+    for preset in &root.presets {
+        preset.validate()?;
+    }
+    for plugin in &root.plugins {
+        plugin.validate()?;
+    }
     let resolve_reference = |ref_name: &String| {
         let mut reference = crate::config::Reference::Missing(ref_name.clone());
         for preset in &root.presets {

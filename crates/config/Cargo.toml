@@ -14,8 +14,11 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 bulwark-decision = { path = "../decision", version = "0.1.0" }
+chrono = { version = "0.4.23", features = ["serde"] }
+lazy_static = "1.4.0"
+regex = "1.8.1"
 serde = { version = "1.0.149", features = ["std", "serde_derive"] }
 serde_json = "1.0.93"
-toml = { version = "0.5.9", features = ["preserve_order"] }
 thiserror = "1.0.37"
-chrono = { version = "0.4.23", features = ["serde"] }
+toml = { version = "0.5.9", features = ["preserve_order"] }
+validator = { version = "0.12", features = ["derive"] }

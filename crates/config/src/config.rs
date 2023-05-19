@@ -1,5 +1,13 @@
 //! The config module provides the internal representation of Bulwark's configuration.
 
+use regex::Regex;
+use serde::Serialize;
+use validator::Validate;
+
+lazy_static! {
+    static ref RE_VALID_REFERENCE: Regex = Regex::new(r"^[_a-z]+$").unwrap();
+}
+
 /// The root of a Bulwark configuration.
 ///
 /// Wraps all child configuration structures and provides the internal representation of Bulwark's configuration.
@@ -116,17 +124,20 @@ impl Default for Thresholds {
 /// The configuration for an individual plugin.
 ///
 /// This structure will be wrapped by structs in the host environment.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Validate, Clone, Default)]
 pub struct Plugin {
     /// The plugin reference key. Should be limited to ASCII lowercase a-z plus underscores.
+    #[validate(length(min = 1), regex(path = "RE_VALID_REFERENCE"))]
     pub reference: String,
     // TODO: plugin path should be absolute; once it's in this structure the config base path is no longer known
     // TODO: should this be a URI? That would allow e.g. data: URI values to embed WASM into config over the wire
     /// The path to the plugin WASM file.
+    #[validate(length(min = 1))]
     pub path: String,
     /// A weight to multiply this plugin's decision values by.
     ///
     /// A 1.0 value has no effect on the decision. See [`bulwark_decision::Decision::weight`].
+    #[validate(range(min = 0.0))]
     pub weight: f64,
     // TODO: this might be better represented as a valuable::Mappable / valuable::Value
     /// JSON-serializable configuration passed into the plugin environment.
@@ -169,11 +180,13 @@ pub struct Permissions {
 }
 
 /// A mapping between a reference identifier and a list of plugins that form a preset plugin group.
-#[derive(Debug, Clone)]
+#[derive(Debug, Validate, Clone)]
 pub struct Preset {
     /// The preset reference key. Should be limited to ASCII lowercase a-z plus underscores.
+    #[validate(length(min = 1), regex(path = "RE_VALID_REFERENCE"))]
     pub reference: String,
     /// The list of references to plugins and other presets contained within this preset.
+    #[validate(length(min = 1))]
     pub plugins: Vec<Reference>,
 }
 
@@ -255,7 +268,7 @@ impl Resource {
 }
 
 /// Wraps reference strings and differentiates what the reference points to.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 pub enum Reference {
     /// A reference to a [`Plugin`].
     Plugin(String),

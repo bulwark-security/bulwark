@@ -2,7 +2,11 @@
 #[derive(thiserror::Error, Debug)]
 pub enum ConfigFileError {
     #[error(transparent)]
-    IOError(#[from] std::io::Error),
+    IO(#[from] std::io::Error),
     #[error(transparent)]
-    DeserializationError(#[from] toml::de::Error),
+    Deserialization(#[from] toml::de::Error),
+    #[error(transparent)]
+    Validation(#[from] validator::ValidationError),
+    #[error(transparent)]
+    Validations(#[from] validator::ValidationErrors),
 }
