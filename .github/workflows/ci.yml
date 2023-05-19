@@ -63,6 +63,12 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
 
+      - name: Run bulwark build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -p bulwark-cli -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk
+
       - name: Run bulwark package dry-run
         uses: actions-rs/cargo@v1
         with:
