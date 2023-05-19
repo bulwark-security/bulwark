@@ -3,6 +3,8 @@ use {
     validator::{Validate, ValidationErrors},
 };
 
+// For some reason, doc-tests in this module trigger a linker error, so they're set to no_run
+
 use crate::bulwark_host::DecisionInterface;
 
 pub use crate::{Decision, Outcome, ParseCounterError};
@@ -259,7 +261,10 @@ pub fn set_restricted(value: f64) {
 /// # Examples
 ///
 /// All of these are valid:
-/// ```
+///
+/// ```no_run
+/// use bulwark_wasm_sdk::set_tags;
+///
 /// set_tags(["tag"]);
 /// set_tags(vec!["tag"]);
 /// set_tags([String::from("tag")]);
