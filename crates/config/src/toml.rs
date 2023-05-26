@@ -6,7 +6,7 @@
 use crate::ConfigFileError;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::{fs, path::Path};
+use std::{fs, path::Path, path::PathBuf};
 use validator::Validate;
 
 lazy_static! {
@@ -278,6 +278,21 @@ struct Resource {
     timeout: Option<u64>,
 }
 
+fn resolve_path<'a, B, P>(base: &'a B, path: &'a P) -> Result<PathBuf, ConfigFileError>
+where
+    B: 'a + ?Sized + AsRef<Path>,
+    P: 'a + ?Sized + AsRef<Path>,
+{
+    let joined_path = base
+        .as_ref()
+        .parent()
+        .ok_or(ConfigFileError::MissingParent(
+            base.as_ref().to_string_lossy().to_string(),
+        ))?
+        .join(path);
+    Ok(fs::canonicalize(joined_path)?)
+}
+
 /// Loads a TOML config file into a [`Config`](crate::Config) structure.
 pub fn load_config<'a, P>(path: &'a P) -> Result<crate::Config, ConfigFileError>
 where
@@ -302,29 +317,7 @@ where
             let mut combined_plugins: Vec<Plugin> =
                 Vec::with_capacity(root_plugins.len() + include_root.plugins.len());
             combined_plugins.extend_from_slice(root_plugins.as_slice());
-            combined_plugins.extend_from_slice(
-                include_root
-                    .plugins
-                    .iter()
-                    .map(|plugin| -> Result<Plugin, ConfigFileError> {
-                        let plugin_path = Path::new(plugin.path.as_str());
-                        let joined_path = include_path
-                            .parent()
-                            .ok_or(ConfigFileError::MissingParent(
-                                include_path.to_string_lossy().to_string(),
-                            ))?
-                            .join(plugin_path);
-                        Ok(Plugin {
-                            reference: plugin.reference.clone(),
-                            path: fs::canonicalize(joined_path)?.to_string_lossy().to_string(),
-                            weight: plugin.weight,
-                            config: plugin.config.clone(),
-                            permissions: plugin.permissions.clone(),
-                        })
-                    })
-                    .collect::<Result<Vec<Plugin>, ConfigFileError>>()?
-                    .as_slice(),
-            );
+            combined_plugins.extend_from_slice(include_root.plugins.as_slice());
             root.plugins = combined_plugins;
 
             let root_presets = root.presets;
@@ -344,6 +337,23 @@ where
 
         // Strip includes once processed
         root.includes = vec![];
+
+        // Resolve plugins relative to config path
+        root.plugins = root
+            .plugins
+            .iter()
+            .map(|plugin| -> Result<Plugin, ConfigFileError> {
+                Ok(Plugin {
+                    reference: plugin.reference.clone(),
+                    path: resolve_path(path, Path::new(&plugin.path))?
+                        .to_string_lossy()
+                        .to_string(),
+                    weight: plugin.weight,
+                    config: plugin.config.clone(),
+                    permissions: plugin.permissions.clone(),
+                })
+            })
+            .collect::<Result<Vec<Plugin>, ConfigFileError>>()?;
 
         Ok(root)
     }
