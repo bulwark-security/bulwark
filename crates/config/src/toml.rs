@@ -522,4 +522,14 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_resolve_path() -> Result<(), Box<dyn std::error::Error>> {
+        let base = PathBuf::new().join(".");
+        let path = Path::new("./src");
+        let resolved_path = resolve_path(&base, path)?;
+
+        assert!(resolved_path.ends_with("crates/config/src"));
+        Ok(())
+    }
 }
