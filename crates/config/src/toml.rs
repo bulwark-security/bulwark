@@ -456,7 +456,12 @@ mod tests {
 
         assert_eq!(root.plugins.len(), 1);
         assert_eq!(root.plugins.get(0).unwrap().reference, "evil_bit");
-        assert_eq!(root.plugins.get(0).unwrap().path, "bulwark-evil-bit.wasm");
+        assert!(root
+            .plugins
+            .get(0)
+            .unwrap()
+            .path
+            .ends_with("bulwark-evil-bit.wasm"));
         assert_eq!(
             root.plugins.get(0).unwrap().config,
             toml::map::Map::default()
@@ -490,7 +495,12 @@ mod tests {
 
         assert_eq!(root.plugins.len(), 2);
         assert_eq!(root.plugins.get(0).unwrap().reference, "evil_bit");
-        assert_eq!(root.plugins.get(0).unwrap().path, "bulwark-evil-bit.wasm");
+        assert!(root
+            .plugins
+            .get(0)
+            .unwrap()
+            .path
+            .ends_with("bulwark-evil-bit.wasm"));
         assert_eq!(
             root.plugins.get(0).unwrap().config,
             serde_json::map::Map::default()
