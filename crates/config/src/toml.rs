@@ -294,18 +294,22 @@ where
 }
 
 /// Loads a TOML config file into a [`Config`](crate::Config) structure.
-pub fn load_config<'a, P>(path: &'a P) -> Result<crate::Config, ConfigFileError>
+pub fn load_config<'a, P>(config_path: &'a P) -> Result<crate::Config, ConfigFileError>
 where
     P: 'a + ?Sized + AsRef<Path>,
 {
-    fn load_config_recursive<'a, P>(path: &'a P) -> Result<Config, ConfigFileError>
+    fn load_config_recursive<'a, P>(config_path: &'a P) -> Result<Config, ConfigFileError>
     where
         P: 'a + ?Sized + AsRef<Path>,
     {
-        let toml_data = fs::read_to_string(path)?;
+        let toml_data = fs::read_to_string(config_path)?;
         let mut root: Config = toml::from_str(&toml_data)?;
-        // TODO: avoid unwrap
-        let base = path.as_ref().parent().unwrap();
+        let base = config_path
+            .as_ref()
+            .parent()
+            .ok_or(ConfigFileError::MissingParent(
+                config_path.as_ref().to_string_lossy().to_string(),
+            ))?;
 
         // TODO: error on circular includes
         for include in &root.includes {
@@ -345,7 +349,7 @@ where
             .map(|plugin| -> Result<Plugin, ConfigFileError> {
                 Ok(Plugin {
                     reference: plugin.reference.clone(),
-                    path: resolve_path(path, Path::new(&plugin.path))?
+                    path: resolve_path(config_path, Path::new(&plugin.path))?
                         .to_string_lossy()
                         .to_string(),
                     weight: plugin.weight,
@@ -359,7 +363,7 @@ where
     }
 
     // Load the raw serialization format and resolve includes
-    let root = load_config_recursive(path)?;
+    let root = load_config_recursive(config_path)?;
     for preset in &root.presets {
         preset.validate()?;
     }
