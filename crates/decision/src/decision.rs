@@ -36,6 +36,27 @@ pub struct Decision {
     pub unknown: f64,
 }
 
+/// A decision representing acceptance with full certainty.
+pub const ACCEPT: Decision = Decision {
+    accept: 1.0,
+    restrict: 0.0,
+    unknown: 0.0,
+};
+
+/// A decision representing restriction with full certainty.
+pub const RESTRICT: Decision = Decision {
+    accept: 0.0,
+    restrict: 1.0,
+    unknown: 0.0,
+};
+
+/// A decision representing full uncertainty.
+pub const UNKNOWN: Decision = Decision {
+    accept: 0.0,
+    restrict: 0.0,
+    unknown: 1.0,
+};
+
 /// Validates that a `Decision`'s components correctly sum to 1.0.
 fn validate_sum(decision: &Decision) -> Result<(), ValidationError> {
     let sum = decision.accept + decision.restrict + decision.unknown;

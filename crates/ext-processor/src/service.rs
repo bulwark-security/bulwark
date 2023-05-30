@@ -390,25 +390,33 @@ impl BulwarkProcessor {
                 timeout(timeout_duration, async move {
                     let decision_result =
                         Self::execute_on_request_decision(plugin_instance.clone());
-                    let mut decision_component = decision_result.unwrap();
-                    {
-                        // Re-weight the decision based on its weighting value from the configuration
-                        let plugin_instance = plugin_instance.lock().unwrap();
-                        decision_component.decision =
-                            decision_component.decision.weight(plugin_instance.weight());
+                    if let Ok(mut decision_component) = decision_result {
+                        {
+                            // Re-weight the decision based on its weighting value from the configuration
+                            let plugin_instance = plugin_instance.lock().unwrap();
+                            decision_component.decision =
+                                decision_component.decision.weight(plugin_instance.weight());
 
-                        let decision = &decision_component.decision;
-                        info!(
-                            message = "plugin decision",
-                            name = plugin_instance.plugin_reference(),
-                            accept = decision.accept,
-                            restrict = decision.restrict,
-                            unknown = decision.unknown,
-                            score = decision.pignistic().restrict,
-                        );
+                            let decision = &decision_component.decision;
+                            info!(
+                                message = "plugin decision",
+                                name = plugin_instance.plugin_reference(),
+                                accept = decision.accept,
+                                restrict = decision.restrict,
+                                unknown = decision.unknown,
+                                score = decision.pignistic().restrict,
+                            );
+                        }
+                        let mut decision_components = decision_components.lock().unwrap();
+                        decision_components.push(decision_component);
+                    } else if let Err(err) = decision_result {
+                        info!(message = "plugin error", error = err.to_string());
+                        let mut decision_components = decision_components.lock().unwrap();
+                        decision_components.push(DecisionComponents {
+                            decision: bulwark_wasm_sdk::UNKNOWN,
+                            tags: vec![String::from("error")],
+                        });
                     }
-                    let mut decision_components = decision_components.lock().unwrap();
-                    decision_components.push(decision_component);
                 })
                 .instrument(decision_phase_child_span.or_current()),
             );
@@ -471,25 +479,33 @@ impl BulwarkProcessor {
                 timeout(timeout_duration, async move {
                     let decision_result =
                         Self::execute_on_response_decision(plugin_instance.clone());
-                    let mut decision_component = decision_result.unwrap();
-                    {
-                        // Re-weight the decision based on its weighting value from the configuration
-                        let plugin_instance = plugin_instance.lock().unwrap();
-                        decision_component.decision =
-                            decision_component.decision.weight(plugin_instance.weight());
+                    if let Ok(mut decision_component) = decision_result {
+                        {
+                            // Re-weight the decision based on its weighting value from the configuration
+                            let plugin_instance = plugin_instance.lock().unwrap();
+                            decision_component.decision =
+                                decision_component.decision.weight(plugin_instance.weight());
 
-                        let decision = &decision_component.decision;
-                        info!(
-                            message = "plugin decision",
-                            name = plugin_instance.plugin_reference(),
-                            accept = decision.accept,
-                            restrict = decision.restrict,
-                            unknown = decision.unknown,
-                            score = decision.pignistic().restrict,
-                        );
+                            let decision = &decision_component.decision;
+                            info!(
+                                message = "plugin decision",
+                                name = plugin_instance.plugin_reference(),
+                                accept = decision.accept,
+                                restrict = decision.restrict,
+                                unknown = decision.unknown,
+                                score = decision.pignistic().restrict,
+                            );
+                        }
+                        let mut decision_components = decision_components.lock().unwrap();
+                        decision_components.push(decision_component);
+                    } else if let Err(err) = decision_result {
+                        info!(message = "plugin error", error = err.to_string());
+                        let mut decision_components = decision_components.lock().unwrap();
+                        decision_components.push(DecisionComponents {
+                            decision: bulwark_wasm_sdk::UNKNOWN,
+                            tags: vec![String::from("error")],
+                        });
                     }
-                    let mut decision_components = decision_components.lock().unwrap();
-                    decision_components.push(decision_component);
                 })
                 .instrument(response_phase_child_span.or_current()),
             );
