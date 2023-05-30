@@ -69,7 +69,9 @@ pub struct Service {
     /// True if the admin service is enabled, false otherwise.
     pub admin_enabled: bool,
     /// The URI for the external Redis state store.
-    pub remote_state: Option<String>,
+    pub remote_state_uri: Option<String>,
+    /// The size of the remote state connection pool.
+    pub remote_state_pool_size: u32,
     /// The number of trusted proxy hops expected to be exterior to Bulwark.
     ///
     /// This number does not include Bulwark or the proxy hosting it in the proxy hop count. Zero implies that
@@ -83,6 +85,8 @@ pub struct Service {
 pub const DEFAULT_PORT: u16 = 8089;
 /// The default [`Service::admin_port`] value.
 pub const DEFAULT_ADMIN_PORT: u16 = 8090;
+/// The default [`Service::remote_state_pool_size`] value.
+pub const DEFAULT_REMOTE_STATE_POOL_SIZE: u32 = 16;
 
 /// Configuration for the decision thresholds.
 ///

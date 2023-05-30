@@ -158,13 +158,17 @@ impl BulwarkProcessor {
     ///
     /// * `config` - The root of the Bulwark configuration structure to be used to initialize the service.
     pub fn new(config: Config) -> Result<Self, PluginLoadError> {
-        let redis_info = if let Some(remote_state_addr) = config.service.remote_state.as_ref() {
+        let redis_info = if let Some(remote_state_addr) = config.service.remote_state_uri.as_ref() {
+            let pool_size = config.service.remote_state_pool_size;
             // TODO: better error handling instead of unwrap/panic
             let client = redis::Client::open(remote_state_addr.as_str()).unwrap();
             // TODO: make pool size configurable
             Some(Arc::new(RedisInfo {
                 // TODO: better error handling instead of unwrap/panic
-                pool: r2d2::Pool::builder().max_size(16).build(client).unwrap(),
+                pool: r2d2::Pool::builder()
+                    .max_size(pool_size)
+                    .build(client)
+                    .unwrap(),
                 registry: ScriptRegistry::default(),
             }))
         } else {
