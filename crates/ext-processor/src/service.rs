@@ -335,30 +335,30 @@ impl BulwarkProcessor {
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
     ) -> DecisionComponents {
-        Self::execute_request_phase_one(plugin_instances.clone(), timeout_duration).await;
-        Self::execute_request_phase_two(plugin_instances.clone(), timeout_duration).await
+        Self::execute_request_enrichment_phase(plugin_instances.clone(), timeout_duration).await;
+        Self::execute_request_decision_phase(plugin_instances.clone(), timeout_duration).await
     }
 
-    async fn execute_request_phase_one(
+    async fn execute_request_enrichment_phase(
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
     ) {
-        let mut phase_one_tasks = JoinSet::new();
+        let mut enrichment_phase_tasks = JoinSet::new();
         for plugin_instance in plugin_instances.clone() {
-            let phase_one_child_span = tracing::info_span!("execute on_request",);
-            phase_one_tasks.spawn(
+            let enrichment_phase_child_span = tracing::info_span!("execute on_request",);
+            enrichment_phase_tasks.spawn(
                 timeout(timeout_duration, async move {
                     // TODO: avoid unwraps
                     Self::execute_plugin_initialization(plugin_instance.clone()).unwrap();
                     Self::execute_on_request(plugin_instance.clone()).unwrap();
                 })
-                .instrument(phase_one_child_span.or_current()),
+                .instrument(enrichment_phase_child_span.or_current()),
             );
         }
         // efficiently hand execution off to the plugins
         tokio::task::yield_now().await;
 
-        while let Some(r) = phase_one_tasks.join_next().await {
+        while let Some(r) = enrichment_phase_tasks.join_next().await {
             match r {
                 Ok(Ok(_)) => {}
                 Ok(Err(e)) => {
@@ -377,16 +377,16 @@ impl BulwarkProcessor {
         }
     }
 
-    async fn execute_request_phase_two(
+    async fn execute_request_decision_phase(
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
     ) -> DecisionComponents {
         let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
-        let mut phase_two_tasks = JoinSet::new();
+        let mut decision_phase_tasks = JoinSet::new();
         for plugin_instance in plugin_instances.clone() {
-            let phase_two_child_span = tracing::info_span!("execute on_request_decision",);
+            let decision_phase_child_span = tracing::info_span!("execute on_request_decision",);
             let decision_components = decision_components.clone();
-            phase_two_tasks.spawn(
+            decision_phase_tasks.spawn(
                 timeout(timeout_duration, async move {
                     let decision_result =
                         Self::execute_on_request_decision(plugin_instance.clone());
@@ -410,13 +410,13 @@ impl BulwarkProcessor {
                     let mut decision_components = decision_components.lock().unwrap();
                     decision_components.push(decision_component);
                 })
-                .instrument(phase_two_child_span.or_current()),
+                .instrument(decision_phase_child_span.or_current()),
             );
         }
         // efficiently hand execution off to the plugins
         tokio::task::yield_now().await;
 
-        while let Some(r) = phase_two_tasks.join_next().await {
+        while let Some(r) = decision_phase_tasks.join_next().await {
             match r {
                 Ok(Ok(_)) => {}
                 Ok(Err(e)) => {
