@@ -9,6 +9,8 @@ pub enum ConfigFileError {
     Validation(#[from] validator::ValidationError),
     #[error(transparent)]
     Validations(#[from] validator::ValidationErrors),
+    #[error("invalid circular include: '{0}'")]
+    CircularInclude(String),
 }
 
 /// This error will be returned if an attempt to serialize a config structure fails.

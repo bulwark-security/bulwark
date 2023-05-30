@@ -6,7 +6,7 @@
 use crate::ConfigFileError;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::{fs, path::Path};
+use std::{collections::HashSet, ffi::OsString, fs, path::Path};
 use validator::Validate;
 
 lazy_static! {
@@ -283,10 +283,23 @@ pub fn load_config<'a, P>(path: &'a P) -> Result<crate::Config, ConfigFileError>
 where
     P: 'a + ?Sized + AsRef<Path>,
 {
-    fn load_config_recursive<'a, P>(path: &'a P) -> Result<Config, ConfigFileError>
+    let mut loaded_files = HashSet::new();
+
+    fn load_config_recursive<'a, P>(
+        path: &'a P,
+        loaded_files: &mut HashSet<OsString>,
+    ) -> Result<Config, ConfigFileError>
     where
         P: 'a + ?Sized + AsRef<Path>,
     {
+        let path_string = path.as_ref().as_os_str().to_os_string();
+        if loaded_files.contains(&path_string) {
+            return Err(ConfigFileError::CircularInclude(
+                path_string.to_string_lossy().to_string(),
+            ));
+        } else {
+            loaded_files.insert(path_string);
+        }
         let toml_data = fs::read_to_string(path)?;
         let mut root: Config = toml::from_str(&toml_data)?;
         // TODO: avoid unwrap
@@ -295,7 +308,7 @@ where
         // TODO: error on circular includes
         for include in &root.includes {
             let include_path = base.join(&include.path);
-            let include_root = load_config_recursive(&include_path)?;
+            let include_root = load_config_recursive(&include_path, loaded_files)?;
 
             // TODO: clean this up
             let root_plugins = root.plugins;
@@ -327,7 +340,7 @@ where
     }
 
     // Load the raw serialization format and resolve includes
-    let root = load_config_recursive(path)?;
+    let root = load_config_recursive(path, &mut loaded_files)?;
     for preset in &root.presets {
         preset.validate()?;
     }
@@ -484,6 +497,14 @@ mod tests {
         );
         assert_eq!(root.resources.get(0).unwrap().timeout, Some(25));
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_circular() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/circular.toml");
+        // This needs to be an error, not a panic.
+        assert!(result.is_err());
         Ok(())
     }
 }
