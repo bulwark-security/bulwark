@@ -423,6 +423,7 @@ mod tests {
             r#"
         [service]
         port = 10002
+        remote_state_uri = "redis://10.0.0.1:6379"
 
         [thresholds]
         restrict = 0.75
@@ -447,6 +448,10 @@ mod tests {
 
         assert_eq!(root.service.port, 10002); // non-default
         assert_eq!(root.service.admin_port, crate::DEFAULT_ADMIN_PORT);
+        assert_eq!(
+            root.service.remote_state_uri,
+            Some(String::from("redis://10.0.0.1:6379"))
+        );
 
         assert_eq!(root.thresholds.restrict, 0.75); // non-default
         assert_eq!(
