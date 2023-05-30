@@ -1,0 +1,24 @@
+[[include]]
+path = "include.toml"
+
+[[plugin]]
+ref = "evil_bit"
+path = "bulwark-evil-bit.wasm"
+
+[[preset]]
+ref = "overlap"
+plugins = ["blank_slate", "evil_bit"]
+
+[[preset]]
+ref = "default"
+plugins = ["evil_bit", "starter_preset", "overlap"]
+
+[[resource]]
+route = "/"
+plugins = ["default"]
+timeout = 25
+
+[[resource]]
+route = "/*params"
+plugins = ["default"]
+timeout = 25

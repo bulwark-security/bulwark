@@ -3,6 +3,7 @@
 use crate::{ConfigSerializationError, ResolutionError};
 use regex::Regex;
 use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 use validator::Validate;
 
 lazy_static! {
@@ -199,25 +200,48 @@ impl Preset {
     ///   `Preset`s do not maintain their own references to their parent [`Config`] so this must be passed in.
     ///
     /// See [`Config::plugin`] and [`Config::preset`].
-    pub fn resolve_plugins<'a>(&'a self, config: &'a Config) -> Vec<&Plugin> {
-        let mut plugins: Vec<&Plugin> = Vec::with_capacity(self.plugins.len());
+    pub fn resolve_plugins<'a>(
+        &'a self,
+        config: &'a Config,
+    ) -> Result<Vec<&Plugin>, ResolutionError> {
+        let mut resolved_presets = HashSet::new();
+        self.resolve_plugins_recursive(config, &mut resolved_presets)
+    }
+
+    /// Resolves all references, checking for cycles.
+    fn resolve_plugins_recursive<'a>(
+        &'a self,
+        config: &'a Config,
+        resolved_presets: &mut HashSet<String>,
+    ) -> Result<Vec<&Plugin>, ResolutionError> {
+        let mut plugins: HashMap<String, &Plugin> = HashMap::with_capacity(self.plugins.len());
         for reference in &self.plugins {
             match reference {
                 Reference::Plugin(ref_name) => {
                     if let Some(plugin) = config.plugin(ref_name.as_str()) {
-                        plugins.push(plugin);
+                        plugins.insert(plugin.reference.to_string(), plugin);
                     }
                 }
                 Reference::Preset(ref_name) => {
+                    if resolved_presets.contains(ref_name) {
+                        return Err(ResolutionError::CircularPreset(ref_name.to_string()));
+                    } else {
+                        resolved_presets.insert(ref_name.to_string());
+                    }
                     if let Some(preset) = config.preset(ref_name.as_str()) {
-                        let mut inner_plugins = preset.resolve_plugins(config);
-                        plugins.append(&mut inner_plugins);
+                        let inner_plugins =
+                            preset.resolve_plugins_recursive(config, resolved_presets)?;
+                        for inner_plugin in inner_plugins {
+                            plugins.insert(inner_plugin.reference.to_string(), inner_plugin);
+                        }
                     }
                 }
-                Reference::Missing(_) => todo!(),
+                Reference::Missing(ref_name) => {
+                    return Err(ResolutionError::Missing(ref_name.to_string()));
+                }
             }
         }
-        plugins
+        Ok(plugins.values().cloned().collect())
     }
 }
 
@@ -257,7 +281,7 @@ impl Resource {
                 }
                 Reference::Preset(ref_name) => {
                     if let Some(preset) = config.preset(ref_name.as_str()) {
-                        let mut inner_plugins = preset.resolve_plugins(config);
+                        let mut inner_plugins = preset.resolve_plugins(config)?;
                         plugins.append(&mut inner_plugins);
                     }
                 }

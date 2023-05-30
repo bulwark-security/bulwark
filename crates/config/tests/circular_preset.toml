@@ -1,0 +1,27 @@
+[[plugin]]
+ref = "blank_slate"
+path = "bulwark-blank-slate.wasm"
+config = {}
+
+[[plugin]]
+ref = "another_blank_slate"
+path = "bulwark-blank-slate.wasm"
+config = {}
+
+[[preset]]
+ref = "circular_one"
+plugins = ["circular_two", "blank_slate"]
+
+[[preset]]
+ref = "circular_two"
+plugins = ["circular_one", "another_blank_slate"]
+
+[[resource]]
+route = "/"
+plugins = ["circular_one"]
+timeout = 25
+
+[[resource]]
+route = "/*params"
+plugins = ["circular_two"]
+timeout = 25

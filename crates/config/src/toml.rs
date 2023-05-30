@@ -341,11 +341,22 @@ where
 
     // Load the raw serialization format and resolve includes
     let root = load_config_recursive(path, &mut loaded_files)?;
+    let mut references: HashSet<&String> = HashSet::new();
     for preset in &root.presets {
         preset.validate()?;
+        if references.contains(&preset.reference) {
+            return Err(ConfigFileError::Duplicate(preset.reference.to_string()));
+        } else {
+            references.insert(&preset.reference);
+        }
     }
     for plugin in &root.plugins {
         plugin.validate()?;
+        if references.contains(&plugin.reference) {
+            return Err(ConfigFileError::Duplicate(plugin.reference.to_string()));
+        } else {
+            references.insert(&plugin.reference);
+        }
     }
     let resolve_reference = |ref_name: &String| {
         let mut reference = crate::config::Reference::Missing(ref_name.clone());
@@ -362,7 +373,7 @@ where
         reference
     };
     // Transfer to the public config type, checking reference enums
-    Ok(crate::Config {
+    let config = crate::Config {
         service: root.service.into(),
         thresholds: root.thresholds.into(),
         plugins: root.plugins.iter().map(|plugin| plugin.into()).collect(),
@@ -383,7 +394,12 @@ where
                 timeout: resource.timeout,
             })
             .collect(),
-    })
+    };
+    for resource in &config.resources {
+        // Resolve plugins to surface resolution errors immediately
+        resource.resolve_plugins(&config)?;
+    }
+    Ok(config)
 }
 
 #[cfg(test)]
@@ -501,10 +517,100 @@ mod tests {
     }
 
     #[test]
-    fn test_load_config_circular() -> Result<(), Box<dyn std::error::Error>> {
-        let result = load_config("tests/circular.toml");
+    fn test_load_config_overlapping_preset() -> Result<(), Box<dyn std::error::Error>> {
+        let root: crate::config::Config = load_config("tests/overlapping_preset.toml")?;
+
+        let resource = root.resources.get(0).unwrap();
+        let plugins = resource.resolve_plugins(&root)?;
+        assert_eq!(plugins.len(), 2);
+        assert_eq!(
+            plugins.get(0).unwrap().reference,
+            root.plugin("evil_bit").unwrap().reference
+        );
+        assert_eq!(
+            plugins.get(1).unwrap().reference,
+            root.plugin("blank_slate").unwrap().reference
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_circular_include() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/circular_include.toml");
         // This needs to be an error, not a panic.
         assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .starts_with("invalid circular include"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_circular_preset() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/circular_preset.toml");
+        // This needs to be an error, not a panic.
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .starts_with("invalid circular preset reference"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_duplicate_plugin() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/duplicate_plugin.toml");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "duplicate named plugin or preset: 'blank_slate'"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_duplicate_preset() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/duplicate_preset.toml");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "duplicate named plugin or preset: 'default'"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_duplicate_mixed() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/duplicate_mixed.toml");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "duplicate named plugin or preset: 'blank_slate'"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_resolution_missing() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/missing.toml");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "missing named plugin or preset: 'blank_slate'"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_missing_include() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/missing_include.toml");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .starts_with("No such file or directory"));
         Ok(())
     }
 }
