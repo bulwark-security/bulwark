@@ -163,7 +163,7 @@ struct Include {
 #[derive(Validate, Serialize, Deserialize, Clone)]
 struct Plugin {
     #[serde(rename(serialize = "ref", deserialize = "ref"))]
-    #[validate(length(min = 1), regex(path = "RE_VALID_REFERENCE"))]
+    #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
     reference: String,
     #[validate(length(min = 1))]
     path: String,
@@ -263,7 +263,7 @@ impl From<TomlPermissions> for crate::config::Permissions {
 #[derive(Validate, Serialize, Deserialize, Clone)]
 struct Preset {
     #[serde(rename(serialize = "ref", deserialize = "ref"))]
-    #[validate(length(min = 1), regex(path = "RE_VALID_REFERENCE"))]
+    #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
     reference: String,
     #[validate(length(min = 1))]
     plugins: Vec<String>,

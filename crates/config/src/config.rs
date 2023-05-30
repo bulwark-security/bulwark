@@ -127,8 +127,8 @@ impl Default for Thresholds {
 /// This structure will be wrapped by structs in the host environment.
 #[derive(Debug, Validate, Clone, Default)]
 pub struct Plugin {
-    /// The plugin reference key. Should be limited to ASCII lowercase a-z plus underscores.
-    #[validate(length(min = 1), regex(path = "RE_VALID_REFERENCE"))]
+    /// The plugin reference key. Should be limited to ASCII lowercase a-z plus underscores. Maximum 96 characters.
+    #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
     pub reference: String,
     // TODO: plugin path should be absolute; once it's in this structure the config base path is no longer known
     // TODO: should this be a URI? That would allow e.g. data: URI values to embed WASM into config over the wire
@@ -182,8 +182,8 @@ pub struct Permissions {
 /// A mapping between a reference identifier and a list of plugins that form a preset plugin group.
 #[derive(Debug, Validate, Clone)]
 pub struct Preset {
-    /// The preset reference key. Should be limited to ASCII lowercase a-z plus underscores.
-    #[validate(length(min = 1), regex(path = "RE_VALID_REFERENCE"))]
+    /// The preset reference key. Should be limited to ASCII lowercase a-z plus underscores. Maximum 96 characters.
+    #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
     pub reference: String,
     /// The list of references to plugins and other presets contained within this preset.
     #[validate(length(min = 1))]
