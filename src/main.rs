@@ -44,12 +44,12 @@ struct Cli {
     log_format: Option<String>,
 
     #[command(subcommand)]
-    command: Option<Commands>,
+    command: Option<Command>,
 }
 
 /// The subcommands supported by the Bulwark CLI.
 #[derive(Subcommand)]
-enum Commands {
+enum Command {
     /// Launch as an Envoy external processor
     ExtProcessor {
         /// Sets a custom config file
@@ -223,7 +223,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // You can check for the existence of subcommands, and if found use their
     // matches just as you would the top level cmd
     match &cli.command {
-        Some(Commands::ExtProcessor { config }) => {
+        Some(Command::ExtProcessor { config }) => {
             let mut service_tasks: JoinSet<std::result::Result<(), ServiceError>> = JoinSet::new();
 
             let config_root = bulwark_config::toml::load_config(config)?;
