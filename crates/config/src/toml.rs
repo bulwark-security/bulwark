@@ -525,11 +525,11 @@ mod tests {
         assert_eq!(plugins.len(), 2);
         assert_eq!(
             plugins.get(0).unwrap().reference,
-            root.plugin("evil_bit").unwrap().reference
+            root.plugin("blank_slate").unwrap().reference
         );
         assert_eq!(
             plugins.get(1).unwrap().reference,
-            root.plugin("blank_slate").unwrap().reference
+            root.plugin("evil_bit").unwrap().reference
         );
 
         Ok(())

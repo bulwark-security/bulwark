@@ -1,6 +1,7 @@
 //! The config module provides the internal representation of Bulwark's configuration.
 
 use crate::{ConfigSerializationError, ResolutionError};
+use itertools::Itertools;
 use regex::Regex;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -290,7 +291,11 @@ impl Resource {
                 }
             }
         }
-        Ok(plugins)
+        Ok(plugins
+            .iter()
+            .sorted_by(|a, b| Ord::cmp(&a.reference, &b.reference))
+            .copied()
+            .collect())
     }
 }
 
