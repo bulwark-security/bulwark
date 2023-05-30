@@ -341,6 +341,8 @@ where
 
     // Load the raw serialization format and resolve includes
     let root = load_config_recursive(path, &mut loaded_files)?;
+
+    // Validate presets and plugins and their references
     let mut references: HashSet<&String> = HashSet::new();
     for preset in &root.presets {
         preset.validate()?;
