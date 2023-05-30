@@ -639,12 +639,7 @@ impl BulwarkProcessor {
             restrict = decision.restrict,
             unknown = decision.unknown,
             score = decision.pignistic().restrict,
-            outcome = match outcome {
-                bulwark_wasm_sdk::Outcome::Trusted => "trusted",
-                bulwark_wasm_sdk::Outcome::Accepted => "accepted",
-                bulwark_wasm_sdk::Outcome::Suspected => "suspected",
-                bulwark_wasm_sdk::Outcome::Restricted => "restricted",
-            },
+            outcome = outcome.to_string(),
             observe_only = thresholds.observe_only,
             // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
             tags = decision_components
@@ -732,12 +727,7 @@ impl BulwarkProcessor {
             restrict = decision.restrict,
             unknown = decision.unknown,
             score = decision.pignistic().restrict,
-            outcome = match outcome {
-                bulwark_wasm_sdk::Outcome::Trusted => "trusted",
-                bulwark_wasm_sdk::Outcome::Accepted => "accepted",
-                bulwark_wasm_sdk::Outcome::Suspected => "suspected",
-                bulwark_wasm_sdk::Outcome::Restricted => "restricted",
-            },
+            outcome = outcome.to_string(),
             observe_only = thresholds.observe_only,
             // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
             tags = decision_components

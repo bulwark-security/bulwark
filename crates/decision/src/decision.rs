@@ -1,4 +1,5 @@
 use crate::ThresholdError;
+use strum_macros::{Display, EnumString};
 use validator::{Validate, ValidationError};
 
 // While tag vectors are closely related to the Decision type, by not
@@ -9,7 +10,8 @@ use validator::{Validate, ValidationError};
 
 /// Represents a value from a continuous range taken from the [`pignistic`](Decision::pignistic)
 /// transformation as a category that can be used to select a response to an operation.
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Display, EnumString)]
+#[strum(serialize_all = "snake_case")]
 pub enum Outcome {
     Trusted,
     Accepted,
