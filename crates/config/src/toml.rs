@@ -314,7 +314,6 @@ where
         // TODO: avoid unwrap
         let base = path.as_ref().parent().unwrap();
 
-        // TODO: error on circular includes
         for include in &root.includes {
             let include_path = base.join(&include.path);
             let include_root = load_config_recursive(&include_path, loaded_files)?;
