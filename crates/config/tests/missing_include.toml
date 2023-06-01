@@ -1,0 +1,17 @@
+[[include]]
+path = "does_not_exist.toml"
+
+[[plugin]]
+ref = "blank_slate"
+path = "bulwark-blank-slate.wasm"
+config = {}
+
+[[resource]]
+route = "/"
+plugins = ["blank_slate"]
+timeout = 25
+
+[[resource]]
+route = "/*params"
+plugins = ["blank_slate"]
+timeout = 25

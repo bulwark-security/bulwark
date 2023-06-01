@@ -158,13 +158,17 @@ impl BulwarkProcessor {
     ///
     /// * `config` - The root of the Bulwark configuration structure to be used to initialize the service.
     pub fn new(config: Config) -> Result<Self, PluginLoadError> {
-        let redis_info = if let Some(remote_state_addr) = config.service.remote_state.as_ref() {
+        let redis_info = if let Some(remote_state_addr) = config.service.remote_state_uri.as_ref() {
+            let pool_size = config.service.remote_state_pool_size;
             // TODO: better error handling instead of unwrap/panic
             let client = redis::Client::open(remote_state_addr.as_str()).unwrap();
             // TODO: make pool size configurable
             Some(Arc::new(RedisInfo {
                 // TODO: better error handling instead of unwrap/panic
-                pool: r2d2::Pool::builder().max_size(16).build(client).unwrap(),
+                pool: r2d2::Pool::builder()
+                    .max_size(pool_size)
+                    .build(client)
+                    .unwrap(),
                 registry: ScriptRegistry::default(),
             }))
         } else {
@@ -331,30 +335,30 @@ impl BulwarkProcessor {
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
     ) -> DecisionComponents {
-        Self::execute_request_phase_one(plugin_instances.clone(), timeout_duration).await;
-        Self::execute_request_phase_two(plugin_instances.clone(), timeout_duration).await
+        Self::execute_request_enrichment_phase(plugin_instances.clone(), timeout_duration).await;
+        Self::execute_request_decision_phase(plugin_instances.clone(), timeout_duration).await
     }
 
-    async fn execute_request_phase_one(
+    async fn execute_request_enrichment_phase(
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
     ) {
-        let mut phase_one_tasks = JoinSet::new();
+        let mut enrichment_phase_tasks = JoinSet::new();
         for plugin_instance in plugin_instances.clone() {
-            let phase_one_child_span = tracing::info_span!("execute on_request",);
-            phase_one_tasks.spawn(
+            let enrichment_phase_child_span = tracing::info_span!("execute on_request",);
+            enrichment_phase_tasks.spawn(
                 timeout(timeout_duration, async move {
                     // TODO: avoid unwraps
                     Self::execute_plugin_initialization(plugin_instance.clone()).unwrap();
                     Self::execute_on_request(plugin_instance.clone()).unwrap();
                 })
-                .instrument(phase_one_child_span.or_current()),
+                .instrument(enrichment_phase_child_span.or_current()),
             );
         }
         // efficiently hand execution off to the plugins
         tokio::task::yield_now().await;
 
-        while let Some(r) = phase_one_tasks.join_next().await {
+        while let Some(r) = enrichment_phase_tasks.join_next().await {
             match r {
                 Ok(Ok(_)) => {}
                 Ok(Err(e)) => {
@@ -373,46 +377,54 @@ impl BulwarkProcessor {
         }
     }
 
-    async fn execute_request_phase_two(
+    async fn execute_request_decision_phase(
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
     ) -> DecisionComponents {
         let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
-        let mut phase_two_tasks = JoinSet::new();
+        let mut decision_phase_tasks = JoinSet::new();
         for plugin_instance in plugin_instances.clone() {
-            let phase_two_child_span = tracing::info_span!("execute on_request_decision",);
+            let decision_phase_child_span = tracing::info_span!("execute on_request_decision",);
             let decision_components = decision_components.clone();
-            phase_two_tasks.spawn(
+            decision_phase_tasks.spawn(
                 timeout(timeout_duration, async move {
                     let decision_result =
                         Self::execute_on_request_decision(plugin_instance.clone());
-                    let mut decision_component = decision_result.unwrap();
-                    {
-                        // Re-weight the decision based on its weighting value from the configuration
-                        let plugin_instance = plugin_instance.lock().unwrap();
-                        decision_component.decision =
-                            decision_component.decision.weight(plugin_instance.weight());
+                    if let Ok(mut decision_component) = decision_result {
+                        {
+                            // Re-weight the decision based on its weighting value from the configuration
+                            let plugin_instance = plugin_instance.lock().unwrap();
+                            decision_component.decision =
+                                decision_component.decision.weight(plugin_instance.weight());
 
-                        let decision = &decision_component.decision;
-                        info!(
-                            message = "plugin decision",
-                            name = plugin_instance.plugin_reference(),
-                            accept = decision.accept,
-                            restrict = decision.restrict,
-                            unknown = decision.unknown,
-                            score = decision.pignistic().restrict,
-                        );
+                            let decision = &decision_component.decision;
+                            info!(
+                                message = "plugin decision",
+                                name = plugin_instance.plugin_reference(),
+                                accept = decision.accept,
+                                restrict = decision.restrict,
+                                unknown = decision.unknown,
+                                score = decision.pignistic().restrict,
+                            );
+                        }
+                        let mut decision_components = decision_components.lock().unwrap();
+                        decision_components.push(decision_component);
+                    } else if let Err(err) = decision_result {
+                        info!(message = "plugin error", error = err.to_string());
+                        let mut decision_components = decision_components.lock().unwrap();
+                        decision_components.push(DecisionComponents {
+                            decision: bulwark_wasm_sdk::UNKNOWN,
+                            tags: vec![String::from("error")],
+                        });
                     }
-                    let mut decision_components = decision_components.lock().unwrap();
-                    decision_components.push(decision_component);
                 })
-                .instrument(phase_two_child_span.or_current()),
+                .instrument(decision_phase_child_span.or_current()),
             );
         }
         // efficiently hand execution off to the plugins
         tokio::task::yield_now().await;
 
-        while let Some(r) = phase_two_tasks.join_next().await {
+        while let Some(r) = decision_phase_tasks.join_next().await {
             match r {
                 Ok(Ok(_)) => {}
                 Ok(Err(e)) => {
@@ -467,25 +479,33 @@ impl BulwarkProcessor {
                 timeout(timeout_duration, async move {
                     let decision_result =
                         Self::execute_on_response_decision(plugin_instance.clone());
-                    let mut decision_component = decision_result.unwrap();
-                    {
-                        // Re-weight the decision based on its weighting value from the configuration
-                        let plugin_instance = plugin_instance.lock().unwrap();
-                        decision_component.decision =
-                            decision_component.decision.weight(plugin_instance.weight());
+                    if let Ok(mut decision_component) = decision_result {
+                        {
+                            // Re-weight the decision based on its weighting value from the configuration
+                            let plugin_instance = plugin_instance.lock().unwrap();
+                            decision_component.decision =
+                                decision_component.decision.weight(plugin_instance.weight());
 
-                        let decision = &decision_component.decision;
-                        info!(
-                            message = "plugin decision",
-                            name = plugin_instance.plugin_reference(),
-                            accept = decision.accept,
-                            restrict = decision.restrict,
-                            unknown = decision.unknown,
-                            score = decision.pignistic().restrict,
-                        );
+                            let decision = &decision_component.decision;
+                            info!(
+                                message = "plugin decision",
+                                name = plugin_instance.plugin_reference(),
+                                accept = decision.accept,
+                                restrict = decision.restrict,
+                                unknown = decision.unknown,
+                                score = decision.pignistic().restrict,
+                            );
+                        }
+                        let mut decision_components = decision_components.lock().unwrap();
+                        decision_components.push(decision_component);
+                    } else if let Err(err) = decision_result {
+                        info!(message = "plugin error", error = err.to_string());
+                        let mut decision_components = decision_components.lock().unwrap();
+                        decision_components.push(DecisionComponents {
+                            decision: bulwark_wasm_sdk::UNKNOWN,
+                            tags: vec![String::from("error")],
+                        });
                     }
-                    let mut decision_components = decision_components.lock().unwrap();
-                    decision_components.push(decision_component);
                 })
                 .instrument(response_phase_child_span.or_current()),
             );
@@ -619,12 +639,7 @@ impl BulwarkProcessor {
             restrict = decision.restrict,
             unknown = decision.unknown,
             score = decision.pignistic().restrict,
-            outcome = match outcome {
-                bulwark_wasm_sdk::Outcome::Trusted => "trusted",
-                bulwark_wasm_sdk::Outcome::Accepted => "accepted",
-                bulwark_wasm_sdk::Outcome::Suspected => "suspected",
-                bulwark_wasm_sdk::Outcome::Restricted => "restricted",
-            },
+            outcome = outcome.to_string(),
             observe_only = thresholds.observe_only,
             // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
             tags = decision_components
@@ -712,12 +727,7 @@ impl BulwarkProcessor {
             restrict = decision.restrict,
             unknown = decision.unknown,
             score = decision.pignistic().restrict,
-            outcome = match outcome {
-                bulwark_wasm_sdk::Outcome::Trusted => "trusted",
-                bulwark_wasm_sdk::Outcome::Accepted => "accepted",
-                bulwark_wasm_sdk::Outcome::Suspected => "suspected",
-                bulwark_wasm_sdk::Outcome::Restricted => "restricted",
-            },
+            outcome = outcome.to_string(),
             observe_only = thresholds.observe_only,
             // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
             tags = decision_components

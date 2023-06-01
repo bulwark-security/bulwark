@@ -1,4 +1,5 @@
 use crate::ThresholdError;
+use strum_macros::{Display, EnumString};
 use validator::{Validate, ValidationError};
 
 // While tag vectors are closely related to the Decision type, by not
@@ -9,7 +10,8 @@ use validator::{Validate, ValidationError};
 
 /// Represents a value from a continuous range taken from the [`pignistic`](Decision::pignistic)
 /// transformation as a category that can be used to select a response to an operation.
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Display, EnumString)]
+#[strum(serialize_all = "snake_case")]
 pub enum Outcome {
     Trusted,
     Accepted,
@@ -35,6 +37,27 @@ pub struct Decision {
     #[validate(range(min = 0.0, max = 1.0))]
     pub unknown: f64,
 }
+
+/// A decision representing acceptance with full certainty.
+pub const ACCEPT: Decision = Decision {
+    accept: 1.0,
+    restrict: 0.0,
+    unknown: 0.0,
+};
+
+/// A decision representing restriction with full certainty.
+pub const RESTRICT: Decision = Decision {
+    accept: 0.0,
+    restrict: 1.0,
+    unknown: 0.0,
+};
+
+/// A decision representing full uncertainty.
+pub const UNKNOWN: Decision = Decision {
+    accept: 0.0,
+    restrict: 0.0,
+    unknown: 1.0,
+};
 
 /// Validates that a `Decision`'s components correctly sum to 1.0.
 fn validate_sum(decision: &Decision) -> Result<(), ValidationError> {

@@ -6,7 +6,7 @@
 use crate::ConfigFileError;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::{fs, path::Path};
+use std::{collections::HashSet, ffi::OsString, fs, path::Path};
 use validator::Validate;
 
 lazy_static! {
@@ -39,8 +39,10 @@ struct Service {
     admin_port: u16,
     #[serde(default = "default_admin")]
     admin_enabled: bool,
-    #[serde(default = "default_remote_state")]
-    remote_state: Option<String>,
+    #[serde(default = "default_remote_state_uri")]
+    remote_state_uri: Option<String>,
+    #[serde(default = "default_remote_state_pool_size")]
+    remote_state_pool_size: u32,
     #[serde(default = "default_proxy_hops")]
     proxy_hops: u8,
 }
@@ -65,8 +67,13 @@ fn default_admin() -> bool {
 }
 
 /// The default for the network address to access remote state.
-fn default_remote_state() -> Option<String> {
+fn default_remote_state_uri() -> Option<String> {
     None
+}
+
+/// The default for the remote state connection pool size.
+fn default_remote_state_pool_size() -> u32 {
+    crate::DEFAULT_REMOTE_STATE_POOL_SIZE
 }
 
 /// The default number of internal proxy hops expected in front of Bulwark.
@@ -80,7 +87,8 @@ impl Default for Service {
             port: default_port(),
             admin_port: default_admin_port(),
             admin_enabled: default_admin(),
-            remote_state: default_remote_state(),
+            remote_state_uri: default_remote_state_uri(),
+            remote_state_pool_size: default_remote_state_pool_size(),
             proxy_hops: default_proxy_hops(),
         }
     }
@@ -92,7 +100,8 @@ impl From<Service> for crate::Service {
             port: service.port,
             admin_port: service.admin_port,
             admin_enabled: service.admin_enabled,
-            remote_state: service.remote_state.clone(),
+            remote_state_uri: service.remote_state_uri.clone(),
+            remote_state_pool_size: service.remote_state_pool_size,
             proxy_hops: service.proxy_hops,
         }
     }
@@ -163,7 +172,7 @@ struct Include {
 #[derive(Validate, Serialize, Deserialize, Clone)]
 struct Plugin {
     #[serde(rename(serialize = "ref", deserialize = "ref"))]
-    #[validate(length(min = 1), regex(path = "RE_VALID_REFERENCE"))]
+    #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
     reference: String,
     #[validate(length(min = 1))]
     path: String,
@@ -263,7 +272,7 @@ impl From<TomlPermissions> for crate::config::Permissions {
 #[derive(Validate, Serialize, Deserialize, Clone)]
 struct Preset {
     #[serde(rename(serialize = "ref", deserialize = "ref"))]
-    #[validate(length(min = 1), regex(path = "RE_VALID_REFERENCE"))]
+    #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
     reference: String,
     #[validate(length(min = 1))]
     plugins: Vec<String>,
@@ -283,19 +292,31 @@ pub fn load_config<'a, P>(path: &'a P) -> Result<crate::Config, ConfigFileError>
 where
     P: 'a + ?Sized + AsRef<Path>,
 {
-    fn load_config_recursive<'a, P>(path: &'a P) -> Result<Config, ConfigFileError>
+    let mut loaded_files = HashSet::new();
+
+    fn load_config_recursive<'a, P>(
+        path: &'a P,
+        loaded_files: &mut HashSet<OsString>,
+    ) -> Result<Config, ConfigFileError>
     where
         P: 'a + ?Sized + AsRef<Path>,
     {
+        let path_string = path.as_ref().as_os_str().to_os_string();
+        if loaded_files.contains(&path_string) {
+            return Err(ConfigFileError::CircularInclude(
+                path_string.to_string_lossy().to_string(),
+            ));
+        } else {
+            loaded_files.insert(path_string);
+        }
         let toml_data = fs::read_to_string(path)?;
         let mut root: Config = toml::from_str(&toml_data)?;
         // TODO: avoid unwrap
         let base = path.as_ref().parent().unwrap();
 
-        // TODO: error on circular includes
         for include in &root.includes {
             let include_path = base.join(&include.path);
-            let include_root = load_config_recursive(&include_path)?;
+            let include_root = load_config_recursive(&include_path, loaded_files)?;
 
             // TODO: clean this up
             let root_plugins = root.plugins;
@@ -327,12 +348,25 @@ where
     }
 
     // Load the raw serialization format and resolve includes
-    let root = load_config_recursive(path)?;
+    let root = load_config_recursive(path, &mut loaded_files)?;
+
+    // Validate presets and plugins and their references
+    let mut references: HashSet<&String> = HashSet::new();
     for preset in &root.presets {
         preset.validate()?;
+        if references.contains(&preset.reference) {
+            return Err(ConfigFileError::Duplicate(preset.reference.to_string()));
+        } else {
+            references.insert(&preset.reference);
+        }
     }
     for plugin in &root.plugins {
         plugin.validate()?;
+        if references.contains(&plugin.reference) {
+            return Err(ConfigFileError::Duplicate(plugin.reference.to_string()));
+        } else {
+            references.insert(&plugin.reference);
+        }
     }
     let resolve_reference = |ref_name: &String| {
         let mut reference = crate::config::Reference::Missing(ref_name.clone());
@@ -349,7 +383,7 @@ where
         reference
     };
     // Transfer to the public config type, checking reference enums
-    Ok(crate::Config {
+    let config = crate::Config {
         service: root.service.into(),
         thresholds: root.thresholds.into(),
         plugins: root.plugins.iter().map(|plugin| plugin.into()).collect(),
@@ -370,7 +404,12 @@ where
                 timeout: resource.timeout,
             })
             .collect(),
-    })
+    };
+    for resource in &config.resources {
+        // Resolve plugins to surface resolution errors immediately
+        resource.resolve_plugins(&config)?;
+    }
+    Ok(config)
 }
 
 #[cfg(test)]
@@ -383,6 +422,7 @@ mod tests {
             r#"
         [service]
         port = 10002
+        remote_state_uri = "redis://10.0.0.1:6379"
 
         [thresholds]
         restrict = 0.75
@@ -407,6 +447,10 @@ mod tests {
 
         assert_eq!(root.service.port, 10002); // non-default
         assert_eq!(root.service.admin_port, crate::DEFAULT_ADMIN_PORT);
+        assert_eq!(
+            root.service.remote_state_uri,
+            Some(String::from("redis://10.0.0.1:6379"))
+        );
 
         assert_eq!(root.thresholds.restrict, 0.75); // non-default
         assert_eq!(
@@ -484,6 +528,104 @@ mod tests {
         );
         assert_eq!(root.resources.get(0).unwrap().timeout, Some(25));
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_overlapping_preset() -> Result<(), Box<dyn std::error::Error>> {
+        let root: crate::config::Config = load_config("tests/overlapping_preset.toml")?;
+
+        let resource = root.resources.get(0).unwrap();
+        let plugins = resource.resolve_plugins(&root)?;
+        assert_eq!(plugins.len(), 2);
+        assert_eq!(
+            plugins.get(0).unwrap().reference,
+            root.plugin("blank_slate").unwrap().reference
+        );
+        assert_eq!(
+            plugins.get(1).unwrap().reference,
+            root.plugin("evil_bit").unwrap().reference
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_circular_include() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/circular_include.toml");
+        // This needs to be an error, not a panic.
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .starts_with("invalid circular include"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_circular_preset() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/circular_preset.toml");
+        // This needs to be an error, not a panic.
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .starts_with("invalid circular preset reference"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_duplicate_plugin() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/duplicate_plugin.toml");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "duplicate named plugin or preset: 'blank_slate'"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_duplicate_preset() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/duplicate_preset.toml");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "duplicate named plugin or preset: 'default'"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_duplicate_mixed() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/duplicate_mixed.toml");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "duplicate named plugin or preset: 'blank_slate'"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_resolution_missing() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/missing.toml");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "missing named plugin or preset: 'blank_slate'"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_missing_include() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/missing_include.toml");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .starts_with("No such file or directory"));
         Ok(())
     }
 }

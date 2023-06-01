@@ -1,8 +1,10 @@
 //! The config module provides the internal representation of Bulwark's configuration.
 
 use crate::{ConfigSerializationError, ResolutionError};
+use itertools::Itertools;
 use regex::Regex;
 use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 use validator::Validate;
 
 lazy_static! {
@@ -67,7 +69,9 @@ pub struct Service {
     /// True if the admin service is enabled, false otherwise.
     pub admin_enabled: bool,
     /// The URI for the external Redis state store.
-    pub remote_state: Option<String>,
+    pub remote_state_uri: Option<String>,
+    /// The size of the remote state connection pool.
+    pub remote_state_pool_size: u32,
     /// The number of trusted proxy hops expected to be exterior to Bulwark.
     ///
     /// This number does not include Bulwark or the proxy hosting it in the proxy hop count. Zero implies that
@@ -81,6 +85,8 @@ pub struct Service {
 pub const DEFAULT_PORT: u16 = 8089;
 /// The default [`Service::admin_port`] value.
 pub const DEFAULT_ADMIN_PORT: u16 = 8090;
+/// The default [`Service::remote_state_pool_size`] value.
+pub const DEFAULT_REMOTE_STATE_POOL_SIZE: u32 = 16;
 
 /// Configuration for the decision thresholds.
 ///
@@ -127,8 +133,8 @@ impl Default for Thresholds {
 /// This structure will be wrapped by structs in the host environment.
 #[derive(Debug, Validate, Clone, Default)]
 pub struct Plugin {
-    /// The plugin reference key. Should be limited to ASCII lowercase a-z plus underscores.
-    #[validate(length(min = 1), regex(path = "RE_VALID_REFERENCE"))]
+    /// The plugin reference key. Should be limited to ASCII lowercase a-z plus underscores. Maximum 96 characters.
+    #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
     pub reference: String,
     // TODO: plugin path should be absolute; once it's in this structure the config base path is no longer known
     // TODO: should this be a URI? That would allow e.g. data: URI values to embed WASM into config over the wire
@@ -182,8 +188,8 @@ pub struct Permissions {
 /// A mapping between a reference identifier and a list of plugins that form a preset plugin group.
 #[derive(Debug, Validate, Clone)]
 pub struct Preset {
-    /// The preset reference key. Should be limited to ASCII lowercase a-z plus underscores.
-    #[validate(length(min = 1), regex(path = "RE_VALID_REFERENCE"))]
+    /// The preset reference key. Should be limited to ASCII lowercase a-z plus underscores. Maximum 96 characters.
+    #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
     pub reference: String,
     /// The list of references to plugins and other presets contained within this preset.
     #[validate(length(min = 1))]
@@ -199,25 +205,48 @@ impl Preset {
     ///   `Preset`s do not maintain their own references to their parent [`Config`] so this must be passed in.
     ///
     /// See [`Config::plugin`] and [`Config::preset`].
-    pub fn resolve_plugins<'a>(&'a self, config: &'a Config) -> Vec<&Plugin> {
-        let mut plugins: Vec<&Plugin> = Vec::with_capacity(self.plugins.len());
+    pub fn resolve_plugins<'a>(
+        &'a self,
+        config: &'a Config,
+    ) -> Result<Vec<&Plugin>, ResolutionError> {
+        let mut resolved_presets = HashSet::new();
+        self.resolve_plugins_recursive(config, &mut resolved_presets)
+    }
+
+    /// Resolves all references, checking for cycles.
+    fn resolve_plugins_recursive<'a>(
+        &'a self,
+        config: &'a Config,
+        resolved_presets: &mut HashSet<String>,
+    ) -> Result<Vec<&Plugin>, ResolutionError> {
+        let mut plugins: HashMap<String, &Plugin> = HashMap::with_capacity(self.plugins.len());
         for reference in &self.plugins {
             match reference {
                 Reference::Plugin(ref_name) => {
                     if let Some(plugin) = config.plugin(ref_name.as_str()) {
-                        plugins.push(plugin);
+                        plugins.insert(plugin.reference.to_string(), plugin);
                     }
                 }
                 Reference::Preset(ref_name) => {
+                    if resolved_presets.contains(ref_name) {
+                        return Err(ResolutionError::CircularPreset(ref_name.to_string()));
+                    } else {
+                        resolved_presets.insert(ref_name.to_string());
+                    }
                     if let Some(preset) = config.preset(ref_name.as_str()) {
-                        let mut inner_plugins = preset.resolve_plugins(config);
-                        plugins.append(&mut inner_plugins);
+                        let inner_plugins =
+                            preset.resolve_plugins_recursive(config, resolved_presets)?;
+                        for inner_plugin in inner_plugins {
+                            plugins.insert(inner_plugin.reference.to_string(), inner_plugin);
+                        }
                     }
                 }
-                Reference::Missing(_) => todo!(),
+                Reference::Missing(ref_name) => {
+                    return Err(ResolutionError::Missing(ref_name.to_string()));
+                }
             }
         }
-        plugins
+        Ok(plugins.values().cloned().collect())
     }
 }
 
@@ -257,7 +286,7 @@ impl Resource {
                 }
                 Reference::Preset(ref_name) => {
                     if let Some(preset) = config.preset(ref_name.as_str()) {
-                        let mut inner_plugins = preset.resolve_plugins(config);
+                        let mut inner_plugins = preset.resolve_plugins(config)?;
                         plugins.append(&mut inner_plugins);
                     }
                 }
@@ -266,7 +295,11 @@ impl Resource {
                 }
             }
         }
-        Ok(plugins)
+        Ok(plugins
+            .iter()
+            .sorted_by(|a, b| Ord::cmp(&a.reference, &b.reference))
+            .copied()
+            .collect())
     }
 }
 
