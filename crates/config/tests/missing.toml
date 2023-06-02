@@ -1,0 +1,9 @@
+[[resource]]
+route = "/"
+plugins = ["blank_slate"]
+timeout = 25
+
+[[resource]]
+route = "/*params"
+plugins = ["blank_slate"]
+timeout = 25

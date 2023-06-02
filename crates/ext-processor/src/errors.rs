@@ -30,7 +30,7 @@ pub enum PrepareRequestError {
     MissingHeaders,
 }
 
-/// Returned when trying to assemble a [`Request`](bulwark_wasm_sdk::Response) struct and Envoy sends missing
+/// Returned when trying to assemble a [`Response`](bulwark_wasm_sdk::Response) struct and Envoy sends missing
 /// or invalid information or an [HTTP error](http::Error) occurs.
 #[derive(thiserror::Error, Debug)]
 pub enum PrepareResponseError {

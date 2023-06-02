@@ -183,11 +183,11 @@ impl Default for ScriptRegistry {
             // TODO: handle overflow errors by expiring everything on overflow and returning nil?
             increment_rate_limit: redis::Script::new(
                 r#"
-                local counter_key = "rl:" .. KEYS[1]
+                local counter_key = "bulwark:rl:" .. KEYS[1]
                 local increment_delta = tonumber(ARGV[1])
                 local expiration_window = tonumber(ARGV[2])
                 local timestamp = tonumber(ARGV[3])
-                local expiration_key = counter_key .. ":ex"
+                local expiration_key = counter_key .. ":exp"
                 local expiration = tonumber(redis.call("get", expiration_key))
                 local next_expiration = timestamp + expiration_window
                 if not expiration or timestamp > expiration then
@@ -203,7 +203,7 @@ impl Default for ScriptRegistry {
             ),
             check_rate_limit: redis::Script::new(
                 r#"
-                local counter_key = "rl:" .. KEYS[1]
+                local counter_key = "bulwark:rl:" .. KEYS[1]
                 local expiration_key = counter_key .. ":exp"
                 local timestamp = tonumber(ARGV[1])
                 local attempts = tonumber(redis.call("get", counter_key))
@@ -220,11 +220,11 @@ impl Default for ScriptRegistry {
             ),
             increment_breaker: redis::Script::new(
                 r#"
-                local generation_key = "bk:g:" .. KEYS[1]
-                local success_key = "bk:s:" .. KEYS[1]
-                local failure_key = "bk:f:" .. KEYS[1]
-                local consec_success_key = "bk:cs:" .. KEYS[1]
-                local consec_failure_key = "bk:cf:" .. KEYS[1]
+                local generation_key = "bulwark:bk:g:" .. KEYS[1]
+                local success_key = "bulwark:bk:s:" .. KEYS[1]
+                local failure_key = "bulwark:bk:f:" .. KEYS[1]
+                local consec_success_key = "bulwark:bk:cs:" .. KEYS[1]
+                local consec_failure_key = "bulwark:bk:cf:" .. KEYS[1]
                 local success_delta = tonumber(ARGV[1])
                 local failure_delta = tonumber(ARGV[2])
                 local expiration_window = tonumber(ARGV[3])
@@ -258,11 +258,11 @@ impl Default for ScriptRegistry {
             ),
             check_breaker: redis::Script::new(
                 r#"
-                local generation_key = "bk:g:" .. KEYS[1]
-                local success_key = "bk:s:" .. KEYS[1]
-                local failure_key = "bk:f:" .. KEYS[1]
-                local consec_success_key = "bk:cs:" .. KEYS[1]
-                local consec_failure_key = "bk:cf:" .. KEYS[1]
+                local generation_key = "bulwark:bk:g:" .. KEYS[1]
+                local success_key = "bulwark:bk:s:" .. KEYS[1]
+                local failure_key = "bulwark:bk:f:" .. KEYS[1]
+                local consec_success_key = "bulwark:bk:cs:" .. KEYS[1]
+                local consec_failure_key = "bulwark:bk:cf:" .. KEYS[1]
                 local generation = tonumber(redis.call("get", generation_key))
                 if not generation then
                     return { nil, nil, nil, nil, nil, nil }

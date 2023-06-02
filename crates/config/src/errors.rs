@@ -9,8 +9,14 @@ pub enum ConfigFileError {
     Validation(#[from] validator::ValidationError),
     #[error(transparent)]
     Validations(#[from] validator::ValidationErrors),
+    #[error(transparent)]
+    Resolution(#[from] ResolutionError),
     #[error("missing parent: '{0}'")]
     MissingParent(String),
+    #[error("invalid circular include: '{0}'")]
+    CircularInclude(String),
+    #[error("duplicate named plugin or preset: '{0}'")]
+    Duplicate(String),
 }
 
 /// This error will be returned if an attempt to serialize a config structure fails.
@@ -25,4 +31,6 @@ pub enum ConfigSerializationError {
 pub enum ResolutionError {
     #[error("missing named plugin or preset: '{0}'")]
     Missing(String),
+    #[error("invalid circular preset reference: '{0}'")]
+    CircularPreset(String),
 }

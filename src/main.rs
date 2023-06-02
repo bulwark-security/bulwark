@@ -44,12 +44,12 @@ struct Cli {
     log_format: Option<String>,
 
     #[command(subcommand)]
-    command: Option<Commands>,
+    command: Option<Command>,
 }
 
 /// The subcommands supported by the Bulwark CLI.
 #[derive(Subcommand)]
-enum Commands {
+enum Command {
     /// Launch as an Envoy external processor
     ExtProcessor {
         /// Sets a custom config file
@@ -63,39 +63,24 @@ enum Commands {
 }
 
 /// The health state structure tracks the health of the primary service, primarily for the benefit of
-/// external monitoring by load balancers or container orchestration systems. It does not track a
-/// liveness value because this will always be true if the process is running.
+/// external monitoring by load balancers or container orchestration systems.
+#[derive(Serialize, Clone, Copy)]
 struct HealthState {
-    /// Indicates that the primary service has successfully initialized and is ready to receive requests.
-    /// Once true, it will remain true for the lifetime of the process.
-    started: bool,
-    /// Indicates that the primary service is ready to receive requests.
-    /// In theory, this could become false after the service has started if the system detects that it's
-    /// entered a deadlock state, however this is not currently implemented and does not meaningfully
-    /// differ from the started state.
-    ready: bool,
-}
-
-/// The health response structure determines the JSON serialization for health probe responses. Regardless
-/// of the type of probe requested, all 3 health states will be reported for convenience. Generally,
-/// automated systems requesting a health probe only consider the status code. This response body
-/// benefits human operators while not excluding machine-readability.
-#[derive(Serialize)]
-struct HealthResponse {
-    /// The live field is always true and indicates that the process running the primary service has
-    /// started without immediate error but may not yet be ready to receive requests. The health status
-    /// endpoints are not available until after configuration has been read, so if this endpoint can
-    /// return a response at all, this value will be true.
+    /// Indicates that the primary service is live and and has not entered an unrecoverable state.
+    ///
+    /// In theory, this could become false after the service has started if the system detects that it has
+    /// entered a deadlock state, however this is not currently implemented. See
+    /// [Kubernete's liveness probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#define-a-liveness-http-request)
+    /// for discussion.
     pub live: bool,
-    /// The started field becomes true after the primary service is ready to receive requests. This occurs
-    /// after all plugins have been compiled but before any plugin is instantiated by an incoming request.
-    /// Once true, it will never become false.
+    /// Indicates that the primary service has successfully initialized and is ready to receive requests.
+    ///
+    /// Once true, it will remain true for the lifetime of the process.
     pub started: bool,
-    /// The ready field indicates that the primary service is ready to receive requests. Theoretically,
-    /// this could become false if a service becomes unlikely to ever be able serve requests again in the
-    /// future, and should be set to false if the desired behavior is to trigger a restart. Currently the
-    /// ready field has identical behavior to the started field since no detection for things like
-    /// deadlock states exist yet.
+    /// Indicates that the primary service has successfully initialized and is ready to receive requests.
+    ///
+    /// Once true, it will remain true for the lifetime of the process.
+    /// While semantically different from startup state, it's implementation logic is identical.
     pub ready: bool,
 }
 
@@ -105,11 +90,11 @@ struct HealthResponse {
 /// See probe_handler.
 async fn default_probe_handler(
     State(state): State<Arc<Mutex<HealthState>>>,
-) -> (StatusCode, Json<HealthResponse>) {
+) -> (StatusCode, Json<HealthState>) {
     probe_handler(State(state), Path(String::from("live"))).await
 }
 
-/// The probe handler returns a JSON HealthResponse with a status code that depends on the probe type requested.
+/// The probe handler returns a JSON `HealthState` with a status code that depends on the probe type requested.
 ///
 /// - live - Always returns an HTTP OK status if the endpoint is serving requests.
 /// - started - Returns an HTTP OK status if the primary service has started and is ready to receive requests
@@ -119,7 +104,7 @@ async fn default_probe_handler(
 async fn probe_handler(
     State(state): State<Arc<Mutex<HealthState>>>,
     Path(probe): Path<String>,
-) -> (StatusCode, Json<HealthResponse>) {
+) -> (StatusCode, Json<HealthState>) {
     let state = state.lock().unwrap();
     let status = match probe.as_str() {
         "live" => StatusCode::OK,
@@ -140,14 +125,7 @@ async fn probe_handler(
         // hint that the wrong probe value was sent
         _ => StatusCode::NOT_FOUND,
     };
-    (
-        status,
-        Json(HealthResponse {
-            live: true,
-            started: state.started,
-            ready: state.ready,
-        }),
-    )
+    (status, Json(state.to_owned()))
 }
 
 /// An [`EnvFilter`] pattern to limit matched log events to error events.
@@ -223,7 +201,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // You can check for the existence of subcommands, and if found use their
     // matches just as you would the top level cmd
     match &cli.command {
-        Some(Commands::ExtProcessor { config }) => {
+        Some(Command::ExtProcessor { config }) => {
             let mut service_tasks: JoinSet<std::result::Result<(), ServiceError>> = JoinSet::new();
 
             let config_root = bulwark_config::toml::load_config(config)?;
@@ -231,6 +209,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let admin_port = config_root.service.admin_port;
             let admin_enabled = config_root.service.admin_enabled;
             let health_state = Arc::new(Mutex::new(HealthState {
+                live: true,
                 started: false,
                 ready: false,
             }));
