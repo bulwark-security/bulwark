@@ -6,7 +6,7 @@
 use crate::ConfigFileError;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, ffi::OsString, fs, path::Path};
+use std::{collections::HashSet, ffi::OsString, fs, path::Path, path::PathBuf};
 use validator::Validate;
 
 lazy_static! {
@@ -287,21 +287,36 @@ struct Resource {
     timeout: Option<u64>,
 }
 
+fn resolve_path<'a, B, P>(base: &'a B, path: &'a P) -> Result<PathBuf, ConfigFileError>
+where
+    B: 'a + ?Sized + AsRef<Path>,
+    P: 'a + ?Sized + AsRef<Path>,
+{
+    let joined_path = base
+        .as_ref()
+        .parent()
+        .ok_or(ConfigFileError::MissingParent(
+            base.as_ref().to_string_lossy().to_string(),
+        ))?
+        .join(path);
+    Ok(fs::canonicalize(joined_path)?)
+}
+
 /// Loads a TOML config file into a [`Config`](crate::Config) structure.
-pub fn load_config<'a, P>(path: &'a P) -> Result<crate::Config, ConfigFileError>
+pub fn load_config<'a, P>(config_path: &'a P) -> Result<crate::Config, ConfigFileError>
 where
     P: 'a + ?Sized + AsRef<Path>,
 {
     let mut loaded_files = HashSet::new();
 
     fn load_config_recursive<'a, P>(
-        path: &'a P,
+        config_path: &'a P,
         loaded_files: &mut HashSet<OsString>,
     ) -> Result<Config, ConfigFileError>
     where
         P: 'a + ?Sized + AsRef<Path>,
     {
-        let path_string = path.as_ref().as_os_str().to_os_string();
+        let path_string = config_path.as_ref().as_os_str().to_os_string();
         if loaded_files.contains(&path_string) {
             return Err(ConfigFileError::CircularInclude(
                 path_string.to_string_lossy().to_string(),
@@ -309,10 +324,14 @@ where
         } else {
             loaded_files.insert(path_string);
         }
-        let toml_data = fs::read_to_string(path)?;
+        let toml_data = fs::read_to_string(config_path)?;
         let mut root: Config = toml::from_str(&toml_data)?;
-        // TODO: avoid unwrap
-        let base = path.as_ref().parent().unwrap();
+        let base = config_path
+            .as_ref()
+            .parent()
+            .ok_or(ConfigFileError::MissingParent(
+                config_path.as_ref().to_string_lossy().to_string(),
+            ))?;
 
         for include in &root.includes {
             let include_path = base.join(&include.path);
@@ -344,11 +363,28 @@ where
         // Strip includes once processed
         root.includes = vec![];
 
+        // Resolve plugins relative to config path
+        root.plugins = root
+            .plugins
+            .iter()
+            .map(|plugin| -> Result<Plugin, ConfigFileError> {
+                Ok(Plugin {
+                    reference: plugin.reference.clone(),
+                    path: resolve_path(config_path, Path::new(&plugin.path))?
+                        .to_string_lossy()
+                        .to_string(),
+                    weight: plugin.weight,
+                    config: plugin.config.clone(),
+                    permissions: plugin.permissions.clone(),
+                })
+            })
+            .collect::<Result<Vec<Plugin>, ConfigFileError>>()?;
+
         Ok(root)
     }
 
     // Load the raw serialization format and resolve includes
-    let root = load_config_recursive(path, &mut loaded_files)?;
+    let root = load_config_recursive(config_path, &mut loaded_files)?;
 
     // Validate presets and plugins and their references
     let mut references: HashSet<&String> = HashSet::new();
@@ -464,7 +500,12 @@ mod tests {
 
         assert_eq!(root.plugins.len(), 1);
         assert_eq!(root.plugins.get(0).unwrap().reference, "evil_bit");
-        assert_eq!(root.plugins.get(0).unwrap().path, "bulwark-evil-bit.wasm");
+        assert!(root
+            .plugins
+            .get(0)
+            .unwrap()
+            .path
+            .ends_with("bulwark-evil-bit.wasm"));
         assert_eq!(
             root.plugins.get(0).unwrap().config,
             toml::map::Map::default()
@@ -498,7 +539,12 @@ mod tests {
 
         assert_eq!(root.plugins.len(), 2);
         assert_eq!(root.plugins.get(0).unwrap().reference, "evil_bit");
-        assert_eq!(root.plugins.get(0).unwrap().path, "bulwark-evil-bit.wasm");
+        assert!(root
+            .plugins
+            .get(0)
+            .unwrap()
+            .path
+            .ends_with("bulwark-evil-bit.wasm"));
         assert_eq!(
             root.plugins.get(0).unwrap().config,
             serde_json::map::Map::default()
@@ -626,6 +672,16 @@ mod tests {
             .unwrap_err()
             .to_string()
             .starts_with("No such file or directory"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_resolve_path() -> Result<(), Box<dyn std::error::Error>> {
+        let base = PathBuf::new().join(".");
+        let path = Path::new("./src");
+        let resolved_path = resolve_path(&base, path)?;
+
+        assert!(resolved_path.ends_with("crates/config/src"));
         Ok(())
     }
 }
