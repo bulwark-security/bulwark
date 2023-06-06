@@ -17,7 +17,7 @@ maintenance = { status = "experimental" }
 bulwark-ext-processor = { path = "crates/ext-processor", version = "0.1.0" }
 bulwark-config = { path = "crates/config", version = "0.1.0" }
 thiserror = "1.0.37"
-clap = { version = "4.0.29", features = ["derive"] }
+clap = { version = "4.2.7", features = ["derive"] }
 clap_complete = "4.0.6"
 # TODO: used for debug currently, remove later
 serde = { version = "1.0.149", features = ["std", "serde_derive"] }
