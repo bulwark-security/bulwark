@@ -207,7 +207,7 @@ dependencies = [
  "serde_path_to_error",
  "serde_urlencoded",
  "sync_wrapper",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "tower",
  "tower-layer",
  "tower-service",
@@ -300,7 +300,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "toml",
  "tonic",
  "tower",
@@ -363,7 +363,7 @@ dependencies = [
  "redis",
  "sfv",
  "thiserror",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "tonic",
  "tracing",
 ]
@@ -659,7 +659,7 @@ dependencies = [
  "futures-core",
  "memchr",
  "pin-project-lite",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "tokio-util 0.7.8",
 ]
 
@@ -1390,7 +1390,7 @@ dependencies = [
  "http",
  "indexmap",
  "slab",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "tokio-util 0.7.8",
  "tracing",
 ]
@@ -1513,7 +1513,7 @@ dependencies = [
  "itoa",
  "pin-project-lite",
  "socket2",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "tower-service",
  "tracing",
  "want",
@@ -1528,7 +1528,7 @@ dependencies = [
  "http",
  "hyper",
  "rustls",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "tokio-rustls",
 ]
 
@@ -1540,7 +1540,7 @@ checksum = "bbb958482e8c7be4bc3cf272a766a2b0bf1a6755e7a6ae777f017a31d11b13b1"
 dependencies = [
  "hyper",
  "pin-project-lite",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "tokio-io-timeout",
 ]
 
@@ -1553,7 +1553,7 @@ dependencies = [
  "bytes 1.4.0",
  "hyper",
  "native-tls",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "tokio-native-tls",
 ]
 
@@ -2630,7 +2630,7 @@ dependencies = [
  "rand",
  "ryu",
  "sha1_smol",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "tokio-native-tls",
  "tokio-util 0.7.8",
  "url",
@@ -2757,7 +2757,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "tokio-native-tls",
  "tokio-rustls",
  "tower-service",
@@ -3314,9 +3314,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.28.1"
+version = "1.28.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0aa32867d44e6f2ce3385e89dceb990188b8bb0fb25b0cf576647a6f98ac5105"
+checksum = "94d7b1cfd2aa4011f2de74c2c4c63665e27a71006b0a192dcd2710272e73dfa2"
 dependencies = [
  "autocfg",
  "bytes 1.4.0",
@@ -3390,7 +3390,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30b74022ada614a1b4834de765f9bb43877f910cc8ce4be40e89042c9223a8bf"
 dependencies = [
  "pin-project-lite",
- "tokio 1.28.1",
+ "tokio 1.28.2",
 ]
 
 [[package]]
@@ -3411,7 +3411,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbae76ab933c85776efabc971569dd6119c580d8f5d448769dec1764bf796ef2"
 dependencies = [
  "native-tls",
- "tokio 1.28.1",
+ "tokio 1.28.2",
 ]
 
 [[package]]
@@ -3440,7 +3440,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c43ee83903113e03984cb9e5cebe6c04a5116269e900e3ddba8f068a62adda59"
 dependencies = [
  "rustls",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "webpki",
 ]
 
@@ -3452,7 +3452,7 @@ checksum = "397c988d37662c7dda6d2208364a706264bf3d6138b11d436cbac0ad38832842"
 dependencies = [
  "futures-core",
  "pin-project-lite",
- "tokio 1.28.1",
+ "tokio 1.28.2",
 ]
 
 [[package]]
@@ -3552,7 +3552,7 @@ dependencies = [
  "futures-sink",
  "log",
  "pin-project-lite",
- "tokio 1.28.1",
+ "tokio 1.28.2",
 ]
 
 [[package]]
@@ -3565,7 +3565,7 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "pin-project-lite",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "tracing",
 ]
 
@@ -3600,7 +3600,7 @@ dependencies = [
  "pin-project",
  "prost",
  "prost-derive",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "tokio-stream",
  "tokio-util 0.6.10",
  "tower",
@@ -3635,7 +3635,7 @@ dependencies = [
  "pin-project-lite",
  "rand",
  "slab",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "tokio-util 0.7.8",
  "tower-layer",
  "tower-service",
@@ -3656,7 +3656,7 @@ dependencies = [
  "http-body",
  "http-range-header",
  "pin-project-lite",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -3738,7 +3738,7 @@ dependencies = [
  "chrono",
  "smallvec 1.10.0",
  "thiserror",
- "tokio 1.28.1",
+ "tokio 1.28.2",
  "tracing",
  "tracing-subscriber",
  "uuid",
