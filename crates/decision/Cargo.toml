@@ -15,7 +15,7 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 thiserror = "1.0.37"
-validator = { version = "0.12", features = ["derive"] }
+validator = { version = "0.16", features = ["derive"] }
 approx = "0.4"
 strum = "0.24"
 strum_macros = "0.24"
