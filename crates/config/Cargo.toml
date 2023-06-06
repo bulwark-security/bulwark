@@ -22,5 +22,5 @@ serde = { version = "1.0.149", features = ["std", "serde_derive"] }
 serde_json = "1.0.93"
 thiserror = "1.0.37"
 toml = { version = "0.5.9", features = ["preserve_order"] }
-validator = { version = "0.12", features = ["derive"] }
+validator = { version = "0.16", features = ["derive"] }
 itertools = "0.10.5"
