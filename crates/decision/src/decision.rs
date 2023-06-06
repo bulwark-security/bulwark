@@ -38,6 +38,14 @@ pub struct Decision {
     pub unknown: f64,
 }
 
+impl Default for Decision {
+    /// The default [`Decision`] assigns nothing to the `accept` and `restrict` components and everything
+    /// to the `unknown` component.
+    fn default() -> Self {
+        UNKNOWN
+    }
+}
+
 /// A decision representing acceptance with full certainty.
 pub const ACCEPT: Decision = Decision {
     accept: 1.0,
