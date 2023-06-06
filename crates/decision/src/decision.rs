@@ -42,11 +42,7 @@ impl Default for Decision {
     /// The default [`Decision`] assigns nothing to the `accept` and `restrict` components and everything
     /// to the `unknown` component.
     fn default() -> Self {
-        Self {
-            accept: 0.0,
-            restrict: 0.0,
-            unknown: 1.0,
-        }
+        UNKNOWN
     }
 }
 
