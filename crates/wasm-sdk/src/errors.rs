@@ -1,3 +1,6 @@
+/// Generic result
+pub type Result = ::std::result::Result<(), Error>;
+
 /// Generic error
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
