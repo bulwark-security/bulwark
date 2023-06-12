@@ -57,6 +57,7 @@ members = [
     "crates/ext-processor",
     "crates/wasm-host",
     "crates/wasm-sdk",
+    "crates/wasm-sdk-macros",
     "crates/decision",
 ]
 

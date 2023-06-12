@@ -1,3 +1,10 @@
+/// Generic error
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error(transparent)]
+    ParseCounter(#[from] ParseCounterError),
+}
+
 /// Returned when an attempt to parse a counter within a plugin environment fails.
 #[derive(thiserror::Error, Debug)]
 pub enum ParseCounterError {
