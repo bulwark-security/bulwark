@@ -4,7 +4,7 @@
 #[allow(unused_macros)]
 #[macro_use]
 pub mod bulwark_host {
-    wit_bindgen::generate!("plugin.host");
+    wit_bindgen::generate!("plugin.host-calls");
 }
 // Separate world for each handler because all handlers are optional
 #[allow(unused_macros)]

@@ -17,11 +17,11 @@ maintenance = { status = "experimental" }
 bulwark-wasm-sdk = { path = "../wasm-sdk", version = "0.1.0" }
 bulwark-config = { path = "../config", version = "0.1.0" }
 thiserror = "1.0.37"
-wasi-common = "0.39.1"
-wasmtime = "0.39.1"
-wasmtime-wasi = "0.39.1"
-wasmtime-types = "0.39.1"
-wit-bindgen-wasmtime = { git = "https://github.com/bytecodealliance/wit-bindgen", rev = "cb871cfa1ee460b51eb1d144b175b9aab9c50aba" } # 0.2.0, aka wit-bindgen-host-wasmtime-rust
+anyhow = "1"
+wasi-common = "8"
+wasmtime = { version = "8", features = ["component-model"] }
+wasmtime-wasi = "8"
+wasmtime-types = "8"
 http = "0.2"
 redis = { version = "0.23.0", features = [
     "tokio-comp",
@@ -37,5 +37,5 @@ reqwest = { version = "0.11.14", features = ["rustls-tls", "blocking"] }
 url = "2.3.1"
 
 [dev-dependencies]
-wasi-cap-std-sync = "0.39.1"
+wasi-cap-std-sync = "8"
 wat = "1.0.57"

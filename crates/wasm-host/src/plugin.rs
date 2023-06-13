@@ -1,5 +1,6 @@
-// TODO: switch to wasmtime::component::bindgen!
-wit_bindgen_wasmtime::export!("../../bulwark-host.wit");
+mod bulwark_host {
+    wasmtime::component::bindgen!("plugin");
+}
 
 use {
     crate::{
@@ -19,7 +20,8 @@ use {
         sync::{Arc, Mutex, MutexGuard},
     },
     url::Url,
-    wasmtime::{AsContextMut, Config, Engine, Instance, Linker, Module, Store},
+    wasmtime::component::{Component, Instance, Linker},
+    wasmtime::{AsContextMut, Config, Engine, Store},
     wasmtime_wasi::{WasiCtx, WasiCtxBuilder},
 };
 
@@ -374,7 +376,7 @@ pub struct Plugin {
     reference: String,
     config: Arc<bulwark_config::Plugin>,
     engine: Engine,
-    module: Module,
+    component: Component,
 }
 
 impl Plugin {
@@ -385,10 +387,13 @@ impl Plugin {
         wat: &str,
         config: &bulwark_config::Plugin,
     ) -> Result<Self, PluginLoadError> {
-        Self::from_module(name, config, |engine| -> Result<Module, PluginLoadError> {
-            let module = Module::new(engine, wat.as_bytes())?;
-            Ok(module)
-        })
+        Self::from_component(
+            name,
+            config,
+            |engine| -> Result<Component, PluginLoadError> {
+                Ok(Component::new(engine, wat.as_bytes())?)
+            },
+        )
     }
 
     /// Creates and compiles a new [`Plugin`] from a byte slice of WASM.
@@ -400,10 +405,13 @@ impl Plugin {
         bytes: &[u8],
         config: &bulwark_config::Plugin,
     ) -> Result<Self, PluginLoadError> {
-        Self::from_module(name, config, |engine| -> Result<Module, PluginLoadError> {
-            let module = Module::from_binary(engine, bytes)?;
-            Ok(module)
-        })
+        Self::from_component(
+            name,
+            config,
+            |engine| -> Result<Component, PluginLoadError> {
+                Ok(Component::from_binary(engine, bytes)?)
+            },
+        )
     }
 
     /// Creates and compiles a new [`Plugin`] by reading in a file in either `*.wasm` or `*.wat` format.
@@ -414,33 +422,37 @@ impl Plugin {
         config: &bulwark_config::Plugin,
     ) -> Result<Self, PluginLoadError> {
         let name = config.reference.clone();
-        Self::from_module(name, config, |engine| -> Result<Module, PluginLoadError> {
-            let module = Module::from_file(engine, &path)?;
-            Ok(module)
-        })
+        Self::from_component(
+            name,
+            config,
+            |engine| -> Result<Component, PluginLoadError> {
+                Ok(Component::from_file(engine, &path)?)
+            },
+        )
     }
 
     /// Helper method for the other `from_*` functions.
-    fn from_module<F>(
+    fn from_component<F>(
         reference: String,
         config: &bulwark_config::Plugin,
-        mut get_module: F,
+        mut get_component: F,
     ) -> Result<Self, PluginLoadError>
     where
-        F: FnMut(&Engine) -> Result<Module, PluginLoadError>,
+        F: FnMut(&Engine) -> Result<Component, PluginLoadError>,
     {
         let mut wasm_config = Config::new();
         wasm_config.wasm_backtrace_details(wasmtime::WasmBacktraceDetails::Enable);
         wasm_config.wasm_multi_memory(true);
+        wasm_config.wasm_component_model(true);
 
         let engine = Engine::new(&wasm_config)?;
-        let module = get_module(&engine)?;
+        let component = get_component(&engine)?;
 
         Ok(Plugin {
             reference,
             config: Arc::new(config.clone()),
             engine,
-            module,
+            component,
         })
     }
 
@@ -500,12 +512,14 @@ impl PluginInstance {
         // TODO: do we need to retain a reference to the linker value anywhere? explore how other wasm-based systems use it.
         // convert from normal request struct to wasm request interface
         let mut linker: Linker<RequestContext> = Linker::new(&plugin.engine);
-        wasmtime_wasi::add_to_linker(&mut linker, |s| &mut s.wasi)?;
+
+        // TODO: figure out what to do with this
+        // wasmtime_wasi::add_to_linker(&mut linker, |ctx: &mut RequestContext| &mut ctx.wasi)?;
 
         let mut store = Store::new(&plugin.engine, request_context);
-        bulwark_host::add_to_linker(&mut linker, |ctx: &mut RequestContext| ctx)?;
+        bulwark_host::HostCalls::add_to_linker(&mut linker, |ctx: &mut RequestContext| ctx)?;
 
-        let instance = linker.instantiate(&mut store, &plugin.module)?;
+        let instance = linker.instantiate(&mut store, &plugin.component)?;
 
         Ok(PluginInstance {
             plugin,
@@ -543,22 +557,6 @@ impl PluginInstance {
     /// Returns the plugin's identifier.
     pub fn plugin_reference(&self) -> String {
         self.plugin.reference.clone()
-    }
-
-    /// Executes the `_start` WASM initialization function in the guest environment.
-    ///
-    /// This will generally be the `main()` function for WASI. Unlike the other handler functions,
-    /// there is no `has_start` function because it is required by the WASI specification.
-    pub fn start(&mut self) -> Result<(), PluginExecutionError> {
-        const FN_NAME: &str = "_start";
-        let fn_ref = self.instance.get_func(self.store.as_context_mut(), FN_NAME);
-        fn_ref
-            .ok_or(PluginExecutionError::NotImplementedError {
-                expected: FN_NAME.to_string(),
-            })?
-            .call(self.store.as_context_mut(), &[], &mut [])?;
-
-        Ok(())
     }
 
     /// Returns true if the guest environment has declared an `on_request` function.
@@ -656,10 +654,10 @@ impl PluginInstance {
     }
 }
 
-impl bulwark_host::BulwarkHost for RequestContext {
+impl bulwark_host::HostCallsImports for RequestContext {
     /// Returns the guest environment's configuration value as serialized JSON.
-    fn get_config(&mut self) -> Vec<u8> {
-        self.config.to_vec()
+    fn get_config(&mut self) -> Result<Vec<u8>, wasmtime::Error> {
+        Ok(self.config.to_vec())
     }
 
     /// Returns a named value from the request context's params.
@@ -667,10 +665,10 @@ impl bulwark_host::BulwarkHost for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The key name corresponding to the param value.
-    fn get_param_value(&mut self, key: &str) -> Vec<u8> {
+    fn get_param_value(&mut self, key: String) -> Result<Vec<u8>, wasmtime::Error> {
         let params = self.params.lock().unwrap();
-        let value = params.get(key).unwrap_or(&bulwark_wasm_sdk::Value::Null);
-        serde_json::to_vec(value).unwrap()
+        let value = params.get(&key).unwrap_or(&bulwark_wasm_sdk::Value::Null);
+        Ok(serde_json::to_vec(value)?)
     }
 
     /// Set a named value in the request context's params.
@@ -679,10 +677,15 @@ impl bulwark_host::BulwarkHost for RequestContext {
     ///
     /// * `key` - The key name corresponding to the param value.
     /// * `value` - The value to record. Values are serialized JSON.
-    fn set_param_value(&mut self, key: &str, value: &[u8]) {
+    fn set_param_value(
+        &mut self,
+        key: String,
+        value: Vec<u8>,
+    ) -> std::result::Result<(), wasmtime::Error> {
         let mut params = self.params.lock().unwrap();
-        let value: bulwark_wasm_sdk::Value = serde_json::from_slice(value).unwrap();
-        params.insert(key.to_string(), value);
+        let value: bulwark_wasm_sdk::Value = serde_json::from_slice(&value)?;
+        params.insert(key, value);
+        Ok(())
     }
 
     /// Returns a named environment variable value as bytes.
@@ -690,7 +693,7 @@ impl bulwark_host::BulwarkHost for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The environment variable name. Case-sensitive.
-    fn get_env_bytes(&mut self, key: &str) -> Vec<u8> {
+    fn get_env_bytes(&mut self, key: String) -> Result<Vec<u8>, wasmtime::Error> {
         let allowed_env_vars = self
             .permissions
             .env
@@ -698,27 +701,32 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .cloned()
             .collect::<BTreeSet<String>>();
         if !allowed_env_vars.contains(&key.to_string()) {
+            // TODO: convert to error
             panic!("access to environment variable denied");
         }
-        // TODO: return result instead of panic due to OsString/String stuff
-        std::env::var(key).unwrap().as_bytes().to_vec()
+        Ok(std::env::var(key)?.as_bytes().to_vec())
     }
 
     /// Returns the incoming request associated with the request context.
-    fn get_request(&mut self) -> bulwark_host::RequestInterface {
-        self.request.clone()
+    fn get_request(
+        &mut self,
+    ) -> std::result::Result<bulwark_host::RequestInterface, wasmtime::Error> {
+        Ok(self.request.clone())
     }
 
     /// Returns the response received from the interior service.
-    fn get_response(&mut self) -> bulwark_host::ResponseInterface {
+    fn get_response(
+        &mut self,
+    ) -> std::result::Result<bulwark_host::ResponseInterface, wasmtime::Error> {
         let response: MutexGuard<Option<bulwark_host::ResponseInterface>> =
             self.host_mutable_context.response.lock().unwrap();
-        response.to_owned().unwrap()
+        // TODO: remove unwrap
+        Ok(response.to_owned().unwrap())
     }
 
     /// Returns the originating client's IP address, if available.
-    fn get_client_ip(&mut self) -> Option<bulwark_host::IpInterface> {
-        self.client_ip
+    fn get_client_ip(&mut self) -> Result<Option<bulwark_host::IpInterface>, wasmtime::Error> {
+        Ok(self.client_ip)
     }
 
     /// Begins an outbound request. Returns a request ID used by `add_request_header` and `set_request_body`.
@@ -727,16 +735,17 @@ impl bulwark_host::BulwarkHost for RequestContext {
     ///
     /// * `method` - The HTTP method
     /// * `uri` - The absolute URI of the resource to request
-    fn prepare_request(&mut self, method: &str, uri: &str) -> u64 {
+    fn prepare_request(&mut self, method: String, uri: String) -> Result<u64, wasmtime::Error> {
         let allowed_http_domains = self
             .permissions
             .http
             .iter()
             .cloned()
             .collect::<BTreeSet<String>>();
-        let parsed_uri = Url::parse(uri).unwrap();
+        let parsed_uri = Url::parse(&uri).unwrap();
         let requested_domain = parsed_uri.domain().unwrap();
         if !allowed_http_domains.contains(&requested_domain.to_string()) {
+            // TODO: convert to error
             panic!("access to http resource denied");
         }
         let mut outbound_requests = self.outbound_http.lock().unwrap();
@@ -754,7 +763,7 @@ impl bulwark_host::BulwarkHost for RequestContext {
         let builder = self.http_client.request(method, uri);
         let index: u64 = outbound_requests.len().try_into().unwrap();
         outbound_requests.insert(index, builder);
-        (outbound_requests.len() - 1).try_into().unwrap()
+        Ok((outbound_requests.len() - 1).try_into()?)
     }
 
     /// Adds a request header to an outbound HTTP request.
@@ -764,12 +773,18 @@ impl bulwark_host::BulwarkHost for RequestContext {
     /// * `request_id` - The request ID received from `prepare_request`.
     /// * `name` - The header name.
     /// * `value` - The header value bytes.
-    fn add_request_header(&mut self, request_id: u64, name: &str, value: &[u8]) {
+    fn add_request_header(
+        &mut self,
+        request_id: u64,
+        name: String,
+        value: Vec<u8>,
+    ) -> Result<(), wasmtime::Error> {
         let mut outbound_requests = self.outbound_http.lock().unwrap();
         // remove/insert to avoid move issues
         let mut builder = outbound_requests.remove(&request_id).unwrap();
         builder = builder.header(name, value);
         outbound_requests.insert(request_id, builder);
+        Ok(())
     }
 
     /// Sets the request body, if any. Returns the response.
@@ -783,13 +798,14 @@ impl bulwark_host::BulwarkHost for RequestContext {
     fn set_request_body(
         &mut self,
         request_id: u64,
-        body: &[u8],
-    ) -> bulwark_host::ResponseInterface {
+        body: Vec<u8>,
+    ) -> Result<bulwark_host::ResponseInterface, wasmtime::Error> {
         // TODO: handle basic error scenarios like timeouts
+        // TODO: remove unwraps
         let mut outbound_requests = self.outbound_http.lock().unwrap();
         // remove/insert to avoid move issues
         let builder = outbound_requests.remove(&request_id).unwrap();
-        let builder = builder.body(body.to_vec());
+        let builder = builder.body(body);
 
         let response = builder.send().unwrap();
         let status: u32 = response.status().as_u16().try_into().unwrap();
@@ -804,14 +820,14 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .collect();
         let body = response.bytes().unwrap().to_vec();
         let content_length: u64 = body.len().try_into().unwrap();
-        bulwark_host::ResponseInterface {
+        Ok(bulwark_host::ResponseInterface {
             status,
             headers,
             chunk: body,
             chunk_start: 0,
             chunk_length: content_length,
             end_of_stream: true,
-        }
+        })
     }
 
     /// Records the decision value the plugin wants to return.
@@ -819,11 +835,16 @@ impl bulwark_host::BulwarkHost for RequestContext {
     /// # Arguments
     ///
     /// * `decision` - The [`Decision`] output of the plugin.
-    fn set_decision(&mut self, decision: bulwark_host::DecisionInterface) {
+    fn set_decision(
+        &mut self,
+        decision: bulwark_host::DecisionInterface,
+    ) -> Result<(), wasmtime::Error> {
+        let decision = Decision::from(decision);
         self.accept = decision.accept;
         self.restrict = decision.restrict;
         self.unknown = decision.unknown;
-        // TODO: validate, probably via trait?
+        // TODO: validate
+        Ok(())
     }
 
     /// Records the tags the plugin wants to associate with its decision.
@@ -831,41 +852,41 @@ impl bulwark_host::BulwarkHost for RequestContext {
     /// # Arguments
     ///
     /// * `tags` - The list of tags to associate with a [`Decision`].
-    fn set_tags(&mut self, tags: Vec<&str>) {
-        self.tags = tags
-            .iter()
-            .map(|s| String::from(*s))
-            .collect::<Vec<String>>();
+    fn set_tags(&mut self, tags: Vec<String>) -> Result<(), wasmtime::Error> {
+        self.tags = tags;
+        Ok(())
     }
 
     /// Returns the combined decision, if available.
     ///
     /// Typically used in the feedback phase.
-    fn get_combined_decision(&mut self) -> bulwark_host::DecisionInterface {
+    fn get_combined_decision(
+        &mut self,
+    ) -> Result<bulwark_host::DecisionInterface, wasmtime::Error> {
         let combined_decision: MutexGuard<Option<bulwark_host::DecisionInterface>> =
             self.host_mutable_context.combined_decision.lock().unwrap();
         // TODO: this should probably be an Option return type rather than unwrapping here
-        combined_decision.to_owned().unwrap()
+        Ok(combined_decision.to_owned().unwrap())
     }
 
     /// Returns the combined set of tags associated with a decision, if available.
     ///
     /// Typically used in the feedback phase.
-    fn get_combined_tags(&mut self) -> Vec<String> {
+    fn get_combined_tags(&mut self) -> Result<Vec<String>, wasmtime::Error> {
         let combined_tags: MutexGuard<Option<Vec<String>>> =
             self.host_mutable_context.combined_tags.lock().unwrap();
         // TODO: this should probably be an Option return type rather than unwrapping here
-        combined_tags.to_owned().unwrap()
+        Ok(combined_tags.to_owned().unwrap())
     }
 
     /// Returns the outcome of the combined decision, if available.
     ///
     /// Typically used in the feedback phase.
-    fn get_outcome(&mut self) -> bulwark_host::OutcomeInterface {
+    fn get_outcome(&mut self) -> Result<bulwark_host::OutcomeInterface, wasmtime::Error> {
         let outcome: MutexGuard<Option<bulwark_host::OutcomeInterface>> =
             self.host_mutable_context.outcome.lock().unwrap();
         // TODO: this should probably be an Option return type rather than unwrapping here
-        outcome.to_owned().unwrap()
+        Ok(outcome.to_owned().unwrap())
     }
 
     /// Returns the named state value retrieved from Redis.
@@ -875,7 +896,7 @@ impl bulwark_host::BulwarkHost for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The key name corresponding to the state value.
-    fn get_remote_state(&mut self, key: &str) -> Vec<u8> {
+    fn get_remote_state(&mut self, key: String) -> Result<std::vec::Vec<u8>, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -887,12 +908,13 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .iter()
             .any(|prefix| key.starts_with(prefix))
         {
+            // TODO: convert to error
             panic!("access to state value by prefix denied");
         }
 
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
-        conn.get(key).unwrap()
+        Ok(conn.get(key)?)
     }
 
     /// Set a named value in Redis.
@@ -901,7 +923,11 @@ impl bulwark_host::BulwarkHost for RequestContext {
     ///
     /// * `key` - The key name corresponding to the state value.
     /// * `value` - The value to record. Values are byte strings, but may be interpreted differently by Redis depending on context.
-    fn set_remote_state(&mut self, key: &str, value: &[u8]) {
+    fn set_remote_state(
+        &mut self,
+        key: String,
+        value: std::vec::Vec<u8>,
+    ) -> std::result::Result<(), wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -913,12 +939,13 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .iter()
             .any(|prefix| key.starts_with(prefix))
         {
+            // TODO: convert to error
             panic!("access to state value by prefix denied");
         }
 
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
-        conn.set(key, value.to_vec()).unwrap()
+        Ok(conn.set(key, value.to_vec())?)
     }
 
     /// Increments a named counter in Redis.
@@ -926,7 +953,7 @@ impl bulwark_host::BulwarkHost for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The key name corresponding to the state counter.
-    fn increment_remote_state(&mut self, key: &str) -> i64 {
+    fn increment_remote_state(&mut self, key: String) -> std::result::Result<i64, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -938,12 +965,13 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .iter()
             .any(|prefix| key.starts_with(prefix))
         {
+            // TODO: convert to error
             panic!("access to state value by prefix denied");
         }
 
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
-        conn.incr(key, 1).unwrap()
+        Ok(conn.incr(key, 1)?)
     }
 
     /// Increments a named counter in Redis by a specified delta value.
@@ -952,7 +980,11 @@ impl bulwark_host::BulwarkHost for RequestContext {
     ///
     /// * `key` - The key name corresponding to the state counter.
     /// * `delta` - The amount to increase the counter by.
-    fn increment_remote_state_by(&mut self, key: &str, delta: i64) -> i64 {
+    fn increment_remote_state_by(
+        &mut self,
+        key: String,
+        delta: i64,
+    ) -> std::result::Result<i64, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -964,12 +996,13 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .iter()
             .any(|prefix| key.starts_with(prefix))
         {
+            // TODO: convert to error
             panic!("access to state value by prefix denied");
         }
 
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
-        conn.incr(key, delta).unwrap()
+        Ok(conn.incr(key, delta)?)
     }
 
     /// Sets an expiration on a named value in Redis.
@@ -978,7 +1011,11 @@ impl bulwark_host::BulwarkHost for RequestContext {
     ///
     /// * `key` - The key name corresponding to the state value.
     /// * `ttl` - The time-to-live for the value in seconds.
-    fn set_remote_ttl(&mut self, key: &str, ttl: i64) {
+    fn set_remote_ttl(
+        &mut self,
+        key: String,
+        ttl: i64,
+    ) -> std::result::Result<(), wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -990,12 +1027,13 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .iter()
             .any(|prefix| key.starts_with(prefix))
         {
+            // TODO: convert to error
             panic!("access to state value by prefix denied");
         }
 
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
-        conn.expire(key, ttl.try_into().unwrap()).unwrap()
+        Ok(conn.expire(key, ttl.try_into().unwrap())?)
     }
 
     /// Increments a rate limit, returning the number of attempts so far and the expiration time.
@@ -1012,10 +1050,10 @@ impl bulwark_host::BulwarkHost for RequestContext {
     /// * `window` - How long each period should be in seconds.
     fn increment_rate_limit(
         &mut self,
-        key: &str,
+        key: String,
         delta: i64,
         window: i64,
-    ) -> bulwark_host::RateInterface {
+    ) -> std::result::Result<bulwark_host::RateInterface, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -1027,11 +1065,12 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .iter()
             .any(|prefix| key.starts_with(prefix))
         {
+            // TODO: convert to error
             panic!("access to state value by prefix denied");
         }
 
         let redis_info = self.redis_info.clone().unwrap();
-        let mut conn = redis_info.pool.get().unwrap();
+        let mut conn = redis_info.pool.get()?;
         let dt = Utc::now();
         let timestamp: i64 = dt.timestamp();
         let script = redis_info.registry.increment_rate_limit.clone();
@@ -1040,12 +1079,11 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .arg(delta)
             .arg(window)
             .arg(timestamp)
-            .invoke::<(i64, i64)>(conn.deref_mut())
-            .unwrap();
-        bulwark_host::RateInterface {
+            .invoke::<(i64, i64)>(conn.deref_mut())?;
+        Ok(bulwark_host::RateInterface {
             attempts,
             expiration,
-        }
+        })
     }
 
     /// Checks a rate limit, returning the number of attempts so far and the expiration time.
@@ -1055,7 +1093,10 @@ impl bulwark_host::BulwarkHost for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The key name corresponding to the state counter.
-    fn check_rate_limit(&mut self, key: &str) -> bulwark_host::RateInterface {
+    fn check_rate_limit(
+        &mut self,
+        key: String,
+    ) -> std::result::Result<bulwark_host::RateInterface, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -1067,6 +1108,7 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .iter()
             .any(|prefix| key.starts_with(prefix))
         {
+            // TODO: convert to error
             panic!("access to state value by prefix denied");
         }
 
@@ -1078,12 +1120,11 @@ impl bulwark_host::BulwarkHost for RequestContext {
         let (attempts, expiration) = script
             .key(key)
             .arg(timestamp)
-            .invoke::<(i64, i64)>(conn.deref_mut())
-            .unwrap();
-        bulwark_host::RateInterface {
+            .invoke::<(i64, i64)>(conn.deref_mut())?;
+        Ok(bulwark_host::RateInterface {
             attempts,
             expiration,
-        }
+        })
     }
 
     /// Increments a circuit breaker, returning the generation count, success count, failure count,
@@ -1101,11 +1142,11 @@ impl bulwark_host::BulwarkHost for RequestContext {
     /// * `window` - How long each period should be in seconds.
     fn increment_breaker(
         &mut self,
-        key: &str,
+        key: String,
         success_delta: i64,
         failure_delta: i64,
         window: i64,
-    ) -> bulwark_host::BreakerInterface {
+    ) -> std::result::Result<bulwark_host::BreakerInterface, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -1117,11 +1158,12 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .iter()
             .any(|prefix| key.starts_with(prefix))
         {
+            // TODO: convert to error
             panic!("access to state value by prefix denied");
         }
 
         let redis_info = self.redis_info.clone().unwrap();
-        let mut conn = redis_info.pool.get().unwrap();
+        let mut conn = redis_info.pool.get()?;
         let dt = Utc::now();
         let timestamp: i64 = dt.timestamp();
         let script = redis_info.registry.increment_breaker.clone();
@@ -1138,16 +1180,15 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .arg(failure_delta)
             .arg(window)
             .arg(timestamp)
-            .invoke::<(i64, i64, i64, i64, i64, i64)>(conn.deref_mut())
-            .unwrap();
-        bulwark_host::BreakerInterface {
+            .invoke::<(i64, i64, i64, i64, i64, i64)>(conn.deref_mut())?;
+        Ok(bulwark_host::BreakerInterface {
             generation,
             successes,
             failures,
             consecutive_successes,
             consecutive_failures,
             expiration,
-        }
+        })
     }
 
     /// Checks a circuit breaker, returning the generation count, success count, failure count,
@@ -1158,7 +1199,10 @@ impl bulwark_host::BulwarkHost for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The key name corresponding to the state counter.
-    fn check_breaker(&mut self, key: &str) -> bulwark_host::BreakerInterface {
+    fn check_breaker(
+        &mut self,
+        key: String,
+    ) -> std::result::Result<bulwark_host::BreakerInterface, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -1170,11 +1214,12 @@ impl bulwark_host::BulwarkHost for RequestContext {
             .iter()
             .any(|prefix| key.starts_with(prefix))
         {
+            // TODO: convert to error
             panic!("access to state value by prefix denied");
         }
 
         let redis_info = self.redis_info.clone().unwrap();
-        let mut conn = redis_info.pool.get().unwrap();
+        let mut conn = redis_info.pool.get()?;
         let dt = Utc::now();
         let timestamp: i64 = dt.timestamp();
         let script = redis_info.registry.check_breaker.clone();
@@ -1188,16 +1233,15 @@ impl bulwark_host::BulwarkHost for RequestContext {
         ) = script
             .key(key)
             .arg(timestamp)
-            .invoke::<(i64, i64, i64, i64, i64, i64)>(conn.deref_mut())
-            .unwrap();
-        bulwark_host::BreakerInterface {
+            .invoke::<(i64, i64, i64, i64, i64, i64)>(conn.deref_mut())?;
+        Ok(bulwark_host::BreakerInterface {
             generation,
             successes,
             failures,
             consecutive_successes,
             consecutive_failures,
             expiration,
-        }
+        })
     }
 }
 
@@ -1228,7 +1272,6 @@ mod tests {
         let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
         let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
         let mut plugin_instance = PluginInstance::new(plugin, request_context)?;
-        plugin_instance.start()?;
         let decision_components = plugin_instance.decision();
         assert_eq!(decision_components.decision.accept, 0.0);
         assert_eq!(decision_components.decision.restrict, 0.0);
@@ -1263,7 +1306,6 @@ mod tests {
         let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
         let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
         let mut typical_plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
-        typical_plugin_instance.start()?;
         typical_plugin_instance.handle_request_decision()?;
         let typical_decision = typical_plugin_instance.decision();
         assert_eq!(typical_decision.decision.accept, 0.0);
@@ -1288,7 +1330,6 @@ mod tests {
         let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
         let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
         let mut evil_plugin_instance = PluginInstance::new(plugin, request_context)?;
-        evil_plugin_instance.start()?;
         evil_plugin_instance.handle_request_decision()?;
         let evil_decision = evil_plugin_instance.decision();
         assert_eq!(evil_decision.decision.accept, 0.0);

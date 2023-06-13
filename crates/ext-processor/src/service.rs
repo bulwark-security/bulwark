@@ -349,7 +349,6 @@ impl BulwarkProcessor {
             enrichment_phase_tasks.spawn(
                 timeout(timeout_duration, async move {
                     // TODO: avoid unwraps
-                    Self::execute_plugin_initialization(plugin_instance.clone()).unwrap();
                     Self::execute_on_request(plugin_instance.clone()).unwrap();
                 })
                 .instrument(enrichment_phase_child_span.or_current()),
@@ -546,14 +545,6 @@ impl BulwarkProcessor {
             decision,
             tags: tags.into_iter().collect(),
         }
-    }
-
-    fn execute_plugin_initialization(
-        plugin_instance: Arc<Mutex<PluginInstance>>,
-    ) -> Result<(), PluginExecutionError> {
-        let mut plugin_instance = plugin_instance.lock().unwrap();
-        // unlike on_request, the _start/main function is mandatory
-        plugin_instance.start()
     }
 
     fn execute_on_request(
