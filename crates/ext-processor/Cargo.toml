@@ -22,7 +22,7 @@ clap = { version = "4.2.7", features = ["derive"] }
 envoy-control-plane = { version = "0.4.0", features = ["grpc"] }
 futures = "0.3"
 json = "0.12.4"
-prost = "0.9"
+prost = "0.11"
 prost-wkt = "=0.3.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tonic = "=0.6.2"
