@@ -20,7 +20,7 @@ thiserror = "1.0.37"
 anyhow = "1"
 http = "0.2"
 validator = { version = "0.16", features = ["derive"] }
-approx = "0.4"
+approx = "0.5"
 wit-bindgen = "0.7.0"
 serde_json = "1.0.93"
 proc-macro2 = "1.0.59"
