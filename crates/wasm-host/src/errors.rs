@@ -9,6 +9,8 @@ pub enum PluginLoadError {
     Resolution(#[from] bulwark_config::ResolutionError),
     #[error("at least one resource required")]
     ResourceMissing,
+    #[error(transparent)]
+    AnyError(#[from] anyhow::Error),
 }
 
 /// Returned when an attempt to instantiate a plugin fails.
@@ -20,6 +22,8 @@ pub enum PluginInstantiationError {
     StringArray(#[from] wasi_common::StringArrayError),
     #[error(transparent)]
     ContextInstantiation(#[from] ContextInstantiationError),
+    #[error(transparent)]
+    AnyError(#[from] anyhow::Error),
 }
 
 /// Returned when an attempt to execute a function within a plugin environment fails.
@@ -31,6 +35,8 @@ pub enum PluginExecutionError {
     StringArray(#[from] wasi_common::StringArrayError),
     #[error("function not implemented '{expected:?}'")]
     NotImplementedError { expected: String },
+    #[error(transparent)]
+    AnyError(#[from] anyhow::Error),
 }
 
 /// Returned when attempting to create a [`RequestContext`](crate::RequestContext) fails.
@@ -40,4 +46,6 @@ pub enum ContextInstantiationError {
     StringArray(#[from] wasi_common::StringArrayError),
     #[error(transparent)]
     ConfigSerialization(#[from] bulwark_config::ConfigSerializationError),
+    #[error(transparent)]
+    AnyError(#[from] anyhow::Error),
 }

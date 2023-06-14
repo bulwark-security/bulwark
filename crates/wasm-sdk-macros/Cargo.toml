@@ -1,0 +1,23 @@
+[package]
+name = "bulwark-wasm-sdk-macros"
+description = "Macros for Bulwark's WebAssembly SDK."
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0 WITH LLVM-exception"
+homepage = "https://bulwark.security/"
+repository = "https://github.com/bulwark-security/bulwark"
+readme = "README.md"
+keywords = ["bulwark", "security", "fraud", "detection", "webassembly"]
+categories = ["wasm"]
+
+[lib]
+proc-macro = true
+
+[badges]
+maintenance = { status = "experimental" }
+
+[dependencies]
+convert_case = "^0.6"
+proc-macro2 = "^1"
+quote = "^1"
+syn = { version = "^2", features = ["full"] }
