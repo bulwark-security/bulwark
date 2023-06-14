@@ -141,7 +141,7 @@ const INFO_FILTER: &str = "info";
 /// The unfiltered behavior can still be accessed by specifying `debug,` with a trailing comma
 /// as the log level argument.
 const DEBUG_FILTER: &str =
-    "debug,cranelift_codegen=info,wasmtime_cranelift=info,reqwest=info,hyper=info,h2=info";
+    "debug,cranelift_codegen=info,wasmtime_cranelift=info,wasmtime_jit=info,reqwest=info,hyper=info,h2=info";
 /// An [`EnvFilter`] pattern to limit matched log events to trace events.
 const TRACE_FILTER: &str = "trace";
 

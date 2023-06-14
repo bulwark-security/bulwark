@@ -21,17 +21,12 @@ use {
         },
     },
     forwarded_header_value::ForwardedHeaderValue,
+    futures::lock::Mutex,
     futures::{channel::mpsc::UnboundedSender, SinkExt, Stream},
     http::StatusCode,
     matchit::Router,
     std::{
-        collections::HashSet,
-        net::IpAddr,
-        pin::Pin,
-        str,
-        str::FromStr,
-        sync::{Arc, Mutex},
-        time::Duration,
+        collections::HashSet, net::IpAddr, pin::Pin, str, str::FromStr, sync::Arc, time::Duration,
     },
     tokio::{sync::RwLock, task::JoinSet, time::timeout},
     tonic::{Request, Response, Status, Streaming},
@@ -113,6 +108,7 @@ impl ExternalProcessor for BulwarkProcessor {
                                 http_req.clone(),
                                 route_match.params,
                             )
+                            .await
                             .unwrap();
                             if let Some(millis) = route_match.value.timeout {
                                 timeout_duration = Duration::from_millis(millis);
@@ -302,11 +298,11 @@ impl BulwarkProcessor {
         Err(PrepareResponseError::MissingHeaders)
     }
 
-    fn instantiate_plugins(
+    async fn instantiate_plugins(
         plugins: &PluginList,
         redis_info: Option<Arc<RedisInfo>>,
         http_req: Arc<bulwark_wasm_sdk::Request>,
-        params: matchit::Params,
+        params: matchit::Params<'_, '_>,
     ) -> Result<Vec<Arc<Mutex<PluginInstance>>>, PluginGroupInstantiationError> {
         let mut plugin_instances = Vec::with_capacity(plugins.len());
         let mut shared_params = bulwark_wasm_sdk::Map::new();
@@ -314,7 +310,8 @@ impl BulwarkProcessor {
             let wrapped_value = bulwark_wasm_sdk::Value::String(value.to_string());
             shared_params.insert(format!("param.{}", key), wrapped_value);
         }
-        let shared_params = Arc::new(Mutex::new(shared_params));
+        // Host environment needs a sync mutex
+        let shared_params = Arc::new(std::sync::Mutex::new(shared_params));
         for plugin in plugins {
             let request_context = RequestContext::new(
                 plugin.clone(),
@@ -323,10 +320,9 @@ impl BulwarkProcessor {
                 http_req.clone(),
             )?;
 
-            plugin_instances.push(Arc::new(Mutex::new(PluginInstance::new(
-                plugin.clone(),
-                request_context,
-            )?)));
+            plugin_instances.push(Arc::new(Mutex::new(
+                PluginInstance::new(plugin.clone(), request_context).await?,
+            )));
         }
         Ok(plugin_instances)
     }
@@ -349,7 +345,9 @@ impl BulwarkProcessor {
             enrichment_phase_tasks.spawn(
                 timeout(timeout_duration, async move {
                     // TODO: avoid unwraps
-                    Self::execute_on_request(plugin_instance.clone()).unwrap();
+                    Self::execute_on_request(plugin_instance.clone())
+                        .await
+                        .unwrap();
                 })
                 .instrument(enrichment_phase_child_span.or_current()),
             );
@@ -388,11 +386,11 @@ impl BulwarkProcessor {
             decision_phase_tasks.spawn(
                 timeout(timeout_duration, async move {
                     let decision_result =
-                        Self::execute_on_request_decision(plugin_instance.clone());
+                        Self::execute_on_request_decision(plugin_instance.clone()).await;
                     if let Ok(mut decision_component) = decision_result {
                         {
                             // Re-weight the decision based on its weighting value from the configuration
-                            let plugin_instance = plugin_instance.lock().unwrap();
+                            let plugin_instance = plugin_instance.lock().await;
                             decision_component.decision =
                                 decision_component.decision.weight(plugin_instance.weight());
 
@@ -406,11 +404,11 @@ impl BulwarkProcessor {
                                 score = decision.pignistic().restrict,
                             );
                         }
-                        let mut decision_components = decision_components.lock().unwrap();
+                        let mut decision_components = decision_components.lock().await;
                         decision_components.push(decision_component);
                     } else if let Err(err) = decision_result {
                         info!(message = "plugin error", error = err.to_string());
-                        let mut decision_components = decision_components.lock().unwrap();
+                        let mut decision_components = decision_components.lock().await;
                         decision_components.push(DecisionComponents {
                             decision: bulwark_wasm_sdk::UNKNOWN,
                             tags: vec![String::from("error")],
@@ -443,7 +441,7 @@ impl BulwarkProcessor {
         let decision_vec: Vec<Decision>;
         let tags: HashSet<String>;
         {
-            let decision_components = decision_components.lock().unwrap();
+            let decision_components = decision_components.lock().await;
             decision_vec = decision_components.iter().map(|dc| dc.decision).collect();
             tags = decision_components
                 .iter()
@@ -469,7 +467,7 @@ impl BulwarkProcessor {
             let response_phase_child_span = tracing::info_span!("execute on_response_decision",);
             {
                 // Make sure the plugin instance knows about the response
-                let mut plugin_instance = plugin_instance.lock().unwrap();
+                let mut plugin_instance = plugin_instance.lock().await;
                 let response = response.clone();
                 plugin_instance.record_response(response);
             }
@@ -477,11 +475,11 @@ impl BulwarkProcessor {
             response_phase_tasks.spawn(
                 timeout(timeout_duration, async move {
                     let decision_result =
-                        Self::execute_on_response_decision(plugin_instance.clone());
+                        Self::execute_on_response_decision(plugin_instance.clone()).await;
                     if let Ok(mut decision_component) = decision_result {
                         {
                             // Re-weight the decision based on its weighting value from the configuration
-                            let plugin_instance = plugin_instance.lock().unwrap();
+                            let plugin_instance = plugin_instance.lock().await;
                             decision_component.decision =
                                 decision_component.decision.weight(plugin_instance.weight());
 
@@ -495,11 +493,11 @@ impl BulwarkProcessor {
                                 score = decision.pignistic().restrict,
                             );
                         }
-                        let mut decision_components = decision_components.lock().unwrap();
+                        let mut decision_components = decision_components.lock().await;
                         decision_components.push(decision_component);
                     } else if let Err(err) = decision_result {
                         info!(message = "plugin error", error = err.to_string());
-                        let mut decision_components = decision_components.lock().unwrap();
+                        let mut decision_components = decision_components.lock().await;
                         decision_components.push(DecisionComponents {
                             decision: bulwark_wasm_sdk::UNKNOWN,
                             tags: vec![String::from("error")],
@@ -532,7 +530,7 @@ impl BulwarkProcessor {
         let decision_vec: Vec<Decision>;
         let tags: HashSet<String>;
         {
-            let decision_components = decision_components.lock().unwrap();
+            let decision_components = decision_components.lock().await;
             decision_vec = decision_components.iter().map(|dc| dc.decision).collect();
             tags = decision_components
                 .iter()
@@ -547,68 +545,38 @@ impl BulwarkProcessor {
         }
     }
 
-    fn execute_on_request(
+    async fn execute_on_request(
         plugin_instance: Arc<Mutex<PluginInstance>>,
     ) -> Result<(), PluginExecutionError> {
-        let mut plugin_instance = plugin_instance.lock().unwrap();
-        let result = plugin_instance.handle_request();
-        match result {
-            Ok(_) => result,
-            Err(e) => match e {
-                // we can silence not implemented errors because they are expected and normal here
-                PluginExecutionError::NotImplementedError { expected: _ } => Ok(()),
-                // everything else will get passed along
-                _ => Err(e),
-            },
-        }
+        let mut plugin_instance = plugin_instance.lock().await;
+        plugin_instance.handle_request().await
+        // TODO: track success/error metrics
     }
 
-    fn execute_on_request_decision(
+    async fn execute_on_request_decision(
         plugin_instance: Arc<Mutex<PluginInstance>>,
     ) -> Result<DecisionComponents, PluginExecutionError> {
-        let mut plugin_instance = plugin_instance.lock().unwrap();
-        let result = plugin_instance.handle_request_decision();
-        if let Err(e) = result {
-            match e {
-                // we can silence not implemented errors because they are expected and normal here
-                PluginExecutionError::NotImplementedError { expected: _ } => (),
-                // everything else will get passed along
-                _ => Err(e)?,
-            }
-        }
+        let mut plugin_instance = plugin_instance.lock().await;
+        plugin_instance.handle_request_decision().await?;
+        // TODO: track success/error metrics
         Ok(plugin_instance.decision())
     }
 
-    fn execute_on_response_decision(
+    async fn execute_on_response_decision(
         plugin_instance: Arc<Mutex<PluginInstance>>,
     ) -> Result<DecisionComponents, PluginExecutionError> {
-        let mut plugin_instance = plugin_instance.lock().unwrap();
-        let result = plugin_instance.handle_response_decision();
-        if let Err(e) = result {
-            match e {
-                // we can silence not implemented errors because they are expected and normal here
-                PluginExecutionError::NotImplementedError { expected: _ } => (),
-                // everything else will get passed along
-                _ => Err(e)?,
-            }
-        }
+        let mut plugin_instance = plugin_instance.lock().await;
+        plugin_instance.handle_response_decision().await?;
+        // TODO: track success/error metrics
         Ok(plugin_instance.decision())
     }
 
-    fn execute_on_decision_feedback(
+    async fn execute_on_decision_feedback(
         plugin_instance: Arc<Mutex<PluginInstance>>,
     ) -> Result<(), PluginExecutionError> {
-        let mut plugin_instance = plugin_instance.lock().unwrap();
-        let result = plugin_instance.handle_decision_feedback();
-        if let Err(e) = result {
-            match e {
-                // we can silence not implemented errors because they are expected and normal here
-                PluginExecutionError::NotImplementedError { expected: _ } => (),
-                // everything else will get passed along
-                _ => Err(e)?,
-            }
-        }
-        Ok(())
+        let mut plugin_instance = plugin_instance.lock().await;
+        plugin_instance.handle_decision_feedback().await
+        // TODO: track success/error metrics
     }
 
     async fn handle_request_phase_decision(
@@ -669,7 +637,7 @@ impl BulwarkProcessor {
                         outcome,
                         plugin_instances,
                         timeout_duration,
-                    );
+                    ).await;
                     // Short-circuit if restricted, we can skip the response phase
                     return;
                 } else {
@@ -766,10 +734,11 @@ impl BulwarkProcessor {
             outcome,
             plugin_instances,
             timeout_duration,
-        );
+        )
+        .await;
     }
 
-    fn handle_decision_feedback(
+    async fn handle_decision_feedback(
         decision_components: DecisionComponents,
         outcome: bulwark_wasm_sdk::Outcome,
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
@@ -779,12 +748,14 @@ impl BulwarkProcessor {
             let response_phase_child_span = tracing::info_span!("execute on_decision_feedback",);
             {
                 // Make sure the plugin instance knows about the final combined decision
-                let mut plugin_instance = plugin_instance.lock().unwrap();
+                let mut plugin_instance = plugin_instance.lock().await;
                 plugin_instance.record_combined_decision(&decision_components, outcome);
             }
             tokio::spawn(
                 timeout(timeout_duration, async move {
-                    Self::execute_on_decision_feedback(plugin_instance.clone()).ok();
+                    Self::execute_on_decision_feedback(plugin_instance.clone())
+                        .await
+                        .ok();
                 })
                 .instrument(response_phase_child_span.or_current()),
             );

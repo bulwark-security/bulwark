@@ -1,11 +1,43 @@
 mod bulwark_host {
-    wasmtime::component::bindgen!("plugin");
+    wasmtime::component::bindgen!({
+        world: "bulwark:plugin/host-calls",
+        async: true,
+    });
+}
+
+mod request_handler {
+    wasmtime::component::bindgen!({
+        world: "bulwark:plugin/request-handler",
+        async: true,
+    });
+}
+
+mod request_decision_handler {
+    wasmtime::component::bindgen!({
+        world: "bulwark:plugin/request-decision-handler",
+        async: true,
+    });
+}
+
+mod response_decision_handler {
+    wasmtime::component::bindgen!({
+        world: "bulwark:plugin/response-decision-handler",
+        async: true,
+    });
+}
+
+mod decision_feedback_handler {
+    wasmtime::component::bindgen!({
+        world: "bulwark:plugin/decision-feedback-handler",
+        async: true,
+    });
 }
 
 use {
     crate::{
         ContextInstantiationError, PluginExecutionError, PluginInstantiationError, PluginLoadError,
     },
+    async_trait::async_trait,
     bulwark_config::ConfigSerializationError,
     bulwark_host::{DecisionInterface, HeaderInterface, OutcomeInterface},
     bulwark_wasm_sdk::{Decision, Outcome},
@@ -20,9 +52,9 @@ use {
         sync::{Arc, Mutex, MutexGuard},
     },
     url::Url,
-    wasmtime::component::{Component, Instance, Linker},
+    wasmtime::component::{Component, Linker},
     wasmtime::{AsContextMut, Config, Engine, Store},
-    wasmtime_wasi::{WasiCtx, WasiCtxBuilder},
+    wasmtime_wasi::preview2::{Table, WasiCtx, WasiCtxBuilder, WasiView},
 };
 
 extern crate redis;
@@ -283,7 +315,8 @@ impl Default for ScriptRegistry {
 
 /// The RequestContext provides a store of information that needs to cross the plugin sandbox boundary.
 pub struct RequestContext {
-    wasi: WasiCtx,
+    wasi_ctx: WasiCtx,
+    wasi_table: Table,
 
     config: Arc<Vec<u8>>,
     /// The set of permissions granted to a plugin.
@@ -335,17 +368,23 @@ impl RequestContext {
         params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>,
         request: Arc<bulwark_wasm_sdk::Request>,
     ) -> Result<RequestContext, ContextInstantiationError> {
-        let wasi = WasiCtxBuilder::new()
+        let mut wasi_table = Table::new();
+        let wasi_ctx = WasiCtxBuilder::new()
             .inherit_stdio()
-            .inherit_args()?
-            .build();
+            // TODO: assign stdio to something we can capture
+            // TODO: figure out what to do with stdin, if anything?
+            // .set_stdin(stdin)
+            // .set_stdout(stdout)
+            // .set_stderr(stderr)
+            .build(&mut wasi_table)?;
         let client_ip = request
             .extensions()
             .get::<ForwardedIP>()
             .map(|forwarded_ip| bulwark_host::IpInterface::from(forwarded_ip.0));
 
         Ok(RequestContext {
-            wasi,
+            wasi_ctx,
+            wasi_table,
             redis_info,
             config: Arc::new(plugin.guest_config()?),
             permissions: plugin.permissions(),
@@ -365,6 +404,24 @@ impl RequestContext {
                 combined_tags: Arc::new(Mutex::new(None)),
             },
         })
+    }
+}
+
+impl WasiView for RequestContext {
+    fn table(&self) -> &Table {
+        &self.wasi_table
+    }
+
+    fn table_mut(&mut self) -> &mut Table {
+        &mut self.wasi_table
+    }
+
+    fn ctx(&self) -> &WasiCtx {
+        &self.wasi_ctx
+    }
+
+    fn ctx_mut(&mut self) -> &mut WasiCtx {
+        &mut self.wasi_ctx
     }
 }
 
@@ -444,6 +501,7 @@ impl Plugin {
         wasm_config.wasm_backtrace_details(wasmtime::WasmBacktraceDetails::Enable);
         wasm_config.wasm_multi_memory(true);
         wasm_config.wasm_component_model(true);
+        wasm_config.async_support(true);
 
         let engine = Engine::new(&wasm_config)?;
         let component = get_component(&engine)?;
@@ -489,8 +547,10 @@ pub struct PluginInstance {
     plugin: Arc<Plugin>,
     /// The WASM store that holds state associated with the incoming request.
     store: Store<RequestContext>,
-    /// The WASM instance.
-    instance: Instance,
+    request_handler: request_handler::RequestHandler,
+    request_decision_handler: request_decision_handler::RequestDecisionHandler,
+    response_decision_handler: response_decision_handler::ResponseDecisionHandler,
+    decision_feedback_handler: decision_feedback_handler::DecisionFeedbackHandler,
     /// All plugin-visible state that the host environment will mutate over the lifecycle of a request/response.
     host_mutable_context: HostMutableContext,
 }
@@ -502,7 +562,7 @@ impl PluginInstance {
     ///
     /// * `plugin` - The plugin we are creating a `PluginInstance` for.
     /// * `request_context` - The request context stores all of the state associated with an incoming request and its corresponding response.
-    pub fn new(
+    pub async fn new(
         plugin: Arc<Plugin>,
         request_context: RequestContext,
     ) -> Result<PluginInstance, PluginInstantiationError> {
@@ -513,18 +573,51 @@ impl PluginInstance {
         // convert from normal request struct to wasm request interface
         let mut linker: Linker<RequestContext> = Linker::new(&plugin.engine);
 
-        // TODO: figure out what to do with this
-        // wasmtime_wasi::add_to_linker(&mut linker, |ctx: &mut RequestContext| &mut ctx.wasi)?;
+        wasmtime_wasi::preview2::wasi::command::add_to_linker(&mut linker)?;
 
         let mut store = Store::new(&plugin.engine, request_context);
         bulwark_host::HostCalls::add_to_linker(&mut linker, |ctx: &mut RequestContext| ctx)?;
 
-        let instance = linker.instantiate(&mut store, &plugin.component)?;
+        // We discard the instance for all of these because we only use the generated interface to make calls
+
+        let (request_handler, _) = request_handler::RequestHandler::instantiate_async(
+            &mut store,
+            &plugin.component,
+            &linker,
+        )
+        .await?;
+
+        let (request_decision_handler, _) =
+            request_decision_handler::RequestDecisionHandler::instantiate_async(
+                &mut store,
+                &plugin.component,
+                &linker,
+            )
+            .await?;
+
+        let (response_decision_handler, _) =
+            response_decision_handler::ResponseDecisionHandler::instantiate_async(
+                &mut store,
+                &plugin.component,
+                &linker,
+            )
+            .await?;
+
+        let (decision_feedback_handler, _) =
+            decision_feedback_handler::DecisionFeedbackHandler::instantiate_async(
+                &mut store,
+                &plugin.component,
+                &linker,
+            )
+            .await?;
 
         Ok(PluginInstance {
             plugin,
             store,
-            instance,
+            request_handler,
+            request_decision_handler,
+            response_decision_handler,
+            decision_feedback_handler,
             host_mutable_context,
         })
     }
@@ -559,82 +652,42 @@ impl PluginInstance {
         self.plugin.reference.clone()
     }
 
-    /// Returns true if the guest environment has declared an `on_request` function.
-    pub fn has_request_handler(&mut self) -> bool {
-        self.instance
-            .get_func(self.store.as_context_mut(), "on_request")
-            .is_some()
-    }
-
     /// Executes the guest's `on_request` function.
-    pub fn handle_request(&mut self) -> Result<(), PluginExecutionError> {
-        const FN_NAME: &str = "on_request";
-        let fn_ref = self.instance.get_func(self.store.as_context_mut(), FN_NAME);
-        fn_ref
-            .ok_or(PluginExecutionError::NotImplementedError {
-                expected: FN_NAME.to_string(),
-            })?
-            .call(self.store.as_context_mut(), &[], &mut [])?;
+    pub async fn handle_request(&mut self) -> Result<(), PluginExecutionError> {
+        let _result = self
+            .request_handler
+            .call_on_request(self.store.as_context_mut())
+            .await?;
 
         Ok(())
-    }
-
-    /// Returns true if the guest environment has declared an `on_request_decision` function.
-    pub fn has_request_decision_handler(&mut self) -> bool {
-        self.instance
-            .get_func(self.store.as_context_mut(), "on_request_decision")
-            .is_some()
     }
 
     /// Executes the guest's `on_request_decision` function.
-    pub fn handle_request_decision(&mut self) -> Result<(), PluginExecutionError> {
-        const FN_NAME: &str = "on_request_decision";
-        let fn_ref = self.instance.get_func(self.store.as_context_mut(), FN_NAME);
-        fn_ref
-            .ok_or(PluginExecutionError::NotImplementedError {
-                expected: FN_NAME.to_string(),
-            })?
-            .call(self.store.as_context_mut(), &[], &mut [])?;
+    pub async fn handle_request_decision(&mut self) -> Result<(), PluginExecutionError> {
+        let _result = self
+            .request_decision_handler
+            .call_on_request_decision(self.store.as_context_mut())
+            .await?;
 
         Ok(())
-    }
-
-    /// Returns true if the guest environment has declared an `on_response_decision` function.
-    pub fn has_response_decision_handler(&mut self) -> bool {
-        self.instance
-            .get_func(self.store.as_context_mut(), "on_response_decision")
-            .is_some()
     }
 
     /// Executes the guest's `on_response_decision` function.
-    pub fn handle_response_decision(&mut self) -> Result<(), PluginExecutionError> {
-        const FN_NAME: &str = "on_response_decision";
-        let fn_ref = self.instance.get_func(self.store.as_context_mut(), FN_NAME);
-        fn_ref
-            .ok_or(PluginExecutionError::NotImplementedError {
-                expected: FN_NAME.to_string(),
-            })?
-            .call(self.store.as_context_mut(), &[], &mut [])?;
+    pub async fn handle_response_decision(&mut self) -> Result<(), PluginExecutionError> {
+        let _result = self
+            .response_decision_handler
+            .call_on_response_decision(self.store.as_context_mut())
+            .await?;
 
         Ok(())
     }
 
-    /// Returns true if the guest environment has declared an `on_decision_feedback` function.
-    pub fn has_decision_feedback_handler(&mut self) -> bool {
-        self.instance
-            .get_func(self.store.as_context_mut(), "on_decision_feedback")
-            .is_some()
-    }
-
     /// Executes the guest's `on_decision_feedback` function.
-    pub fn handle_decision_feedback(&mut self) -> Result<(), PluginExecutionError> {
-        const FN_NAME: &str = "on_decision_feedback";
-        let fn_ref = self.instance.get_func(self.store.as_context_mut(), FN_NAME);
-        fn_ref
-            .ok_or(PluginExecutionError::NotImplementedError {
-                expected: FN_NAME.to_string(),
-            })?
-            .call(self.store.as_context_mut(), &[], &mut [])?;
+    pub async fn handle_decision_feedback(&mut self) -> Result<(), PluginExecutionError> {
+        let _result = self
+            .decision_feedback_handler
+            .call_on_decision_feedback(self.store.as_context_mut())
+            .await?;
 
         Ok(())
     }
@@ -654,9 +707,10 @@ impl PluginInstance {
     }
 }
 
+#[async_trait]
 impl bulwark_host::HostCallsImports for RequestContext {
     /// Returns the guest environment's configuration value as serialized JSON.
-    fn get_config(&mut self) -> Result<Vec<u8>, wasmtime::Error> {
+    async fn get_config(&mut self) -> Result<Vec<u8>, wasmtime::Error> {
         Ok(self.config.to_vec())
     }
 
@@ -665,7 +719,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The key name corresponding to the param value.
-    fn get_param_value(&mut self, key: String) -> Result<Vec<u8>, wasmtime::Error> {
+    async fn get_param_value(&mut self, key: String) -> Result<Vec<u8>, wasmtime::Error> {
         let params = self.params.lock().unwrap();
         let value = params.get(&key).unwrap_or(&bulwark_wasm_sdk::Value::Null);
         Ok(serde_json::to_vec(value)?)
@@ -677,7 +731,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     ///
     /// * `key` - The key name corresponding to the param value.
     /// * `value` - The value to record. Values are serialized JSON.
-    fn set_param_value(
+    async fn set_param_value(
         &mut self,
         key: String,
         value: Vec<u8>,
@@ -693,7 +747,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The environment variable name. Case-sensitive.
-    fn get_env_bytes(&mut self, key: String) -> Result<Vec<u8>, wasmtime::Error> {
+    async fn get_env_bytes(&mut self, key: String) -> Result<Vec<u8>, wasmtime::Error> {
         let allowed_env_vars = self
             .permissions
             .env
@@ -708,14 +762,14 @@ impl bulwark_host::HostCallsImports for RequestContext {
     }
 
     /// Returns the incoming request associated with the request context.
-    fn get_request(
+    async fn get_request(
         &mut self,
     ) -> std::result::Result<bulwark_host::RequestInterface, wasmtime::Error> {
         Ok(self.request.clone())
     }
 
     /// Returns the response received from the interior service.
-    fn get_response(
+    async fn get_response(
         &mut self,
     ) -> std::result::Result<bulwark_host::ResponseInterface, wasmtime::Error> {
         let response: MutexGuard<Option<bulwark_host::ResponseInterface>> =
@@ -725,7 +779,9 @@ impl bulwark_host::HostCallsImports for RequestContext {
     }
 
     /// Returns the originating client's IP address, if available.
-    fn get_client_ip(&mut self) -> Result<Option<bulwark_host::IpInterface>, wasmtime::Error> {
+    async fn get_client_ip(
+        &mut self,
+    ) -> Result<Option<bulwark_host::IpInterface>, wasmtime::Error> {
         Ok(self.client_ip)
     }
 
@@ -735,7 +791,11 @@ impl bulwark_host::HostCallsImports for RequestContext {
     ///
     /// * `method` - The HTTP method
     /// * `uri` - The absolute URI of the resource to request
-    fn prepare_request(&mut self, method: String, uri: String) -> Result<u64, wasmtime::Error> {
+    async fn prepare_request(
+        &mut self,
+        method: String,
+        uri: String,
+    ) -> Result<u64, wasmtime::Error> {
         let allowed_http_domains = self
             .permissions
             .http
@@ -773,7 +833,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     /// * `request_id` - The request ID received from `prepare_request`.
     /// * `name` - The header name.
     /// * `value` - The header value bytes.
-    fn add_request_header(
+    async fn add_request_header(
         &mut self,
         request_id: u64,
         name: String,
@@ -795,7 +855,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     ///
     /// * `request_id` - The request ID received from `prepare_request`.
     /// * `body` - The request body in bytes or an empty slice for no body.
-    fn set_request_body(
+    async fn set_request_body(
         &mut self,
         request_id: u64,
         body: Vec<u8>,
@@ -835,7 +895,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     /// # Arguments
     ///
     /// * `decision` - The [`Decision`] output of the plugin.
-    fn set_decision(
+    async fn set_decision(
         &mut self,
         decision: bulwark_host::DecisionInterface,
     ) -> Result<(), wasmtime::Error> {
@@ -852,7 +912,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     /// # Arguments
     ///
     /// * `tags` - The list of tags to associate with a [`Decision`].
-    fn set_tags(&mut self, tags: Vec<String>) -> Result<(), wasmtime::Error> {
+    async fn set_tags(&mut self, tags: Vec<String>) -> Result<(), wasmtime::Error> {
         self.tags = tags;
         Ok(())
     }
@@ -860,7 +920,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     /// Returns the combined decision, if available.
     ///
     /// Typically used in the feedback phase.
-    fn get_combined_decision(
+    async fn get_combined_decision(
         &mut self,
     ) -> Result<bulwark_host::DecisionInterface, wasmtime::Error> {
         let combined_decision: MutexGuard<Option<bulwark_host::DecisionInterface>> =
@@ -872,7 +932,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     /// Returns the combined set of tags associated with a decision, if available.
     ///
     /// Typically used in the feedback phase.
-    fn get_combined_tags(&mut self) -> Result<Vec<String>, wasmtime::Error> {
+    async fn get_combined_tags(&mut self) -> Result<Vec<String>, wasmtime::Error> {
         let combined_tags: MutexGuard<Option<Vec<String>>> =
             self.host_mutable_context.combined_tags.lock().unwrap();
         // TODO: this should probably be an Option return type rather than unwrapping here
@@ -882,7 +942,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     /// Returns the outcome of the combined decision, if available.
     ///
     /// Typically used in the feedback phase.
-    fn get_outcome(&mut self) -> Result<bulwark_host::OutcomeInterface, wasmtime::Error> {
+    async fn get_outcome(&mut self) -> Result<bulwark_host::OutcomeInterface, wasmtime::Error> {
         let outcome: MutexGuard<Option<bulwark_host::OutcomeInterface>> =
             self.host_mutable_context.outcome.lock().unwrap();
         // TODO: this should probably be an Option return type rather than unwrapping here
@@ -896,7 +956,10 @@ impl bulwark_host::HostCallsImports for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The key name corresponding to the state value.
-    fn get_remote_state(&mut self, key: String) -> Result<std::vec::Vec<u8>, wasmtime::Error> {
+    async fn get_remote_state(
+        &mut self,
+        key: String,
+    ) -> Result<std::vec::Vec<u8>, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -923,7 +986,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     ///
     /// * `key` - The key name corresponding to the state value.
     /// * `value` - The value to record. Values are byte strings, but may be interpreted differently by Redis depending on context.
-    fn set_remote_state(
+    async fn set_remote_state(
         &mut self,
         key: String,
         value: std::vec::Vec<u8>,
@@ -953,7 +1016,10 @@ impl bulwark_host::HostCallsImports for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The key name corresponding to the state counter.
-    fn increment_remote_state(&mut self, key: String) -> std::result::Result<i64, wasmtime::Error> {
+    async fn increment_remote_state(
+        &mut self,
+        key: String,
+    ) -> std::result::Result<i64, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -980,7 +1046,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     ///
     /// * `key` - The key name corresponding to the state counter.
     /// * `delta` - The amount to increase the counter by.
-    fn increment_remote_state_by(
+    async fn increment_remote_state_by(
         &mut self,
         key: String,
         delta: i64,
@@ -1011,7 +1077,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     ///
     /// * `key` - The key name corresponding to the state value.
     /// * `ttl` - The time-to-live for the value in seconds.
-    fn set_remote_ttl(
+    async fn set_remote_ttl(
         &mut self,
         key: String,
         ttl: i64,
@@ -1048,7 +1114,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     /// * `key` - The key name corresponding to the state counter.
     /// * `delta` - The amount to increase the counter by.
     /// * `window` - How long each period should be in seconds.
-    fn increment_rate_limit(
+    async fn increment_rate_limit(
         &mut self,
         key: String,
         delta: i64,
@@ -1093,7 +1159,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The key name corresponding to the state counter.
-    fn check_rate_limit(
+    async fn check_rate_limit(
         &mut self,
         key: String,
     ) -> std::result::Result<bulwark_host::RateInterface, wasmtime::Error> {
@@ -1140,7 +1206,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     /// * `success_delta` - The amount to increase the success counter by. Generally zero on failure.
     /// * `failure_delta` - The amount to increase the failure counter by. Generally zero on success.
     /// * `window` - How long each period should be in seconds.
-    fn increment_breaker(
+    async fn increment_breaker(
         &mut self,
         key: String,
         success_delta: i64,
@@ -1199,7 +1265,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The key name corresponding to the state counter.
-    fn check_breaker(
+    async fn check_breaker(
         &mut self,
         key: String,
     ) -> std::result::Result<bulwark_host::BreakerInterface, wasmtime::Error> {
@@ -1271,7 +1337,8 @@ mod tests {
         );
         let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
         let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
-        let mut plugin_instance = PluginInstance::new(plugin, request_context)?;
+        let mut plugin_instance =
+            tokio_test::block_on(PluginInstance::new(plugin, request_context))?;
         let decision_components = plugin_instance.decision();
         assert_eq!(decision_components.decision.accept, 0.0);
         assert_eq!(decision_components.decision.restrict, 0.0);
@@ -1305,8 +1372,9 @@ mod tests {
         );
         let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
         let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
-        let mut typical_plugin_instance = PluginInstance::new(plugin.clone(), request_context)?;
-        typical_plugin_instance.handle_request_decision()?;
+        let mut typical_plugin_instance =
+            tokio_test::block_on(PluginInstance::new(plugin.clone(), request_context))?;
+        tokio_test::block_on(typical_plugin_instance.handle_request_decision())?;
         let typical_decision = typical_plugin_instance.decision();
         assert_eq!(typical_decision.decision.accept, 0.0);
         assert_eq!(typical_decision.decision.restrict, 0.0);
@@ -1329,8 +1397,9 @@ mod tests {
         );
         let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
         let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
-        let mut evil_plugin_instance = PluginInstance::new(plugin, request_context)?;
-        evil_plugin_instance.handle_request_decision()?;
+        let mut evil_plugin_instance =
+            tokio_test::block_on(PluginInstance::new(plugin, request_context))?;
+        tokio_test::block_on(evil_plugin_instance.handle_request_decision())?;
         let evil_decision = evil_plugin_instance.decision();
         assert_eq!(evil_decision.decision.accept, 0.0);
         assert_eq!(evil_decision.decision.restrict, 1.0);

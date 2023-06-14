@@ -46,4 +46,6 @@ pub enum ContextInstantiationError {
     StringArray(#[from] wasi_common::StringArrayError),
     #[error(transparent)]
     ConfigSerialization(#[from] bulwark_config::ConfigSerializationError),
+    #[error(transparent)]
+    AnyError(#[from] anyhow::Error),
 }

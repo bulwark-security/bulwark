@@ -1,4 +1,8 @@
-default world host-calls {
+package bulwark:plugin
+
+// TODO: See https://github.com/WebAssembly/wasi-http for a more complete canonical http component interface
+
+world host-calls {
   // TODO: should these strings all be list<u8>?
   record request-interface {
     method: string,
@@ -84,7 +88,7 @@ default world host-calls {
   import increment-breaker: func(key: string, success-delta: s64, failure-delta: s64, window: s64) -> breaker-interface
   import check-breaker: func(key: string) -> breaker-interface
 }
-// Separate world for each handler because all handlers are optional
+// Separate world for each handler to allow independent definitions
 world request-handler {
   export on-request: func() -> result
 }

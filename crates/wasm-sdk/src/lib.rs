@@ -2,26 +2,35 @@
 
 // Each macro invocation has to be scoped to its own mod to avoid fixed constant name collisions
 #[allow(unused_macros)]
-#[macro_use]
 pub mod bulwark_host {
-    wit_bindgen::generate!("plugin.host-calls");
+    wit_bindgen::generate!({
+        world: "bulwark:plugin/host-calls"
+    });
 }
 // Separate world for each handler because all handlers are optional
 #[allow(unused_macros)]
 pub mod request_handler {
-    wit_bindgen::generate!("plugin.request-handler");
+    wit_bindgen::generate!({
+        world: "bulwark:plugin/request-handler"
+    });
 }
 #[allow(unused_macros)]
 pub mod request_decision_handler {
-    wit_bindgen::generate!("plugin.request-decision-handler");
+    wit_bindgen::generate!({
+        world: "bulwark:plugin/request-decision-handler"
+    });
 }
 #[allow(unused_macros)]
 pub mod response_decision_handler {
-    wit_bindgen::generate!("plugin.response-decision-handler");
+    wit_bindgen::generate!({
+        world: "bulwark:plugin/response-decision-handler"
+    });
 }
 #[allow(unused_macros)]
 pub mod decision_feedback_handler {
-    wit_bindgen::generate!("plugin.decision-feedback-handler");
+    wit_bindgen::generate!({
+        world: "bulwark:plugin/decision-feedback-handler"
+    });
 }
 
 pub use bulwark_wasm_sdk_macros::handler;
