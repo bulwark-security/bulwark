@@ -754,7 +754,7 @@ impl bulwark_host::HostCallsImports for RequestContext {
             .iter()
             .cloned()
             .collect::<BTreeSet<String>>();
-        if !allowed_env_vars.contains(&key.to_string()) {
+        if !allowed_env_vars.contains(&key) {
             // TODO: convert to error
             panic!("access to environment variable denied");
         }
