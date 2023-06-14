@@ -468,7 +468,7 @@ mod tests {
 
         [[plugin]]
         ref = "evil_bit"
-        path = "bulwark-evil-bit.wasm"
+        path = "bulwark_evil_bit.wasm"
 
         [[preset]]
         ref = "custom"
@@ -505,7 +505,7 @@ mod tests {
             .get(0)
             .unwrap()
             .path
-            .ends_with("bulwark-evil-bit.wasm"));
+            .ends_with("bulwark_evil_bit.wasm"));
         assert_eq!(
             root.plugins.get(0).unwrap().config,
             toml::map::Map::default()
@@ -544,7 +544,7 @@ mod tests {
             .get(0)
             .unwrap()
             .path
-            .ends_with("bulwark-evil-bit.wasm"));
+            .ends_with("bulwark_evil_bit.wasm"));
         assert_eq!(
             root.plugins.get(0).unwrap().config,
             serde_json::map::Map::default()

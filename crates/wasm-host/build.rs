@@ -2,24 +2,11 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-#[allow(dead_code)]
-fn build_wit_bindings() {
-    let dest_path = Path::new("./src");
-    let wit_path = Path::new("../../bulwark-host.wit");
-
-    let status = Command::new("wit-bindgen")
-        .arg("wasmtime")
-        .arg("--export")
-        .arg(wit_path)
-        .arg("--out-dir")
-        .arg(dest_path)
-        .status()
-        .unwrap();
-    if !status.success() {
-        panic!("codegen failed");
-    }
-
-    println!("cargo:rerun-if-changed={}", wit_path.display());
+fn fetch_adapter() {
+    let dest_path = Path::new("./tests");
+    let file_path = dest_path.join("wasi_snapshot_preview1.reactor.wasm");
+    let body = reqwest::blocking::get("https://github.com/bytecodealliance/wasmtime/releases/download/dev/wasi_snapshot_preview1.reactor.wasm").unwrap().bytes().unwrap();
+    std::fs::write(file_path, body).unwrap();
 }
 
 #[allow(unused_must_use)]
@@ -59,8 +46,8 @@ fn build_test_example_wasm(name: &str) {
 }
 
 fn main() {
-    // Not needed when using import/export macros
-    // build_wit_bindings();
+    println!("cargo:rerun-if-changed=build.rs");
     build_test_example_wasm("blank-slate");
     build_test_example_wasm("evil-bit");
+    fetch_adapter();
 }

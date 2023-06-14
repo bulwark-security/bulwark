@@ -3,7 +3,7 @@ path = "does_not_exist.toml"
 
 [[plugin]]
 ref = "blank_slate"
-path = "bulwark-blank-slate.wasm"
+path = "bulwark_blank_slate.wasm"
 config = {}
 
 [[resource]]
