@@ -29,14 +29,14 @@ use {
         collections::HashSet, net::IpAddr, pin::Pin, str, str::FromStr, sync::Arc, time::Duration,
     },
     tokio::{sync::RwLock, task::JoinSet, time::timeout},
-    tonic::{Request, Response, Status, Streaming},
+    tonic::Streaming,
     tracing::{debug, error, info, instrument, warn, Instrument},
 };
 
 extern crate redis;
 
 type ExternalProcessorStream =
-    Pin<Box<dyn Stream<Item = Result<ProcessingResponse, Status>> + Send>>;
+    Pin<Box<dyn Stream<Item = Result<ProcessingResponse, tonic::Status>> + Send>>;
 type PluginList = Vec<Arc<Plugin>>;
 
 /// A RouteTarget allows a router to map from a routing pattern to a plugin group and associated config values.
@@ -67,8 +67,8 @@ impl ExternalProcessor for BulwarkProcessor {
     #[instrument(name = "handle request", skip(self, tonic_request))]
     async fn process(
         &self,
-        tonic_request: Request<Streaming<ProcessingRequest>>,
-    ) -> Result<Response<ExternalProcessorStream>, Status> {
+        tonic_request: tonic::Request<Streaming<ProcessingRequest>>,
+    ) -> Result<tonic::Response<ExternalProcessorStream>, tonic::Status> {
         let mut stream = tonic_request.into_inner();
         let thresholds = self.thresholds;
         if let Ok(http_req) = Self::prepare_request(&mut stream, self.hops).await {
@@ -140,10 +140,10 @@ impl ExternalProcessor for BulwarkProcessor {
                 }
                 .instrument(child_span.or_current()),
             );
-            return Ok(Response::new(Box::pin(receiver)));
+            return Ok(tonic::Response::new(Box::pin(receiver)));
         }
         // By default, just close the stream.
-        Ok(Response::new(Box::pin(futures::stream::empty())))
+        Ok(tonic::Response::new(Box::pin(futures::stream::empty())))
     }
 }
 
@@ -580,7 +580,7 @@ impl BulwarkProcessor {
     }
 
     async fn handle_request_phase_decision(
-        sender: UnboundedSender<Result<ProcessingResponse, Status>>,
+        sender: UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
         mut stream: Streaming<ProcessingRequest>,
         decision_components: DecisionComponents,
         thresholds: Thresholds,
@@ -668,7 +668,7 @@ impl BulwarkProcessor {
     }
 
     async fn handle_response_phase_decision(
-        sender: UnboundedSender<Result<ProcessingResponse, Status>>,
+        sender: UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
         decision_components: DecisionComponents,
         response_status: StatusCode,
         thresholds: Thresholds,
@@ -763,7 +763,7 @@ impl BulwarkProcessor {
     }
 
     async fn allow_request(
-        mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
+        mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
         decision_components: &DecisionComponents,
     ) -> Result<(), ProcessingMessageError> {
         // Send back a response that changes the request header for the HTTP target.
@@ -794,7 +794,7 @@ impl BulwarkProcessor {
     }
 
     async fn block_request(
-        mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
+        mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
         // TODO: this will be used in the future
         _decision_components: &DecisionComponents,
     ) -> Result<(), ProcessingMessageError> {
@@ -817,7 +817,7 @@ impl BulwarkProcessor {
     }
 
     async fn allow_response(
-        mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
+        mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
         // TODO: this will be used in the future
         _decision_components: &DecisionComponents,
     ) -> Result<(), ProcessingMessageError> {
@@ -831,7 +831,7 @@ impl BulwarkProcessor {
     }
 
     async fn block_response(
-        mut sender: &UnboundedSender<Result<ProcessingResponse, Status>>,
+        mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
         // TODO: this will be used in the future
         _decision_components: &DecisionComponents,
     ) -> Result<(), ProcessingMessageError> {
