@@ -394,6 +394,7 @@ dependencies = [
  "wasmtime-types",
  "wasmtime-wasi",
  "wat",
+ "wit-component",
 ]
 
 [[package]]

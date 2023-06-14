@@ -42,5 +42,9 @@ async-trait = "0.1.68"
 
 [dev-dependencies]
 wasi-cap-std-sync = { version = "10", git = "https://github.com/bytecodealliance/wasmtime.git", branch = "release-10.0.0" }
+wit-component = "0.11.0"
 wat = "1.0.57"
 tokio-test = "*"
+
+[build-dependencies]
+reqwest = { version = "0.11.14", features = ["rustls-tls", "blocking"] }

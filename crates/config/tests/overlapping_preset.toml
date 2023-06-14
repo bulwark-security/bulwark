@@ -3,7 +3,7 @@ path = "include.toml"
 
 [[plugin]]
 ref = "evil_bit"
-path = "bulwark-evil-bit.wasm"
+path = "bulwark_evil_bit.wasm"
 
 [[preset]]
 ref = "overlap"

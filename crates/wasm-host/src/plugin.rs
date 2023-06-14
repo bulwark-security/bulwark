@@ -1315,12 +1315,27 @@ impl bulwark_host::HostCallsImports for RequestContext {
 mod tests {
     use super::*;
 
+    fn adapt_wasm_output(
+        wasm_bytes: Vec<u8>,
+        adapter_bytes: Vec<u8>,
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let component = wit_component::ComponentEncoder::default()
+            .module(&wasm_bytes)?
+            .validate(true)
+            .adapter("wasi_snapshot_preview1", &adapter_bytes)?
+            .encode()?;
+
+        Ok(component.to_vec())
+    }
+
     #[test]
     fn test_wasm_execution() -> Result<(), Box<dyn std::error::Error>> {
-        let wasm_bytes = include_bytes!("../tests/bulwark-blank-slate.wasm");
+        let wasm_bytes = include_bytes!("../tests/bulwark_blank_slate.wasm");
+        let adapter_bytes = include_bytes!("../tests/wasi_snapshot_preview1.reactor.wasm");
+        let adapted_component = adapt_wasm_output(wasm_bytes.to_vec(), adapter_bytes.to_vec())?;
         let plugin = Arc::new(Plugin::from_bytes(
             "bulwark-blank-slate.wasm".to_string(),
-            wasm_bytes,
+            &adapted_component,
             &bulwark_config::Plugin::default(),
         )?);
         let request = Arc::new(
@@ -1350,10 +1365,12 @@ mod tests {
 
     #[test]
     fn test_wasm_logic() -> Result<(), Box<dyn std::error::Error>> {
-        let wasm_bytes = include_bytes!("../tests/bulwark-evil-bit.wasm");
+        let wasm_bytes = include_bytes!("../tests/bulwark_evil_bit.wasm");
+        let adapter_bytes = include_bytes!("../tests/wasi_snapshot_preview1.reactor.wasm");
+        let adapted_component = adapt_wasm_output(wasm_bytes.to_vec(), adapter_bytes.to_vec())?;
         let plugin = Arc::new(Plugin::from_bytes(
             "bulwark-evil-bit.wasm".to_string(),
-            wasm_bytes,
+            &adapted_component,
             &bulwark_config::Plugin::default(),
         )?);
 
