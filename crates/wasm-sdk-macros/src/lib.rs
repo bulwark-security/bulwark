@@ -1,10 +1,9 @@
-use convert_case::{Case, Casing};
 use proc_macro::TokenStream;
 use proc_macro2::Span;
-use quote::quote_spanned;
+use quote::{quote, quote_spanned};
 use syn::{
     parse_macro_input, parse_quote, punctuated::Punctuated, spanned::Spanned, Attribute, Ident,
-    ItemFn, LitStr, ReturnType, Signature, Visibility,
+    ItemFn, ItemImpl, ReturnType, Signature, Visibility,
 };
 extern crate proc_macro;
 
@@ -44,8 +43,6 @@ fn {}() -> Result {{
     // Get the attributes and signature of the outer function. Then, update the
     // attributes and visibility of the inner function that we will inline.
     let (attrs, sig) = outer_handler_info(&raw_handler);
-    let (mod_name, trait_name, struct_name, export_name, underscored_export_name, call_name) =
-        export_info(&raw_handler);
     let (name, inner_fn) = inner_fn_info(raw_handler);
 
     let output;
@@ -53,32 +50,19 @@ fn {}() -> Result {{
     match name.to_string().as_str() {
         "on_request" | "on_request_decision" | "on_response_decision" | "on_decision_feedback" => {
             output = quote_spanned! {inner_fn.span() =>
-                // Guest implementation only needs an empty struct, request context is held on the host
-                struct #struct_name;
-                // Implements the handler trait and its corresponding function
-                impl #mod_name::#trait_name for #struct_name {
-                    #(#attrs)*
-                    #sig {
-                        // Declares the inlined inner function, calls it, then performs very
-                        // basic error handling on the result
-                        #[inline(always)]
-                        #inner_fn
-                        #name().map_err(|e| {
-                            println!("error during plugin execution: {}", e);
-                            // TODO: once function is implemented
-                            //append_tags(["error"]);
-                            // Absorbs the error, returning () to match desired signature
-                        })
-                    }
+                #(#attrs)*
+                #sig {
+                    // Declares the inlined inner function, calls it, then performs very
+                    // basic error handling on the result
+                    #[inline(always)]
+                    #inner_fn
+                    #name().map_err(|e| {
+                        println!("error during plugin execution: {}", e);
+                        // TODO: once function is implemented
+                        //append_tags(["error"]);
+                        // Absorbs the error, returning () to match desired signature
+                    })
                 }
-                const _: () = {
-                    #[doc(hidden)]
-                    #[export_name = #export_name]
-                    #[allow(non_snake_case)]
-                    unsafe extern "C" fn #underscored_export_name () -> i32 {
-                        #mod_name::#call_name::<#struct_name>()
-                    }
-                };
             }
         }
         _ => {
@@ -160,39 +144,124 @@ fn inner_fn_info(mut inner_handler: ItemFn) -> (Ident, ItemFn) {
     (name, inner_handler)
 }
 
-/// Generates the identifiers and values needed to correctly produce wit-bindgen boilerplate.
-///
-/// Returns a 6-tuple of supporting identifiers and values that will be injected into our macro's
-/// template.
-fn export_info(inner_handler: &ItemFn) -> (Ident, Ident, Ident, LitStr, Ident, Ident) {
-    let name = inner_handler.sig.ident.clone();
-    let mod_name = Ident::new(
-        (name.to_string().replacen("on_", "", 1) + "_handler").as_str(),
-        Span::call_site(),
-    );
-    let trait_name = Ident::new(
-        mod_name.to_string().to_case(Case::UpperCamel).as_str(),
-        Span::call_site(),
-    );
-    let struct_name = Ident::new(
-        format!("{}{}", "Plugin", trait_name).as_str(),
-        Span::call_site(),
-    );
-    let export_name = LitStr::new(
-        name.to_string().to_case(Case::Kebab).as_str(),
-        Span::call_site(),
-    );
-    let underscored_export_name = Ident::new(
-        format!("__export_{}_{}", mod_name, name).as_str(),
-        Span::call_site(),
-    );
-    let call_name = Ident::new(format!("call_{}", name).as_str(), Span::call_site());
-    (
-        mod_name,
-        trait_name,
-        struct_name,
-        export_name,
-        underscored_export_name,
-        call_name,
-    )
+/// The `bulwark_plugin` attribute generates default implementations for all handler traits in a module
+/// and produces friendly errors for common mistakes.
+#[doc(hidden)]
+#[proc_macro_attribute]
+pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
+    // Parse the input token stream as an impl, or return an error.
+    let raw_impl = parse_macro_input!(input as ItemImpl);
+
+    // The trait must be specified by the developer even though there's only one valid value.
+    // If we inject it, that leads to a very surprising result when developers try to define helper functions
+    // in the same struct impl and can't because it's really a trait impl.
+    if let Some((_, path, _)) = raw_impl.trait_ {
+        let trait_name = path.get_ident().map_or(String::new(), |id| id.to_string());
+        if &trait_name != "Handlers" {
+            return syn::Error::new(
+                path.span(),
+                format!(
+                    "`bulwark_plugin` encountered unexpected trait `{}` for the impl",
+                    trait_name
+                ),
+            )
+            .to_compile_error()
+            .into();
+        }
+    } else {
+        return syn::Error::new(
+            raw_impl.self_ty.span(),
+            "`bulwark_plugin` requires an impl for the `Handlers` trait",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let struct_type = &raw_impl.self_ty;
+
+    let mut handlers = vec![
+        "on_request",
+        "on_request_decision",
+        "on_response_decision",
+        "on_decision_feedback",
+    ];
+
+    let original_items = raw_impl.items.clone();
+    for item in &raw_impl.items {
+        if let syn::ImplItem::Fn(iifn) = item {
+            let initial_len = handlers.len();
+            // Find and record the implemented handlers, removing any we find from the list above.
+            handlers.retain(|h| *h != iifn.sig.ident.to_string().as_str());
+            // TODO: inject the handler attribute if we don't find it
+            // Verify that any functions with a handler name we find have set the `handler` attribute.
+            if handlers.len() < initial_len {
+                let mut handler_attr_found = false;
+                for attr in &iifn.attrs {
+                    if let Some(ident) = attr.meta.path().get_ident() {
+                        if ident.to_string().as_str() == "handler" {
+                            handler_attr_found = true;
+                            break;
+                        }
+                    }
+                }
+                if !handler_attr_found {
+                    return syn::Error::new(
+                            raw_impl.self_ty.span(),
+                            format!("`bulwark_plugin` expected the `{}` handler to have the #[handler] attribute", iifn.sig.ident),
+                        )
+                        .to_compile_error()
+                        .into();
+                }
+            }
+        }
+    }
+
+    // Define the missing handlers with no-op defaults
+    let noop_handlers = handlers
+        .iter()
+        .map(|handler_name| {
+            let handler_ident = Ident::new(handler_name, Span::call_site());
+            quote! {
+                #[handler]
+                fn #handler_ident() -> Result {
+                    Ok(())
+                }
+            }
+        })
+        .collect::<Vec<proc_macro2::TokenStream>>();
+
+    let output = quote! {
+        impl bulwark_wasm_sdk::handlers::Handlers for #struct_type {
+            #(#original_items)*
+            #(#noop_handlers)*
+        }
+        const _: () = {
+            #[doc(hidden)]
+            #[export_name = "on-request"]
+            #[allow(non_snake_case)]
+            unsafe extern "C" fn __export_handlers_on_request() -> i32 {
+                handlers::call_on_request::<#struct_type>()
+            }
+            #[doc(hidden)]
+            #[export_name = "on-request-decision"]
+            #[allow(non_snake_case)]
+            unsafe extern "C" fn __export_handlers_on_request_decision() -> i32 {
+                handlers::call_on_request_decision::<#struct_type>()
+            }
+            #[doc(hidden)]
+            #[export_name = "on-response-decision"]
+            #[allow(non_snake_case)]
+            unsafe extern "C" fn __export_handlers_on_response_decision() -> i32 {
+                handlers::call_on_response_decision::<#struct_type>()
+            }
+            #[doc(hidden)]
+            #[export_name = "on-decision-feedback"]
+            #[allow(non_snake_case)]
+            unsafe extern "C" fn __export_handlers_on_decision_feedback() -> i32 {
+                handlers::call_on_decision_feedback::<#struct_type>()
+            }
+        };
+    };
+
+    output.into()
 }
