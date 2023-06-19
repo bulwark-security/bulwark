@@ -186,14 +186,14 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
         "on_decision_feedback",
     ];
 
-    let original_items = raw_impl.items.clone();
+    let mut new_items = Vec::with_capacity(raw_impl.items.len());
     for item in &raw_impl.items {
         if let syn::ImplItem::Fn(iifn) = item {
             let initial_len = handlers.len();
             // Find and record the implemented handlers, removing any we find from the list above.
             handlers.retain(|h| *h != iifn.sig.ident.to_string().as_str());
-            // TODO: inject the handler attribute if we don't find it
             // Verify that any functions with a handler name we find have set the `handler` attribute.
+            let mut use_original_item = true;
             if handlers.len() < initial_len {
                 let mut handler_attr_found = false;
                 for attr in &iifn.attrs {
@@ -205,14 +205,19 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                     }
                 }
                 if !handler_attr_found {
-                    return syn::Error::new(
-                            raw_impl.self_ty.span(),
-                            format!("`bulwark_plugin` expected the `{}` handler to have the #[handler] attribute", iifn.sig.ident),
-                        )
-                        .to_compile_error()
-                        .into();
+                    use_original_item = false;
+                    let mut new_iifn = iifn.clone();
+                    new_iifn.attrs.push(parse_quote! {
+                        #[handler]
+                    });
+                    new_items.push(syn::ImplItem::Fn(new_iifn));
                 }
             }
+            if use_original_item {
+                new_items.push(item.clone());
+            }
+        } else {
+            new_items.push(item.clone());
         }
     }
 
@@ -232,7 +237,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
 
     let output = quote! {
         impl bulwark_wasm_sdk::handlers::Handlers for #struct_type {
-            #(#original_items)*
+            #(#new_items)*
             #(#noop_handlers)*
         }
         const _: () = {
