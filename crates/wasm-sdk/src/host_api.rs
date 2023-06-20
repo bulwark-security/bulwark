@@ -277,8 +277,32 @@ pub fn set_restricted(value: f64) {
 pub fn set_tags<I: IntoIterator<Item = V>, V: Into<String>>(tags: I) {
     let tags: Vec<String> = tags.into_iter().map(|s| s.into()).collect();
     let tags: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
-    // TODO: use BTreeSet for merging sorted tag lists?
     crate::bulwark_host::set_tags(tags.as_slice())
+}
+
+/// Records additional tags the plugin wants to associate with its decision.
+///
+/// # Arguments
+///
+/// * `tags` - The list of additional tags to associate with a [`Decision`]
+///
+/// # Examples
+///
+/// All of these are valid:
+///
+/// ```no_run
+/// use bulwark_wasm_sdk::append_tags;
+///
+/// append_tags(["tag"]);
+/// append_tags(vec!["tag"]);
+/// append_tags([String::from("tag")]);
+/// append_tags(vec![String::from("tag")]);
+/// ```
+#[inline]
+pub fn append_tags<I: IntoIterator<Item = V>, V: Into<String>>(tags: I) -> Vec<String> {
+    let tags: Vec<String> = tags.into_iter().map(|s| s.into()).collect();
+    let tags: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
+    crate::bulwark_host::append_tags(tags.as_slice())
 }
 
 /// Returns the combined decision, if available.

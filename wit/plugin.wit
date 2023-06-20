@@ -67,7 +67,7 @@ world host-api {
 
   import set-decision: func(decision: decision-interface)
   import set-tags: func(tags: list<string>)
-  // TODO: import append-tags: func(tags: list<string>)
+  import append-tags: func(tags: list<string>) -> list<string>
   import get-combined-decision: func() -> decision-interface
   import get-combined-tags: func() -> list<string>
   import get-outcome: func() -> outcome-interface
