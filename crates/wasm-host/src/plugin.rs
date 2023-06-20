@@ -324,7 +324,7 @@ pub struct RequestContext {
     /// The `unknown` component of a [`Decision`].
     unknown: f64,
     /// The tags annotating a plugins decision.
-    tags: Vec<String>,
+    tags: Vec<String>, // TODO: use BTreeSet for merging sorted tag lists?
 
     // TODO: should there be read-only context and guest-mutable context structs as well?
     /// Context values that will be mutated by the host environment.
@@ -860,6 +860,17 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn set_tags(&mut self, tags: Vec<String>) -> Result<(), wasmtime::Error> {
         self.tags = tags;
         Ok(())
+    }
+
+    /// Records additional tags the plugin wants to associate with its decision. Existing tags will be kept.
+    ///
+    /// # Arguments
+    ///
+    /// * `tags` - The list of tags to associate with a [`Decision`].
+    async fn append_tags(&mut self, tags: Vec<String>) -> Result<Vec<String>, wasmtime::Error> {
+        let mut tags = tags.clone();
+        self.tags.append(&mut tags);
+        Ok(self.tags.clone())
     }
 
     /// Returns the combined decision, if available.

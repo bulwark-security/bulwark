@@ -58,8 +58,7 @@ fn {}() -> Result {{
                     #inner_fn
                     #name().map_err(|e| {
                         println!("error during plugin execution: {}", e);
-                        // TODO: once function is implemented
-                        //append_tags(["error"]);
+                        append_tags(["error"]);
                         // Absorbs the error, returning () to match desired signature
                     })
                 }
