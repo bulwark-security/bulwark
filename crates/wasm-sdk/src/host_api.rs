@@ -280,26 +280,23 @@ pub fn set_tags<I: IntoIterator<Item = V>, V: Into<String>>(tags: I) {
     crate::bulwark_host::set_tags(tags.as_slice())
 }
 
-/// Records the tags the plugin wants to associate with its decision.
+/// Records additional tags the plugin wants to associate with its decision.
 ///
 /// # Arguments
 ///
-/// * `tags` - The list of tags to associate with a [`Decision`]
+/// * `tags` - The list of additional tags to associate with a [`Decision`]
 ///
 /// # Examples
 ///
 /// All of these are valid:
 ///
 /// ```no_run
-/// use bulwark_wasm_sdk::set_tags;
+/// use bulwark_wasm_sdk::append_tags;
 ///
-/// set_tags(["tag"]);
-/// set_tags(vec!["tag"]);
-/// set_tags([String::from("tag")]);
-/// set_tags(vec![String::from("tag")]);
-/// // Clear tags, rarely needed
-/// set_tags::<[_; 0], String>([]);
-/// set_tags::<Vec<_>, String>(vec![]);
+/// append_tags(["tag"]);
+/// append_tags(vec!["tag"]);
+/// append_tags([String::from("tag")]);
+/// append_tags(vec![String::from("tag")]);
 /// ```
 #[inline]
 pub fn append_tags<I: IntoIterator<Item = V>, V: Into<String>>(tags: I) -> Vec<String> {
