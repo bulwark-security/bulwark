@@ -44,6 +44,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+          override: true
+          target: wasm32-wasi
       - name: Check semver
         uses: obi1kenobi/cargo-semver-checks-action@v2
 
