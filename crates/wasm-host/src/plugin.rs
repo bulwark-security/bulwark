@@ -1,34 +1,13 @@
 mod bulwark_host {
     wasmtime::component::bindgen!({
-        world: "bulwark:plugin/host-calls",
+        world: "bulwark:plugin/host-api",
         async: true,
     });
 }
 
-mod request_handler {
+mod handlers {
     wasmtime::component::bindgen!({
-        world: "bulwark:plugin/request-handler",
-        async: true,
-    });
-}
-
-mod request_decision_handler {
-    wasmtime::component::bindgen!({
-        world: "bulwark:plugin/request-decision-handler",
-        async: true,
-    });
-}
-
-mod response_decision_handler {
-    wasmtime::component::bindgen!({
-        world: "bulwark:plugin/response-decision-handler",
-        async: true,
-    });
-}
-
-mod decision_feedback_handler {
-    wasmtime::component::bindgen!({
-        world: "bulwark:plugin/decision-feedback-handler",
+        world: "bulwark:plugin/handlers",
         async: true,
     });
 }
@@ -547,10 +526,7 @@ pub struct PluginInstance {
     plugin: Arc<Plugin>,
     /// The WASM store that holds state associated with the incoming request.
     store: Store<RequestContext>,
-    request_handler: request_handler::RequestHandler,
-    request_decision_handler: request_decision_handler::RequestDecisionHandler,
-    response_decision_handler: response_decision_handler::ResponseDecisionHandler,
-    decision_feedback_handler: decision_feedback_handler::DecisionFeedbackHandler,
+    handlers: handlers::Handlers,
     /// All plugin-visible state that the host environment will mutate over the lifecycle of a request/response.
     host_mutable_context: HostMutableContext,
 }
@@ -576,48 +552,17 @@ impl PluginInstance {
         wasmtime_wasi::preview2::wasi::command::add_to_linker(&mut linker)?;
 
         let mut store = Store::new(&plugin.engine, request_context);
-        bulwark_host::HostCalls::add_to_linker(&mut linker, |ctx: &mut RequestContext| ctx)?;
+        bulwark_host::HostApi::add_to_linker(&mut linker, |ctx: &mut RequestContext| ctx)?;
 
-        // We discard the instance for all of these because we only use the generated interface to make calls
+        // We discard the instance for this because we only use the generated interface to make calls
 
-        let (request_handler, _) = request_handler::RequestHandler::instantiate_async(
-            &mut store,
-            &plugin.component,
-            &linker,
-        )
-        .await?;
-
-        let (request_decision_handler, _) =
-            request_decision_handler::RequestDecisionHandler::instantiate_async(
-                &mut store,
-                &plugin.component,
-                &linker,
-            )
-            .await?;
-
-        let (response_decision_handler, _) =
-            response_decision_handler::ResponseDecisionHandler::instantiate_async(
-                &mut store,
-                &plugin.component,
-                &linker,
-            )
-            .await?;
-
-        let (decision_feedback_handler, _) =
-            decision_feedback_handler::DecisionFeedbackHandler::instantiate_async(
-                &mut store,
-                &plugin.component,
-                &linker,
-            )
-            .await?;
+        let (handlers, _) =
+            handlers::Handlers::instantiate_async(&mut store, &plugin.component, &linker).await?;
 
         Ok(PluginInstance {
             plugin,
             store,
-            request_handler,
-            request_decision_handler,
-            response_decision_handler,
-            decision_feedback_handler,
+            handlers,
             host_mutable_context,
         })
     }
@@ -655,7 +600,7 @@ impl PluginInstance {
     /// Executes the guest's `on_request` function.
     pub async fn handle_request(&mut self) -> Result<(), PluginExecutionError> {
         let _result = self
-            .request_handler
+            .handlers
             .call_on_request(self.store.as_context_mut())
             .await?;
 
@@ -665,7 +610,7 @@ impl PluginInstance {
     /// Executes the guest's `on_request_decision` function.
     pub async fn handle_request_decision(&mut self) -> Result<(), PluginExecutionError> {
         let _result = self
-            .request_decision_handler
+            .handlers
             .call_on_request_decision(self.store.as_context_mut())
             .await?;
 
@@ -675,7 +620,7 @@ impl PluginInstance {
     /// Executes the guest's `on_response_decision` function.
     pub async fn handle_response_decision(&mut self) -> Result<(), PluginExecutionError> {
         let _result = self
-            .response_decision_handler
+            .handlers
             .call_on_response_decision(self.store.as_context_mut())
             .await?;
 
@@ -685,7 +630,7 @@ impl PluginInstance {
     /// Executes the guest's `on_decision_feedback` function.
     pub async fn handle_decision_feedback(&mut self) -> Result<(), PluginExecutionError> {
         let _result = self
-            .decision_feedback_handler
+            .handlers
             .call_on_decision_feedback(self.store.as_context_mut())
             .await?;
 
@@ -708,7 +653,7 @@ impl PluginInstance {
 }
 
 #[async_trait]
-impl bulwark_host::HostCallsImports for RequestContext {
+impl bulwark_host::HostApiImports for RequestContext {
     /// Returns the guest environment's configuration value as serialized JSON.
     async fn get_config(&mut self) -> Result<Vec<u8>, wasmtime::Error> {
         Ok(self.config.to_vec())

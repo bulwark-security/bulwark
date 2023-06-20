@@ -2,7 +2,7 @@ package bulwark:plugin
 
 // TODO: See https://github.com/WebAssembly/wasi-http for a more complete canonical http component interface
 
-world host-calls {
+world host-api {
   // TODO: should these strings all be list<u8>?
   record request-interface {
     method: string,
@@ -88,16 +88,9 @@ world host-calls {
   import increment-breaker: func(key: string, success-delta: s64, failure-delta: s64, window: s64) -> breaker-interface
   import check-breaker: func(key: string) -> breaker-interface
 }
-// Separate world for each handler to allow independent definitions
-world request-handler {
+world handlers {
   export on-request: func() -> result
-}
-world response-decision-handler {
   export on-response-decision: func() -> result
-}
-world request-decision-handler {
   export on-request-decision: func() -> result
-}
-world decision-feedback-handler {
   export on-decision-feedback: func() -> result
 }

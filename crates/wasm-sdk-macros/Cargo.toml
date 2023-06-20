@@ -17,7 +17,6 @@ proc-macro = true
 maintenance = { status = "experimental" }
 
 [dependencies]
-convert_case = "^0.6"
 proc-macro2 = "^1"
 quote = "^1"
 syn = { version = "^2", features = ["full"] }
