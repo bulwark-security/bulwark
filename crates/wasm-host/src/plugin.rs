@@ -867,8 +867,7 @@ impl bulwark_host::HostApiImports for RequestContext {
     /// # Arguments
     ///
     /// * `tags` - The list of tags to associate with a [`Decision`].
-    async fn append_tags(&mut self, tags: Vec<String>) -> Result<Vec<String>, wasmtime::Error> {
-        let mut tags = tags.clone();
+    async fn append_tags(&mut self, mut tags: Vec<String>) -> Result<Vec<String>, wasmtime::Error> {
         self.tags.append(&mut tags);
         Ok(self.tags.clone())
     }
