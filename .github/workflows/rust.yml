@@ -56,6 +56,9 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
   
+      - name: Run docs
+        run: cargo doc --all --no-deps
+
       - name: Check semver
         uses: obi1kenobi/cargo-semver-checks-action@v2
         with:
