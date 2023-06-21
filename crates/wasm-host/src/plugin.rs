@@ -435,7 +435,7 @@ impl Plugin {
     /// Creates and compiles a new [`Plugin`] from a byte slice of WASM.
     ///
     /// The bytes it expects are what you'd get if you read in a `*.wasm` file.
-    /// See [`Module::from_binary`].
+    /// See [`Component::from_binary`].
     pub fn from_bytes(
         name: String,
         bytes: &[u8],
@@ -452,7 +452,7 @@ impl Plugin {
 
     /// Creates and compiles a new [`Plugin`] by reading in a file in either `*.wasm` or `*.wat` format.
     ///
-    /// See [`Module::from_file`].
+    /// See [`Component::from_file`].
     pub fn from_file(
         path: impl AsRef<Path>,
         config: &bulwark_config::Plugin,
