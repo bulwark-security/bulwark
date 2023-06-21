@@ -47,7 +47,6 @@ fn build_test_example_wasm(name: &str) {
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
-    // TODO: temp disable while working on proc macros
     build_test_example_wasm("blank-slate");
     build_test_example_wasm("evil-bit");
     fetch_adapter();
