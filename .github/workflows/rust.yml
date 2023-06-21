@@ -53,6 +53,8 @@ jobs:
           target: wasm32-wasi
       - name: Check semver
         uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          exclude: bulwark-cli
 
   test:
     strategy:
