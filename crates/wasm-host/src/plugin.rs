@@ -938,7 +938,7 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn get_remote_state(
         &mut self,
         key: String,
-    ) -> Result<std::vec::Vec<u8>, wasmtime::Error> {
+    ) -> Result<Result<Vec<u8>, bulwark_host::StateError>, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -950,13 +950,15 @@ impl bulwark_host::HostApiImports for RequestContext {
             .iter()
             .any(|prefix| key.starts_with(prefix))
         {
-            // TODO: convert to error
-            panic!("access to state value by prefix denied");
+            return Ok(Err(bulwark_host::StateError::Permission(key)));
         }
 
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
-        Ok(conn.get(key)?)
+        match conn.get(key) {
+            Ok(value) => Ok(Ok(value)),
+            Err(err) => Ok(Err(bulwark_host::StateError::Remote(err.to_string()))),
+        }
     }
 
     /// Set a named value in Redis.
@@ -968,8 +970,8 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn set_remote_state(
         &mut self,
         key: String,
-        value: std::vec::Vec<u8>,
-    ) -> Result<(), wasmtime::Error> {
+        value: Vec<u8>,
+    ) -> Result<Result<(), bulwark_host::StateError>, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -981,13 +983,17 @@ impl bulwark_host::HostApiImports for RequestContext {
             .iter()
             .any(|prefix| key.starts_with(prefix))
         {
-            // TODO: convert to error
-            panic!("access to state value by prefix denied");
+            return Ok(Err(bulwark_host::StateError::Permission(key)));
         }
 
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
-        Ok(conn.set(key, value.to_vec())?)
+        // The `redis::Value` here is expected to be `Okay` if it's not an error.
+        // Must be specified even if immediately discarded.
+        match conn.set::<String, Vec<u8>, redis::Value>(key, value) {
+            Ok(_) => Ok(Ok(())),
+            Err(err) => Ok(Err(bulwark_host::StateError::Remote(err.to_string()))),
+        }
     }
 
     /// Increments a named counter in Redis.

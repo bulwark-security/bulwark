@@ -19,6 +19,9 @@ pub enum Error {
     /// Returned when there is an issue with the environment variable requested by the plugin.
     #[error(transparent)]
     EnvVar(#[from] EnvVarError),
+    /// Returned when there is an issue with the remote state requested by the plugin.
+    #[error(transparent)]
+    RemoteState(#[from] RemoteStateError),
     /// Returned when there can only be a single validation error
     #[error(transparent)]
     Validation(#[from] validator::ValidationError),
@@ -59,6 +62,19 @@ impl From<crate::bulwark_host::EnvError> for Error {
     }
 }
 
+impl From<crate::bulwark_host::StateError> for Error {
+    fn from(error: crate::bulwark_host::StateError) -> Self {
+        match error {
+            crate::bulwark_host::StateError::Permission(key) => {
+                Error::Permission(PermissionError::State { key })
+            }
+            crate::bulwark_host::StateError::Remote(message) => {
+                Error::RemoteState(RemoteStateError::Remote { message })
+            }
+        }
+    }
+}
+
 /// Returned when an attempt to parse a counter within a plugin environment fails.
 #[derive(thiserror::Error, Debug)]
 pub enum ParseCounterError {
@@ -93,4 +109,11 @@ pub enum EnvVarError {
     Missing { var: String },
     #[error("environment variable '{var}' was not unicode")]
     NotUnicode { var: String },
+}
+
+/// Returned when there is an issue with the remote state requested by the plugin.
+#[derive(thiserror::Error, Debug)]
+pub enum RemoteStateError {
+    #[error("error accessing remote state: {message}")]
+    Remote { message: String },
 }

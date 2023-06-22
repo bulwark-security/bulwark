@@ -368,8 +368,8 @@ pub fn send_request(request: Request) -> Response {
 ///
 /// * `key` - The key name corresponding to the state value.
 #[inline]
-pub fn get_remote_state(key: &str) -> Vec<u8> {
-    crate::bulwark_host::get_remote_state(key)
+pub fn get_remote_state(key: &str) -> Result<Vec<u8>, crate::Error> {
+    Ok(crate::bulwark_host::get_remote_state(key)?)
 }
 
 /// Parses a counter value from state stored as a string.
@@ -392,8 +392,8 @@ pub fn parse_counter(value: Vec<u8>) -> Result<i64, ParseCounterError> {
 /// * `key` - The key name corresponding to the state value.
 /// * `value` - The value to record. Values are byte strings, but may be interpreted differently by Redis depending on context.
 #[inline]
-pub fn set_remote_state(key: &str, value: &[u8]) {
-    crate::bulwark_host::set_remote_state(key, value)
+pub fn set_remote_state(key: &str, value: &[u8]) -> Result<(), crate::Error> {
+    Ok(crate::bulwark_host::set_remote_state(key, value)?)
 }
 
 /// Increments a named counter in Redis.
