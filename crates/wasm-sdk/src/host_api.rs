@@ -127,11 +127,11 @@ pub fn get_client_ip() -> Option<IpAddr> {
 /// # Arguments
 ///
 /// * `key` - The key name corresponding to the param value.
-pub fn get_param_value(key: &str) -> Value {
+pub fn get_param_value(key: &str) -> Result<Value, crate::Error> {
     // TODO: this should return a result
-    let raw_value = crate::bulwark_host::get_param_value(key);
+    let raw_value = crate::bulwark_host::get_param_value(key)?;
     let value: serde_json::Value = serde_json::from_slice(&raw_value).unwrap();
-    value
+    Ok(value)
 }
 
 /// Set a named value in the request context's params.
@@ -140,10 +140,11 @@ pub fn get_param_value(key: &str) -> Value {
 ///
 /// * `key` - The key name corresponding to the param value.
 /// * `value` - The value to record. Values are serialized JSON.
-pub fn set_param_value(key: &str, value: Value) {
+pub fn set_param_value(key: &str, value: Value) -> Result<(), crate::Error> {
     // TODO: this should return a result
-    let json = serde_json::to_vec(&value).unwrap();
-    crate::bulwark_host::set_param_value(key, &json);
+    let json = serde_json::to_vec(&value)?;
+    crate::bulwark_host::set_param_value(key, &json)?;
+    Ok(())
 }
 
 /// Returns the guest environment's configuration value as a JSON [`Value`].

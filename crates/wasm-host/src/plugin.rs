@@ -665,10 +665,16 @@ impl bulwark_host::HostApiImports for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The key name corresponding to the param value.
-    async fn get_param_value(&mut self, key: String) -> Result<Vec<u8>, wasmtime::Error> {
+    async fn get_param_value(
+        &mut self,
+        key: String,
+    ) -> Result<Result<Vec<u8>, bulwark_host::ParamError>, wasmtime::Error> {
         let params = self.params.lock().unwrap();
         let value = params.get(&key).unwrap_or(&bulwark_wasm_sdk::Value::Null);
-        Ok(serde_json::to_vec(value)?)
+        match serde_json::to_vec(value) {
+            Ok(bytes) => Ok(Ok(bytes)),
+            Err(err) => Ok(Err(bulwark_host::ParamError::Json(err.to_string()))),
+        }
     }
 
     /// Set a named value in the request context's params.
@@ -681,11 +687,15 @@ impl bulwark_host::HostApiImports for RequestContext {
         &mut self,
         key: String,
         value: Vec<u8>,
-    ) -> std::result::Result<(), wasmtime::Error> {
+    ) -> Result<Result<(), bulwark_host::ParamError>, wasmtime::Error> {
         let mut params = self.params.lock().unwrap();
-        let value: bulwark_wasm_sdk::Value = serde_json::from_slice(&value)?;
-        params.insert(key, value);
-        Ok(())
+        match serde_json::from_slice(&value) {
+            Ok(value) => {
+                params.insert(key, value);
+                Ok(Ok(()))
+            }
+            Err(err) => Ok(Err(bulwark_host::ParamError::Json(err.to_string()))),
+        }
     }
 
     /// Returns a named environment variable value as bytes.
@@ -718,16 +728,12 @@ impl bulwark_host::HostApiImports for RequestContext {
     }
 
     /// Returns the incoming request associated with the request context.
-    async fn get_request(
-        &mut self,
-    ) -> std::result::Result<bulwark_host::RequestInterface, wasmtime::Error> {
+    async fn get_request(&mut self) -> Result<bulwark_host::RequestInterface, wasmtime::Error> {
         Ok(self.request.clone())
     }
 
     /// Returns the response received from the interior service.
-    async fn get_response(
-        &mut self,
-    ) -> std::result::Result<bulwark_host::ResponseInterface, wasmtime::Error> {
+    async fn get_response(&mut self) -> Result<bulwark_host::ResponseInterface, wasmtime::Error> {
         let response: MutexGuard<Option<bulwark_host::ResponseInterface>> =
             self.host_mutable_context.response.lock().unwrap();
         // TODO: remove unwrap
@@ -963,7 +969,7 @@ impl bulwark_host::HostApiImports for RequestContext {
         &mut self,
         key: String,
         value: std::vec::Vec<u8>,
-    ) -> std::result::Result<(), wasmtime::Error> {
+    ) -> Result<(), wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -989,10 +995,7 @@ impl bulwark_host::HostApiImports for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The key name corresponding to the state counter.
-    async fn increment_remote_state(
-        &mut self,
-        key: String,
-    ) -> std::result::Result<i64, wasmtime::Error> {
+    async fn increment_remote_state(&mut self, key: String) -> Result<i64, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -1023,7 +1026,7 @@ impl bulwark_host::HostApiImports for RequestContext {
         &mut self,
         key: String,
         delta: i64,
-    ) -> std::result::Result<i64, wasmtime::Error> {
+    ) -> Result<i64, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -1050,11 +1053,7 @@ impl bulwark_host::HostApiImports for RequestContext {
     ///
     /// * `key` - The key name corresponding to the state value.
     /// * `ttl` - The time-to-live for the value in seconds.
-    async fn set_remote_ttl(
-        &mut self,
-        key: String,
-        ttl: i64,
-    ) -> std::result::Result<(), wasmtime::Error> {
+    async fn set_remote_ttl(&mut self, key: String, ttl: i64) -> Result<(), wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -1092,7 +1091,7 @@ impl bulwark_host::HostApiImports for RequestContext {
         key: String,
         delta: i64,
         window: i64,
-    ) -> std::result::Result<bulwark_host::RateInterface, wasmtime::Error> {
+    ) -> Result<bulwark_host::RateInterface, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -1135,7 +1134,7 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn check_rate_limit(
         &mut self,
         key: String,
-    ) -> std::result::Result<bulwark_host::RateInterface, wasmtime::Error> {
+    ) -> Result<bulwark_host::RateInterface, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -1185,7 +1184,7 @@ impl bulwark_host::HostApiImports for RequestContext {
         success_delta: i64,
         failure_delta: i64,
         window: i64,
-    ) -> std::result::Result<bulwark_host::BreakerInterface, wasmtime::Error> {
+    ) -> Result<bulwark_host::BreakerInterface, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -1241,7 +1240,7 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn check_breaker(
         &mut self,
         key: String,
-    ) -> std::result::Result<bulwark_host::BreakerInterface, wasmtime::Error> {
+    ) -> Result<bulwark_host::BreakerInterface, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions

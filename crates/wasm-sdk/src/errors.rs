@@ -13,6 +13,9 @@ pub enum Error {
     /// Returned when an attempt to access a resource that requires a permission fails.
     #[error(transparent)]
     Permission(#[from] PermissionError),
+    /// Returned when there was an issue getting or setting a parameter.
+    #[error(transparent)]
+    Param(#[from] ParamError),
     /// Returned when there is an issue with the environment variable requested by the plugin.
     #[error(transparent)]
     EnvVar(#[from] EnvVarError),
@@ -22,9 +25,22 @@ pub enum Error {
     /// Returned when there could be multiple validation errors
     #[error(transparent)]
     Validations(#[from] validator::ValidationErrors),
+    /// Returned when a JSON serialization or deserialization error occurs
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
     /// Catch-all error type
     #[error(transparent)]
     Any(#[from] anyhow::Error),
+}
+
+impl From<crate::bulwark_host::ParamError> for Error {
+    fn from(error: crate::bulwark_host::ParamError) -> Self {
+        match error {
+            crate::bulwark_host::ParamError::Json(message) => {
+                Error::Param(ParamError::Json { message })
+            }
+        }
+    }
 }
 
 impl From<crate::bulwark_host::EnvError> for Error {
@@ -61,6 +77,13 @@ pub enum PermissionError {
     Http { host: String },
     #[error("access to state key '{key}' denied")]
     State { key: String },
+}
+
+/// Returned when there was an issue getting or setting a parameter.
+#[derive(thiserror::Error, Debug)]
+pub enum ParamError {
+    #[error("{message}")]
+    Json { message: String },
 }
 
 /// Returned when there is an issue with the environment variable requested by the plugin.

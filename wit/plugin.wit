@@ -61,12 +61,15 @@ world host-api {
   variant decision-error {
     invalid(string),
   }
+  variant param-error {
+    json(string),
+  }
 
   // TODO: many of these should return the result type; historically this wasn't supported but this should be fixed?
 
   import get-config: func() -> list<u8>
-  import get-param-value: func(key: string) -> list<u8>
-  import set-param-value: func(key: string, value: list<u8>)
+  import get-param-value: func(key: string) -> result<list<u8>, param-error>
+  import set-param-value: func(key: string, value: list<u8>) -> result<_, param-error>
   import get-env-bytes: func(key: string) -> result<list<u8>, env-error>
 
   import get-request: func() -> request-interface
@@ -76,21 +79,24 @@ world host-api {
   import set-decision: func(decision: decision-interface) -> result<_, decision-error>
   import set-tags: func(tags: list<string>)
   import append-tags: func(tags: list<string>) -> list<string>
+  // TODO: these 3 should be option
   import get-combined-decision: func() -> decision-interface
   import get-combined-tags: func() -> list<string>
   import get-outcome: func() -> outcome-interface
 
+  // TODO: error handling
   import get-remote-state: func(key: string) -> list<u8>
   import set-remote-state: func(key: string, value: list<u8>)
   import increment-remote-state: func(key: string) -> s64
   import increment-remote-state-by: func(key: string, delta: s64) -> s64
   import set-remote-ttl: func(key: string, ttl: s64)
 
-  // TODO: condense to one function
+  // TODO: condense to one function, add error handling
   import prepare-request: func(method: string, uri: string) -> u64
   import add-request-header: func(request-id: u64, name: string, value: list<u8>)
   import set-request-body: func(request-id: u64, body: list<u8>) -> response-interface
 
+  // TODO: error handling
   import increment-rate-limit: func(key: string, delta: s64, window: s64) -> rate-interface
   import check-rate-limit: func(key: string) -> rate-interface
   import increment-breaker: func(key: string, success-delta: s64, failure-delta: s64, window: s64) -> breaker-interface
