@@ -31,6 +31,7 @@ use {
         sync::{Arc, Mutex, MutexGuard},
     },
     url::Url,
+    validator::Validate,
     wasmtime::component::{Component, Linker},
     wasmtime::{AsContextMut, Config, Engine, Store},
     wasmtime_wasi::preview2::{Table, WasiCtx, WasiCtxBuilder, WasiView},
@@ -853,13 +854,20 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn set_decision(
         &mut self,
         decision: bulwark_host::DecisionInterface,
-    ) -> Result<(), wasmtime::Error> {
+    ) -> Result<Result<(), bulwark_host::DecisionError>, wasmtime::Error> {
         let decision = Decision::from(decision);
-        self.accept = decision.accept;
-        self.restrict = decision.restrict;
-        self.unknown = decision.unknown;
-        // TODO: validate
-        Ok(())
+        // Validate on both the guest and the host because we can't guarantee usage of the SDK.
+        match decision.validate() {
+            Ok(_) => {
+                // TODO: self should just have a decision rather than 3 separate components
+                self.accept = decision.accept;
+                self.restrict = decision.restrict;
+                self.unknown = decision.unknown;
+
+                Ok(Ok(()))
+            }
+            Err(err) => Ok(Err(bulwark_host::DecisionError::Invalid(err.to_string()))),
+        }
     }
 
     /// Records the tags the plugin wants to associate with its decision.

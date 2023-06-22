@@ -58,6 +58,9 @@ world host-api {
     not-unicode(string),
     permission(string),
   }
+  variant decision-error {
+    invalid(string),
+  }
 
   // TODO: many of these should return the result type; historically this wasn't supported but this should be fixed?
 
@@ -70,7 +73,7 @@ world host-api {
   import get-response: func() -> response-interface
   import get-client-ip: func() -> option<ip-interface>
 
-  import set-decision: func(decision: decision-interface)
+  import set-decision: func(decision: decision-interface) -> result<_, decision-error>
   import set-tags: func(tags: list<string>)
   import append-tags: func(tags: list<string>) -> list<string>
   import get-combined-decision: func() -> decision-interface

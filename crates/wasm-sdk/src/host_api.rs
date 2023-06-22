@@ -1,6 +1,6 @@
 use {
     std::{net::IpAddr, str, str::FromStr},
-    validator::{Validate, ValidationErrors},
+    validator::Validate,
 };
 
 // For some reason, doc-tests in this module trigger a linker error, so they're set to no_run
@@ -200,13 +200,15 @@ pub fn get_env_bytes(key: &str) -> Result<Vec<u8>, crate::Error> {
 /// # Arguments
 ///
 /// * `decision` - The [`Decision`] output of the plugin.
-pub fn set_decision(decision: Decision) -> Result<(), ValidationErrors> {
+pub fn set_decision(decision: Decision) -> Result<(), crate::Error> {
+    // Validate here because it should provide a better error than the one that the host will give.
     decision.validate()?;
     crate::bulwark_host::set_decision(DecisionInterface {
         accept: decision.accept,
         restrict: decision.restrict,
         unknown: decision.unknown,
-    });
+    })
+    .expect("should not be able to produce an invalid result");
     Ok(())
 }
 
@@ -227,7 +229,8 @@ pub fn set_accepted(value: f64) {
         }
         .scale()
         .into(),
-    );
+    )
+    .expect("should not be able to produce an invalid result");
 }
 
 /// Records a decision indicating that the plugin wants to restrict a request.
@@ -247,7 +250,8 @@ pub fn set_restricted(value: f64) {
         }
         .scale()
         .into(),
-    );
+    )
+    .expect("should not be able to produce an invalid result");
 }
 
 /// Records the tags the plugin wants to associate with its decision.
