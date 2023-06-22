@@ -1001,7 +1001,10 @@ impl bulwark_host::HostApiImports for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The key name corresponding to the state counter.
-    async fn increment_remote_state(&mut self, key: String) -> Result<i64, wasmtime::Error> {
+    async fn increment_remote_state(
+        &mut self,
+        key: String,
+    ) -> Result<Result<i64, bulwark_host::StateError>, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -1013,13 +1016,15 @@ impl bulwark_host::HostApiImports for RequestContext {
             .iter()
             .any(|prefix| key.starts_with(prefix))
         {
-            // TODO: convert to error
-            panic!("access to state value by prefix denied");
+            return Ok(Err(bulwark_host::StateError::Permission(key)));
         }
 
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
-        Ok(conn.incr(key, 1)?)
+        match conn.incr(key, 1) {
+            Ok(value) => Ok(Ok(value)),
+            Err(err) => Ok(Err(bulwark_host::StateError::Remote(err.to_string()))),
+        }
     }
 
     /// Increments a named counter in Redis by a specified delta value.
@@ -1032,7 +1037,7 @@ impl bulwark_host::HostApiImports for RequestContext {
         &mut self,
         key: String,
         delta: i64,
-    ) -> Result<i64, wasmtime::Error> {
+    ) -> Result<Result<i64, bulwark_host::StateError>, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -1044,13 +1049,15 @@ impl bulwark_host::HostApiImports for RequestContext {
             .iter()
             .any(|prefix| key.starts_with(prefix))
         {
-            // TODO: convert to error
-            panic!("access to state value by prefix denied");
+            return Ok(Err(bulwark_host::StateError::Permission(key)));
         }
 
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
-        Ok(conn.incr(key, delta)?)
+        match conn.incr(key, delta) {
+            Ok(value) => Ok(Ok(value)),
+            Err(err) => Ok(Err(bulwark_host::StateError::Remote(err.to_string()))),
+        }
     }
 
     /// Sets an expiration on a named value in Redis.
@@ -1059,7 +1066,11 @@ impl bulwark_host::HostApiImports for RequestContext {
     ///
     /// * `key` - The key name corresponding to the state value.
     /// * `ttl` - The time-to-live for the value in seconds.
-    async fn set_remote_ttl(&mut self, key: String, ttl: i64) -> Result<(), wasmtime::Error> {
+    async fn set_remote_ttl(
+        &mut self,
+        key: String,
+        ttl: i64,
+    ) -> Result<Result<(), bulwark_host::StateError>, wasmtime::Error> {
         // TODO: figure out how to extract to a helper function?
         let allowed_key_prefixes = self
             .permissions
@@ -1071,13 +1082,15 @@ impl bulwark_host::HostApiImports for RequestContext {
             .iter()
             .any(|prefix| key.starts_with(prefix))
         {
-            // TODO: convert to error
-            panic!("access to state value by prefix denied");
+            return Ok(Err(bulwark_host::StateError::Permission(key)));
         }
 
         let pool = &self.redis_info.clone().unwrap().pool;
         let mut conn = pool.get().unwrap();
-        Ok(conn.expire(key, ttl.try_into().unwrap())?)
+        match conn.expire::<String, redis::Value>(key, ttl as usize) {
+            Ok(_) => Ok(Ok(())),
+            Err(err) => Ok(Err(bulwark_host::StateError::Remote(err.to_string()))),
+        }
     }
 
     /// Increments a rate limit, returning the number of attempts so far and the expiration time.

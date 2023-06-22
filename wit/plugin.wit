@@ -91,9 +91,9 @@ world host-api {
   // TODO: error handling
   import get-remote-state: func(key: string) -> result<list<u8>, state-error>
   import set-remote-state: func(key: string, value: list<u8>) -> result<_, state-error>
-  import increment-remote-state: func(key: string) -> s64
-  import increment-remote-state-by: func(key: string, delta: s64) -> s64
-  import set-remote-ttl: func(key: string, ttl: s64)
+  import increment-remote-state: func(key: string) -> result<s64, state-error>
+  import increment-remote-state-by: func(key: string, delta: s64) -> result<s64, state-error>
+  import set-remote-ttl: func(key: string, ttl: s64) -> result<_, state-error>
 
   // TODO: condense to one function, add error handling
   import prepare-request: func(method: string, uri: string) -> u64

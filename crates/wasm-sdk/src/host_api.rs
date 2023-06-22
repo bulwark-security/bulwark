@@ -407,8 +407,8 @@ pub fn set_remote_state(key: &str, value: &[u8]) -> Result<(), crate::Error> {
 ///
 /// * `key` - The key name corresponding to the state counter.
 #[inline]
-pub fn increment_remote_state(key: &str) -> i64 {
-    crate::bulwark_host::increment_remote_state(key)
+pub fn increment_remote_state(key: &str) -> Result<i64, crate::Error> {
+    Ok(crate::bulwark_host::increment_remote_state(key)?)
 }
 
 /// Increments a named counter in Redis by a specified delta value.
@@ -423,8 +423,8 @@ pub fn increment_remote_state(key: &str) -> i64 {
 /// * `key` - The key name corresponding to the state counter.
 /// * `delta` - The amount to increase the counter by.
 #[inline]
-pub fn increment_remote_state_by(key: &str, delta: i64) -> i64 {
-    crate::bulwark_host::increment_remote_state_by(key, delta)
+pub fn increment_remote_state_by(key: &str, delta: i64) -> Result<i64, crate::Error> {
+    Ok(crate::bulwark_host::increment_remote_state_by(key, delta)?)
 }
 
 /// Sets an expiration on a named value in Redis.
@@ -437,8 +437,8 @@ pub fn increment_remote_state_by(key: &str, delta: i64) -> i64 {
 /// * `key` - The key name corresponding to the state value.
 /// * `ttl` - The time-to-live for the value in seconds.
 #[inline]
-pub fn set_remote_ttl(key: &str, ttl: i64) {
-    crate::bulwark_host::set_remote_ttl(key, ttl)
+pub fn set_remote_ttl(key: &str, ttl: i64) -> Result<(), crate::Error> {
+    Ok(crate::bulwark_host::set_remote_ttl(key, ttl)?)
 }
 
 // TODO: needs an example
