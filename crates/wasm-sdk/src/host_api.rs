@@ -179,9 +179,8 @@ pub fn get_config_value(key: &str) -> Option<Value> {
 /// # Arguments
 ///
 /// * `key` - The environment variable name. Case-sensitive.
-pub fn get_env(key: &str) -> String {
-    // TODO: this should return a result
-    String::from_utf8(crate::bulwark_host::get_env_bytes(key)).unwrap()
+pub fn get_env(key: &str) -> Result<String, crate::Error> {
+    Ok(String::from_utf8(crate::bulwark_host::get_env_bytes(key)?)?)
 }
 
 /// Returns a named environment variable value as bytes.
@@ -192,9 +191,8 @@ pub fn get_env(key: &str) -> String {
 /// # Arguments
 ///
 /// * `key` - The environment variable name. Case-sensitive.
-pub fn get_env_bytes(key: &str) -> Vec<u8> {
-    // TODO: this should return a result
-    crate::bulwark_host::get_env_bytes(key)
+pub fn get_env_bytes(key: &str) -> Result<Vec<u8>, crate::Error> {
+    Ok(crate::bulwark_host::get_env_bytes(key)?)
 }
 
 /// Records the decision value the plugin wants to return.

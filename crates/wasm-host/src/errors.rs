@@ -33,7 +33,7 @@ pub enum PluginExecutionError {
     WasiError(#[from] wasi_common::Error),
     #[error(transparent)]
     StringArray(#[from] wasi_common::StringArrayError),
-    #[error("function not implemented '{expected:?}'")]
+    #[error("function not implemented '{expected}'")]
     NotImplementedError { expected: String },
     #[error(transparent)]
     AnyError(#[from] anyhow::Error),

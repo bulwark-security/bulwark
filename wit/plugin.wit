@@ -53,13 +53,18 @@ world host-api {
     consecutive-failures: s64,
     expiration: s64,
   }
+  variant env-error {
+    missing(string),
+    not-unicode(string),
+    permission(string),
+  }
 
   // TODO: many of these should return the result type; historically this wasn't supported but this should be fixed?
 
   import get-config: func() -> list<u8>
   import get-param-value: func(key: string) -> list<u8>
   import set-param-value: func(key: string, value: list<u8>)
-  import get-env-bytes: func(key: string) -> list<u8>
+  import get-env-bytes: func(key: string) -> result<list<u8>, env-error>
 
   import get-request: func() -> request-interface
   import get-response: func() -> response-interface

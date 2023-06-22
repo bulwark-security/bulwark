@@ -692,7 +692,10 @@ impl bulwark_host::HostApiImports for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The environment variable name. Case-sensitive.
-    async fn get_env_bytes(&mut self, key: String) -> Result<Vec<u8>, wasmtime::Error> {
+    async fn get_env_bytes(
+        &mut self,
+        key: String,
+    ) -> Result<Result<Vec<u8>, bulwark_host::EnvError>, wasmtime::Error> {
         let allowed_env_vars = self
             .permissions
             .env
@@ -700,10 +703,17 @@ impl bulwark_host::HostApiImports for RequestContext {
             .cloned()
             .collect::<BTreeSet<String>>();
         if !allowed_env_vars.contains(&key) {
-            // TODO: convert to error
-            panic!("access to environment variable denied");
+            return Ok(Err(bulwark_host::EnvError::Permission(key)));
         }
-        Ok(std::env::var(key)?.as_bytes().to_vec())
+        match std::env::var(&key) {
+            Ok(var) => Ok(Ok(var.as_bytes().to_vec())),
+            Err(err) => match err {
+                std::env::VarError::NotPresent => Ok(Err(bulwark_host::EnvError::Missing(key))),
+                std::env::VarError::NotUnicode(_) => {
+                    Ok(Err(bulwark_host::EnvError::NotUnicode(key)))
+                }
+            },
+        }
     }
 
     /// Returns the incoming request associated with the request context.
