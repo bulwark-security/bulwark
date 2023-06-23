@@ -83,10 +83,9 @@ world host-api {
   import set-decision: func(decision: decision-interface) -> result<_, decision-error>
   import set-tags: func(tags: list<string>)
   import append-tags: func(tags: list<string>) -> list<string>
-  // TODO: these 3 should be option
-  import get-combined-decision: func() -> decision-interface
-  import get-combined-tags: func() -> list<string>
-  import get-outcome: func() -> outcome-interface
+  import get-combined-decision: func() -> option<decision-interface>
+  import get-combined-tags: func() -> option<list<string>>
+  import get-outcome: func() -> option<outcome-interface>
 
   import get-remote-state: func(key: string) -> result<list<u8>, state-error>
   import set-remote-state: func(key: string, value: list<u8>) -> result<_, state-error>

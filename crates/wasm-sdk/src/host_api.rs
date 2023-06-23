@@ -311,25 +311,23 @@ pub fn append_tags<I: IntoIterator<Item = V>, V: Into<String>>(tags: I) -> Vec<S
 /// Returns the combined decision, if available.
 ///
 /// Typically used in the feedback phase.
-pub fn get_combined_decision() -> Decision {
-    // TODO: Option<Decision> ?
-    crate::bulwark_host::get_combined_decision().into()
+pub fn get_combined_decision() -> Option<Decision> {
+    crate::bulwark_host::get_combined_decision().map(|decision| decision.into())
 }
 
 /// Returns the combined set of tags associated with a decision, if available.
 ///
 /// Typically used in the feedback phase.
 #[inline]
-pub fn get_combined_tags() -> Vec<String> {
+pub fn get_combined_tags() -> Option<Vec<String>> {
     crate::bulwark_host::get_combined_tags()
 }
 
 /// Returns the outcome of the combined decision, if available.
 ///
 /// Typically used in the feedback phase.
-pub fn get_outcome() -> Outcome {
-    // TODO: Option<Outcome> ?
-    crate::bulwark_host::get_outcome().into()
+pub fn get_outcome() -> Option<Outcome> {
+    crate::bulwark_host::get_outcome().map(|outcome| outcome.into())
 }
 
 /// Sends an outbound HTTP request.

@@ -901,31 +901,30 @@ impl bulwark_host::HostApiImports for RequestContext {
     /// Typically used in the feedback phase.
     async fn get_combined_decision(
         &mut self,
-    ) -> Result<bulwark_host::DecisionInterface, wasmtime::Error> {
+    ) -> Result<Option<bulwark_host::DecisionInterface>, wasmtime::Error> {
         let combined_decision: MutexGuard<Option<bulwark_host::DecisionInterface>> =
             self.host_mutable_context.combined_decision.lock().unwrap();
-        // TODO: this should probably be an Option return type rather than unwrapping here
-        Ok(combined_decision.to_owned().unwrap())
+        Ok(combined_decision.to_owned())
     }
 
     /// Returns the combined set of tags associated with a decision, if available.
     ///
     /// Typically used in the feedback phase.
-    async fn get_combined_tags(&mut self) -> Result<Vec<String>, wasmtime::Error> {
+    async fn get_combined_tags(&mut self) -> Result<Option<Vec<String>>, wasmtime::Error> {
         let combined_tags: MutexGuard<Option<Vec<String>>> =
             self.host_mutable_context.combined_tags.lock().unwrap();
-        // TODO: this should probably be an Option return type rather than unwrapping here
-        Ok(combined_tags.to_owned().unwrap())
+        Ok(combined_tags.to_owned())
     }
 
     /// Returns the outcome of the combined decision, if available.
     ///
     /// Typically used in the feedback phase.
-    async fn get_outcome(&mut self) -> Result<bulwark_host::OutcomeInterface, wasmtime::Error> {
+    async fn get_outcome(
+        &mut self,
+    ) -> Result<Option<bulwark_host::OutcomeInterface>, wasmtime::Error> {
         let outcome: MutexGuard<Option<bulwark_host::OutcomeInterface>> =
             self.host_mutable_context.outcome.lock().unwrap();
-        // TODO: this should probably be an Option return type rather than unwrapping here
-        Ok(outcome.to_owned().unwrap())
+        Ok(outcome.to_owned())
     }
 
     /// Returns the named state value retrieved from Redis.
@@ -1299,14 +1298,11 @@ impl bulwark_host::HostApiImports for RequestContext {
 
 /// Ensures that access to any remote state key has the appropriate permissions set.
 fn verify_remote_state_prefixes(
-    allowed_key_prefixes: &Vec<String>,
+    // TODO: BTreeSet<String> instead, all the way up
+    allowed_key_prefixes: &[String],
     key: &str,
 ) -> Result<(), bulwark_host::StateError> {
     let key = key.to_string();
-    let allowed_key_prefixes = allowed_key_prefixes
-        .iter()
-        .cloned()
-        .collect::<BTreeSet<String>>();
     if !allowed_key_prefixes
         .iter()
         .any(|prefix| key.starts_with(prefix))
