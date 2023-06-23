@@ -458,8 +458,10 @@ pub fn set_remote_ttl(key: &str, ttl: i64) -> Result<(), crate::Error> {
 /// * `delta` - The amount to increase the counter by.
 /// * `window` - How long each period should be in seconds.
 #[inline]
-pub fn increment_rate_limit(key: &str, delta: i64, window: i64) -> Rate {
-    crate::bulwark_host::increment_rate_limit(key, delta, window)
+pub fn increment_rate_limit(key: &str, delta: i64, window: i64) -> Result<Rate, crate::Error> {
+    Ok(crate::bulwark_host::increment_rate_limit(
+        key, delta, window,
+    )?)
 }
 
 /// Checks a rate limit, returning the number of attempts so far and the expiration time.
@@ -473,8 +475,8 @@ pub fn increment_rate_limit(key: &str, delta: i64, window: i64) -> Rate {
 ///
 /// * `key` - The key name corresponding to the state counter.
 #[inline]
-pub fn check_rate_limit(key: &str) -> Rate {
-    crate::bulwark_host::check_rate_limit(key)
+pub fn check_rate_limit(key: &str) -> Result<Rate, crate::Error> {
+    Ok(crate::bulwark_host::check_rate_limit(key)?)
 }
 
 /// Increments a circuit breaker, returning the generation count, success count, failure count,
@@ -498,24 +500,36 @@ pub fn check_rate_limit(key: &str) -> Rate {
 /// ```no_run
 /// use bulwark_wasm_sdk::{increment_breaker, BreakerDelta};
 ///
-/// let key = "client.ip:192.168.0.1";
-/// let failure = true;
-/// let breaker = increment_breaker(
-///     key,
-///     if !failure {
-///         BreakerDelta::Success(1)
-///     } else {
-///         BreakerDelta::Failure(1)
-///     },
-///     60 * 60, // 1 hour
-/// );
+/// if let Some(ip) = get_client_ip() {
+///     let key = format!("client.ip:{ip}");
+///     let failure = true; // often based on status code
+///     let breaker = increment_breaker(
+///         &key,
+///         if !failure {
+///             BreakerDelta::Success(1)
+///         } else {
+///             BreakerDelta::Failure(1)
+///         },
+///         60 * 60, // 1 hour
+///     )?;
+///     // use breaker here
+/// }
 /// ```
-pub fn increment_breaker(key: &str, delta: BreakerDelta, window: i64) -> Breaker {
+pub fn increment_breaker(
+    key: &str,
+    delta: BreakerDelta,
+    window: i64,
+) -> Result<Breaker, crate::Error> {
     let (success_delta, failure_delta) = match delta {
         BreakerDelta::Success(d) => (d, 0),
         BreakerDelta::Failure(d) => (0, d),
     };
-    crate::bulwark_host::increment_breaker(key, success_delta, failure_delta, window)
+    Ok(crate::bulwark_host::increment_breaker(
+        key,
+        success_delta,
+        failure_delta,
+        window,
+    )?)
 }
 
 /// Checks a circuit breaker, returning the generation count, success count, failure count,
@@ -530,6 +544,6 @@ pub fn increment_breaker(key: &str, delta: BreakerDelta, window: i64) -> Breaker
 ///
 /// * `key` - The key name corresponding to the state counter.
 #[inline]
-pub fn check_breaker(key: &str) -> Breaker {
-    crate::bulwark_host::check_breaker(key)
+pub fn check_breaker(key: &str) -> Result<Breaker, crate::Error> {
+    Ok(crate::bulwark_host::check_breaker(key)?)
 }

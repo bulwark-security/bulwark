@@ -88,7 +88,6 @@ world host-api {
   import get-combined-tags: func() -> list<string>
   import get-outcome: func() -> outcome-interface
 
-  // TODO: error handling
   import get-remote-state: func(key: string) -> result<list<u8>, state-error>
   import set-remote-state: func(key: string, value: list<u8>) -> result<_, state-error>
   import increment-remote-state: func(key: string) -> result<s64, state-error>
@@ -100,11 +99,10 @@ world host-api {
   import add-request-header: func(request-id: u64, name: string, value: list<u8>)
   import set-request-body: func(request-id: u64, body: list<u8>) -> response-interface
 
-  // TODO: error handling
-  import increment-rate-limit: func(key: string, delta: s64, window: s64) -> rate-interface
-  import check-rate-limit: func(key: string) -> rate-interface
-  import increment-breaker: func(key: string, success-delta: s64, failure-delta: s64, window: s64) -> breaker-interface
-  import check-breaker: func(key: string) -> breaker-interface
+  import increment-rate-limit: func(key: string, delta: s64, window: s64) -> result<rate-interface, state-error>
+  import check-rate-limit: func(key: string) -> result<rate-interface, state-error>
+  import increment-breaker: func(key: string, success-delta: s64, failure-delta: s64, window: s64) -> result<breaker-interface, state-error>
+  import check-breaker: func(key: string) -> result<breaker-interface, state-error>
 }
 world handlers {
   export on-request: func() -> result
