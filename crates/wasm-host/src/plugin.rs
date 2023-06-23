@@ -22,6 +22,7 @@ use {
     bulwark_wasm_sdk::{Decision, Outcome},
     chrono::Utc,
     redis::Commands,
+    std::str::FromStr,
     std::{
         collections::{BTreeSet, HashMap},
         convert::From,
@@ -757,35 +758,22 @@ impl bulwark_host::HostApiImports for RequestContext {
         &mut self,
         method: String,
         uri: String,
-    ) -> Result<u64, wasmtime::Error> {
-        let allowed_http_domains = self
-            .permissions
-            .http
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<String>>();
-        let parsed_uri = Url::parse(&uri).unwrap();
-        let requested_domain = parsed_uri.domain().unwrap();
-        if !allowed_http_domains.contains(&requested_domain.to_string()) {
-            // TODO: convert to error
-            panic!("access to http resource denied");
-        }
-        let mut outbound_requests = self.outbound_http.lock().unwrap();
-        let method = match method.to_ascii_uppercase().as_str() {
-            "GET" => reqwest::Method::GET,
-            "HEAD" => reqwest::Method::HEAD,
-            "POST" => reqwest::Method::POST,
-            "PUT" => reqwest::Method::PUT,
-            "PATCH" => reqwest::Method::PATCH,
-            "DELETE" => reqwest::Method::DELETE,
-            "OPTIONS" => reqwest::Method::OPTIONS,
-            "TRACE" => reqwest::Method::TRACE,
-            _ => panic!("unsupported http method"),
-        };
-        let builder = self.http_client.request(method, uri);
-        let index: u64 = outbound_requests.len().try_into().unwrap();
-        outbound_requests.insert(index, builder);
-        Ok((outbound_requests.len() - 1).try_into()?)
+    ) -> Result<Result<u64, bulwark_host::HttpError>, wasmtime::Error> {
+        Ok(
+            // Inner function to permit ? operator
+            || -> Result<u64, bulwark_host::HttpError> {
+                verify_http_domains(&self.permissions.http, &uri)?;
+
+                let mut outbound_requests = self.outbound_http.lock().unwrap();
+                let method = reqwest::Method::from_str(&method)
+                    .map_err(|_| bulwark_host::HttpError::InvalidMethod(method))?;
+
+                let builder = self.http_client.request(method, uri);
+                let index: u64 = outbound_requests.len() as u64;
+                outbound_requests.insert(index, builder);
+                Ok(index)
+            }(),
+        )
     }
 
     /// Adds a request header to an outbound HTTP request.
@@ -800,13 +788,20 @@ impl bulwark_host::HostApiImports for RequestContext {
         request_id: u64,
         name: String,
         value: Vec<u8>,
-    ) -> Result<(), wasmtime::Error> {
-        let mut outbound_requests = self.outbound_http.lock().unwrap();
-        // remove/insert to avoid move issues
-        let mut builder = outbound_requests.remove(&request_id).unwrap();
-        builder = builder.header(name, value);
-        outbound_requests.insert(request_id, builder);
-        Ok(())
+    ) -> Result<Result<(), bulwark_host::HttpError>, wasmtime::Error> {
+        Ok(
+            // Inner function to permit ? operator
+            || -> Result<(), bulwark_host::HttpError> {
+                let mut outbound_requests = self.outbound_http.lock().unwrap();
+                // remove/insert to avoid move issues
+                let mut builder = outbound_requests
+                    .remove(&request_id)
+                    .ok_or_else(|| bulwark_host::HttpError::MissingId(request_id))?;
+                builder = builder.header(name, value);
+                outbound_requests.insert(request_id, builder);
+                Ok(())
+            }(),
+        )
     }
 
     /// Sets the request body, if any. Returns the response.
@@ -821,35 +816,44 @@ impl bulwark_host::HostApiImports for RequestContext {
         &mut self,
         request_id: u64,
         body: Vec<u8>,
-    ) -> Result<bulwark_host::ResponseInterface, wasmtime::Error> {
+    ) -> Result<Result<bulwark_host::ResponseInterface, bulwark_host::HttpError>, wasmtime::Error>
+    {
         // TODO: handle basic error scenarios like timeouts
-        // TODO: remove unwraps
-        let mut outbound_requests = self.outbound_http.lock().unwrap();
-        // remove/insert to avoid move issues
-        let builder = outbound_requests.remove(&request_id).unwrap();
-        let builder = builder.body(body);
 
-        let response = builder.send().unwrap();
-        let status: u32 = response.status().as_u16().try_into().unwrap();
-        // need to read headers before body because retrieving body bytes will move the response
-        let headers: Vec<HeaderInterface> = response
-            .headers()
-            .iter()
-            .map(|(name, value)| HeaderInterface {
-                name: name.to_string(),
-                value: value.as_bytes().to_vec(),
-            })
-            .collect();
-        let body = response.bytes().unwrap().to_vec();
-        let content_length: u64 = body.len().try_into().unwrap();
-        Ok(bulwark_host::ResponseInterface {
-            status,
-            headers,
-            chunk: body,
-            chunk_start: 0,
-            chunk_length: content_length,
-            end_of_stream: true,
-        })
+        Ok(
+            // Inner function to permit ? operator
+            || -> Result<bulwark_host::ResponseInterface, bulwark_host::HttpError> {
+                let mut outbound_requests = self.outbound_http.lock().unwrap();
+                let builder = outbound_requests
+                    .remove(&request_id)
+                    .ok_or_else(|| bulwark_host::HttpError::MissingId(request_id))?;
+                let builder = builder.body(body);
+
+                let response = builder
+                    .send()
+                    .map_err(|err| bulwark_host::HttpError::Transmit(err.to_string()))?;
+                let status: u32 = response.status().as_u16() as u32;
+                // need to read headers before body because retrieving body bytes will move the response
+                let headers: Vec<HeaderInterface> = response
+                    .headers()
+                    .iter()
+                    .map(|(name, value)| HeaderInterface {
+                        name: name.to_string(),
+                        value: value.as_bytes().to_vec(),
+                    })
+                    .collect();
+                let body = response.bytes().unwrap().to_vec();
+                let content_length: u64 = body.len() as u64;
+                Ok(bulwark_host::ResponseInterface {
+                    status,
+                    headers,
+                    chunk: body,
+                    chunk_start: 0,
+                    chunk_length: content_length,
+                    end_of_stream: true,
+                })
+            }(),
+        )
     }
 
     /// Records the decision value the plugin wants to return.
@@ -1294,6 +1298,23 @@ impl bulwark_host::HostApiImports for RequestContext {
             }(),
         )
     }
+}
+
+/// Ensures that access to any HTTP host has the appropriate permissions set.
+fn verify_http_domains(
+    // TODO: BTreeSet<String> instead, all the way up
+    allowed_http_domains: &[String],
+    uri: &str,
+) -> Result<(), bulwark_host::HttpError> {
+    let parsed_uri =
+        Url::parse(uri).map_err(|_| bulwark_host::HttpError::InvalidUri(uri.to_string()))?;
+    let requested_domain = parsed_uri
+        .domain()
+        .ok_or_else(|| bulwark_host::HttpError::InvalidUri(uri.to_string()))?;
+    if !allowed_http_domains.contains(&requested_domain.to_string()) {
+        return Err(bulwark_host::HttpError::Permission(uri.to_string()));
+    }
+    Ok(())
 }
 
 /// Ensures that access to any remote state key has the appropriate permissions set.

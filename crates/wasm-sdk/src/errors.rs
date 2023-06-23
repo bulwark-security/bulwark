@@ -1,6 +1,8 @@
 /// Generic result
 pub type Result = ::std::result::Result<(), Error>;
 
+// TODO: error is way too big, replace w/ aliased anyhow or Box<dyn std::error::Error>
+
 /// Generic error
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -19,6 +21,11 @@ pub enum Error {
     /// Returned when there is an issue with the environment variable requested by the plugin.
     #[error(transparent)]
     EnvVar(#[from] EnvVarError),
+
+    /// Returned when there is an issue with an http request sent by the plugin.
+    #[error(transparent)]
+    Http(#[from] HttpError),
+
     /// Returned when there is an issue with the remote state requested by the plugin.
     #[error(transparent)]
     RemoteState(#[from] RemoteStateError),
@@ -57,6 +64,28 @@ impl From<crate::bulwark_host::EnvError> for Error {
             }
             crate::bulwark_host::EnvError::NotUnicode(var) => {
                 Error::EnvVar(EnvVarError::NotUnicode { var })
+            }
+        }
+    }
+}
+
+impl From<crate::bulwark_host::HttpError> for Error {
+    fn from(error: crate::bulwark_host::HttpError) -> Self {
+        match error {
+            crate::bulwark_host::HttpError::Permission(host) => {
+                Error::Permission(PermissionError::Http { host })
+            }
+            crate::bulwark_host::HttpError::InvalidMethod(method) => {
+                Error::Http(HttpError::InvalidMethod { method })
+            }
+            crate::bulwark_host::HttpError::InvalidUri(uri) => {
+                Error::Http(HttpError::InvalidUri { uri })
+            }
+            crate::bulwark_host::HttpError::MissingId(id) => {
+                Error::Http(HttpError::MissingRequestId { id })
+            }
+            crate::bulwark_host::HttpError::Transmit(message) => {
+                Error::Http(HttpError::Transmit { message })
             }
         }
     }
@@ -116,4 +145,17 @@ pub enum EnvVarError {
 pub enum RemoteStateError {
     #[error("error accessing remote state: {message}")]
     Remote { message: String },
+}
+
+/// Returned when there is an issue with an http request sent by the plugin.
+#[derive(thiserror::Error, Debug)]
+pub enum HttpError {
+    #[error("invalid http method: '{method}'")]
+    InvalidMethod { method: String },
+    #[error("invalid uri: '{uri}'")]
+    InvalidUri { uri: String },
+    #[error("missing request id: '{id}'")]
+    MissingRequestId { id: u64 },
+    #[error("error sending http request: {message}")]
+    Transmit { message: String },
 }

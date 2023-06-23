@@ -68,6 +68,14 @@ world host-api {
     permission(string),
     remote(string),
   }
+  variant http-error {
+    permission(string),
+    invalid-method(string),
+    invalid-uri(string),
+    // TODO: remove after condense
+    missing-id(u64),
+    transmit(string),
+  }
 
   // TODO: many of these should return the result type; historically this wasn't supported but this should be fixed?
 
@@ -93,10 +101,10 @@ world host-api {
   import increment-remote-state-by: func(key: string, delta: s64) -> result<s64, state-error>
   import set-remote-ttl: func(key: string, ttl: s64) -> result<_, state-error>
 
-  // TODO: condense to one function, add error handling
-  import prepare-request: func(method: string, uri: string) -> u64
-  import add-request-header: func(request-id: u64, name: string, value: list<u8>)
-  import set-request-body: func(request-id: u64, body: list<u8>) -> response-interface
+  // TODO: condense to one function
+  import prepare-request: func(method: string, uri: string) -> result<u64, http-error>
+  import add-request-header: func(request-id: u64, name: string, value: list<u8>) -> result<_, http-error>
+  import set-request-body: func(request-id: u64, body: list<u8>) -> result<response-interface, http-error>
 
   import increment-rate-limit: func(key: string, delta: s64, window: s64) -> result<rate-interface, state-error>
   import check-rate-limit: func(key: string) -> result<rate-interface, state-error>

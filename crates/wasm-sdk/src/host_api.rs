@@ -338,13 +338,13 @@ pub fn get_outcome() -> Option<Outcome> {
 /// # Arguments
 ///
 /// * `request` - The HTTP request to send.
-pub fn send_request(request: Request) -> Response {
+pub fn send_request(request: Request) -> Result<Response, crate::Error> {
     let request_id = crate::bulwark_host::prepare_request(
         request.method().as_str(),
         request.uri().to_string().as_str(),
-    );
+    )?;
     for (name, value) in request.headers() {
-        crate::bulwark_host::add_request_header(request_id, name.as_str(), value.as_bytes());
+        crate::bulwark_host::add_request_header(request_id, name.as_str(), value.as_bytes())?;
     }
     let chunk = request.body();
     if !chunk.end_of_stream {
@@ -354,8 +354,8 @@ pub fn send_request(request: Request) -> Response {
     } else if chunk.size > 16384 {
         panic!("the entire request body must be 16384 bytes or less");
     }
-    let response = crate::bulwark_host::set_request_body(request_id, &chunk.content);
-    Response::from(response)
+    let response = crate::bulwark_host::set_request_body(request_id, &chunk.content)?;
+    Ok(Response::from(response))
 }
 
 /// Returns the named state value retrieved from Redis.
