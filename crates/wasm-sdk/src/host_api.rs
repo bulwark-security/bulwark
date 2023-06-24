@@ -78,8 +78,8 @@ pub const NO_BODY: BodyChunk = BodyChunk {
 pub fn get_request() -> Request {
     let raw_request: crate::bulwark_host::RequestInterface = crate::bulwark_host::get_request();
     let chunk: Vec<u8> = raw_request.chunk;
-    // TODO: error handling
-    let method = Method::from_str(raw_request.method.as_str()).unwrap();
+    // This code shouldn't be reachable if the method is invalid
+    let method = Method::from_str(raw_request.method.as_str()).expect("should be a valid method");
     let mut request = http::Request::builder()
         .method(method)
         .uri(raw_request.uri)
@@ -94,7 +94,8 @@ pub fn get_request() -> Request {
             start: raw_request.chunk_start,
             end_of_stream: raw_request.end_of_stream,
         })
-        .unwrap()
+        // Everything going into the builder should have already been validated somewhere else
+        .expect("should be a valid request")
 }
 
 /// Returns the response received from the interior service.
