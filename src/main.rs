@@ -105,7 +105,7 @@ async fn probe_handler(
     State(state): State<Arc<Mutex<HealthState>>>,
     Path(probe): Path<String>,
 ) -> (StatusCode, Json<HealthState>) {
-    let state = state.lock().unwrap();
+    let state = state.lock().expect("poisoned mutex");
     let status = match probe.as_str() {
         "live" => StatusCode::OK,
         "started" => {
@@ -245,7 +245,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 service_tasks.spawn(async move {
                     {
-                        let mut health_state = health_state.lock().unwrap();
+                        let mut health_state = health_state.lock().expect("poisoned mutex");
                         health_state.started = true;
                         health_state.ready = true;
                     }
