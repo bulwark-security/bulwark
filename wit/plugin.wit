@@ -85,7 +85,7 @@ world host-api {
   import get-env-bytes: func(key: string) -> result<list<u8>, env-error>
 
   import get-request: func() -> request-interface
-  import get-response: func() -> response-interface
+  import get-response: func() -> option<response-interface>
   import get-client-ip: func() -> option<ip-interface>
 
   import set-decision: func(decision: decision-interface) -> result<_, decision-error>

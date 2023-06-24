@@ -734,11 +734,15 @@ impl bulwark_host::HostApiImports for RequestContext {
     }
 
     /// Returns the response received from the interior service.
-    async fn get_response(&mut self) -> Result<bulwark_host::ResponseInterface, wasmtime::Error> {
+    ///
+    /// If called from `on_request` or `on_request_decision`, it will return `None` since a response
+    /// is not yet available.
+    async fn get_response(
+        &mut self,
+    ) -> Result<Option<bulwark_host::ResponseInterface>, wasmtime::Error> {
         let response: MutexGuard<Option<bulwark_host::ResponseInterface>> =
             self.host_mutable_context.response.lock().unwrap();
-        // TODO: remove unwrap
-        Ok(response.to_owned().unwrap())
+        Ok(response.to_owned())
     }
 
     /// Returns the originating client's IP address, if available.

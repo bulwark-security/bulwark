@@ -98,23 +98,25 @@ pub fn get_request() -> Request {
 }
 
 /// Returns the response received from the interior service.
-pub fn get_response() -> Response {
-    let raw_response: crate::bulwark_host::ResponseInterface = crate::bulwark_host::get_response();
+pub fn get_response() -> Option<Response> {
+    let raw_response: crate::bulwark_host::ResponseInterface = crate::bulwark_host::get_response()?;
     let chunk: Vec<u8> = raw_response.chunk;
-    // TODO: error handling
-    let status: u16 = raw_response.status.try_into().unwrap();
+    let status = raw_response.status as u16;
     let mut response = http::Response::builder().status(status);
     for header in raw_response.headers {
         response = response.header(header.name, header.value);
     }
-    response
-        .body(BodyChunk {
-            content: chunk,
-            size: raw_response.chunk_length,
-            start: raw_response.chunk_start,
-            end_of_stream: raw_response.end_of_stream,
-        })
-        .unwrap()
+    Some(
+        response
+            .body(BodyChunk {
+                content: chunk,
+                size: raw_response.chunk_length,
+                start: raw_response.chunk_start,
+                end_of_stream: raw_response.end_of_stream,
+            })
+            // Everything going into the builder should have already been validated somewhere else
+            .expect("should be a valid response"),
+    )
 }
 
 /// Returns the originating client's IP address, if available.
@@ -128,7 +130,6 @@ pub fn get_client_ip() -> Option<IpAddr> {
 ///
 /// * `key` - The key name corresponding to the param value.
 pub fn get_param_value(key: &str) -> Result<Value, crate::Error> {
-    // TODO: this should return a result
     let raw_value = crate::bulwark_host::get_param_value(key)?;
     let value: serde_json::Value = serde_json::from_slice(&raw_value).unwrap();
     Ok(value)
@@ -141,7 +142,6 @@ pub fn get_param_value(key: &str) -> Result<Value, crate::Error> {
 /// * `key` - The key name corresponding to the param value.
 /// * `value` - The value to record. Values are serialized JSON.
 pub fn set_param_value(key: &str, value: Value) -> Result<(), crate::Error> {
-    // TODO: this should return a result
     let json = serde_json::to_vec(&value)?;
     crate::bulwark_host::set_param_value(key, &json)?;
     Ok(())
@@ -496,21 +496,30 @@ pub fn check_rate_limit(key: &str) -> Result<Rate, crate::Error> {
 /// # Examples
 ///
 /// ```no_run
-/// use bulwark_wasm_sdk::{increment_breaker, BreakerDelta};
+/// use bulwark_wasm_sdk::*;
 ///
-/// if let Some(ip) = get_client_ip() {
-///     let key = format!("client.ip:{ip}");
-///     let failure = true; // often based on status code
-///     let breaker = increment_breaker(
-///         &key,
-///         if !failure {
-///             BreakerDelta::Success(1)
-///         } else {
-///             BreakerDelta::Failure(1)
-///         },
-///         60 * 60, // 1 hour
-///     )?;
-///     // use breaker here
+/// pub struct CircuitBreaker;
+///
+/// #[bulwark_plugin]
+/// impl Handlers for CircuitBreaker {
+///     fn on_response_decision() -> Result {
+///         if let Some(ip) = get_client_ip() {
+///             let key = format!("client.ip:{ip}");
+///             // "failure" could be determined by other methods besides status code
+///             let failure = get_response().map(|r| r.status().as_u16() >= 500).unwrap_or(true);
+///             let breaker = increment_breaker(
+///                 &key,
+///                 if !failure {
+///                     BreakerDelta::Success(1)
+///                 } else {
+///                     BreakerDelta::Failure(1)
+///                 },
+///                 60 * 60, // 1 hour
+///             )?;
+///             // use breaker here
+///         }
+///         Ok(())
+///     }
 /// }
 /// ```
 pub fn increment_breaker(
