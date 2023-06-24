@@ -53,40 +53,63 @@ world host-api {
     consecutive-failures: s64,
     expiration: s64,
   }
+  variant env-error {
+    missing(string),
+    not-unicode(string),
+    permission(string),
+  }
+  variant decision-error {
+    invalid(string),
+  }
+  variant param-error {
+    json(string),
+  }
+  variant state-error {
+    permission(string),
+    remote(string),
+  }
+  variant http-error {
+    permission(string),
+    invalid-method(string),
+    invalid-uri(string),
+    // TODO: remove after condense
+    missing-id(u64),
+    transmit(string),
+  }
 
   // TODO: many of these should return the result type; historically this wasn't supported but this should be fixed?
 
   import get-config: func() -> list<u8>
-  import get-param-value: func(key: string) -> list<u8>
-  import set-param-value: func(key: string, value: list<u8>)
-  import get-env-bytes: func(key: string) -> list<u8>
+  import get-param-value: func(key: string) -> result<list<u8>, param-error>
+  import set-param-value: func(key: string, value: list<u8>) -> result<_, param-error>
+  import get-env-bytes: func(key: string) -> result<list<u8>, env-error>
 
   import get-request: func() -> request-interface
-  import get-response: func() -> response-interface
+  import get-response: func() -> option<response-interface>
   import get-client-ip: func() -> option<ip-interface>
 
-  import set-decision: func(decision: decision-interface)
+  import set-decision: func(decision: decision-interface) -> result<_, decision-error>
   import set-tags: func(tags: list<string>)
   import append-tags: func(tags: list<string>) -> list<string>
-  import get-combined-decision: func() -> decision-interface
-  import get-combined-tags: func() -> list<string>
-  import get-outcome: func() -> outcome-interface
+  import get-combined-decision: func() -> option<decision-interface>
+  import get-combined-tags: func() -> option<list<string>>
+  import get-outcome: func() -> option<outcome-interface>
 
-  import get-remote-state: func(key: string) -> list<u8>
-  import set-remote-state: func(key: string, value: list<u8>)
-  import increment-remote-state: func(key: string) -> s64
-  import increment-remote-state-by: func(key: string, delta: s64) -> s64
-  import set-remote-ttl: func(key: string, ttl: s64)
+  import get-remote-state: func(key: string) -> result<list<u8>, state-error>
+  import set-remote-state: func(key: string, value: list<u8>) -> result<_, state-error>
+  import increment-remote-state: func(key: string) -> result<s64, state-error>
+  import increment-remote-state-by: func(key: string, delta: s64) -> result<s64, state-error>
+  import set-remote-ttl: func(key: string, ttl: s64) -> result<_, state-error>
 
   // TODO: condense to one function
-  import prepare-request: func(method: string, uri: string) -> u64
-  import add-request-header: func(request-id: u64, name: string, value: list<u8>)
-  import set-request-body: func(request-id: u64, body: list<u8>) -> response-interface
+  import prepare-request: func(method: string, uri: string) -> result<u64, http-error>
+  import add-request-header: func(request-id: u64, name: string, value: list<u8>) -> result<_, http-error>
+  import set-request-body: func(request-id: u64, body: list<u8>) -> result<response-interface, http-error>
 
-  import increment-rate-limit: func(key: string, delta: s64, window: s64) -> rate-interface
-  import check-rate-limit: func(key: string) -> rate-interface
-  import increment-breaker: func(key: string, success-delta: s64, failure-delta: s64, window: s64) -> breaker-interface
-  import check-breaker: func(key: string) -> breaker-interface
+  import increment-rate-limit: func(key: string, delta: s64, window: s64) -> result<rate-interface, state-error>
+  import check-rate-limit: func(key: string) -> result<rate-interface, state-error>
+  import increment-breaker: func(key: string, success-delta: s64, failure-delta: s64, window: s64) -> result<breaker-interface, state-error>
+  import check-breaker: func(key: string) -> result<breaker-interface, state-error>
 }
 world handlers {
   export on-request: func() -> result

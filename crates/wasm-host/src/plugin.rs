@@ -22,6 +22,7 @@ use {
     bulwark_wasm_sdk::{Decision, Outcome},
     chrono::Utc,
     redis::Commands,
+    std::str::FromStr,
     std::{
         collections::{BTreeSet, HashMap},
         convert::From,
@@ -31,6 +32,7 @@ use {
         sync::{Arc, Mutex, MutexGuard},
     },
     url::Url,
+    validator::Validate,
     wasmtime::component::{Component, Linker},
     wasmtime::{AsContextMut, Config, Engine, Store},
     wasmtime_wasi::preview2::{Table, WasiCtx, WasiCtxBuilder, WasiView},
@@ -575,7 +577,11 @@ impl PluginInstance {
     /// Records a [`Response`](bulwark_wasm_sdk::Response) so that it will be accessible to the plugin guest
     /// environment.
     pub fn record_response(&mut self, response: Arc<bulwark_wasm_sdk::Response>) {
-        let mut interior_response = self.host_mutable_context.response.lock().unwrap();
+        let mut interior_response = self
+            .host_mutable_context
+            .response
+            .lock()
+            .expect("poisoned mutex");
         *interior_response = Some(bulwark_host::ResponseInterface::from(response));
     }
 
@@ -586,9 +592,17 @@ impl PluginInstance {
         decision_components: &DecisionComponents,
         outcome: Outcome,
     ) {
-        let mut interior_decision = self.host_mutable_context.combined_decision.lock().unwrap();
+        let mut interior_decision = self
+            .host_mutable_context
+            .combined_decision
+            .lock()
+            .expect("poisoned mutex");
         *interior_decision = Some(decision_components.decision.into());
-        let mut interior_outcome = self.host_mutable_context.outcome.lock().unwrap();
+        let mut interior_outcome = self
+            .host_mutable_context
+            .outcome
+            .lock()
+            .expect("poisoned mutex");
         *interior_outcome = Some(outcome.into());
     }
 
@@ -664,10 +678,16 @@ impl bulwark_host::HostApiImports for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The key name corresponding to the param value.
-    async fn get_param_value(&mut self, key: String) -> Result<Vec<u8>, wasmtime::Error> {
-        let params = self.params.lock().unwrap();
+    async fn get_param_value(
+        &mut self,
+        key: String,
+    ) -> Result<Result<Vec<u8>, bulwark_host::ParamError>, wasmtime::Error> {
+        let params = self.params.lock().expect("poisoned mutex");
         let value = params.get(&key).unwrap_or(&bulwark_wasm_sdk::Value::Null);
-        Ok(serde_json::to_vec(value)?)
+        match serde_json::to_vec(value) {
+            Ok(bytes) => Ok(Ok(bytes)),
+            Err(err) => Ok(Err(bulwark_host::ParamError::Json(err.to_string()))),
+        }
     }
 
     /// Set a named value in the request context's params.
@@ -680,11 +700,15 @@ impl bulwark_host::HostApiImports for RequestContext {
         &mut self,
         key: String,
         value: Vec<u8>,
-    ) -> std::result::Result<(), wasmtime::Error> {
-        let mut params = self.params.lock().unwrap();
-        let value: bulwark_wasm_sdk::Value = serde_json::from_slice(&value)?;
-        params.insert(key, value);
-        Ok(())
+    ) -> Result<Result<(), bulwark_host::ParamError>, wasmtime::Error> {
+        let mut params = self.params.lock().expect("poisoned mutex");
+        match serde_json::from_slice(&value) {
+            Ok(value) => {
+                params.insert(key, value);
+                Ok(Ok(()))
+            }
+            Err(err) => Ok(Err(bulwark_host::ParamError::Json(err.to_string()))),
+        }
     }
 
     /// Returns a named environment variable value as bytes.
@@ -692,7 +716,10 @@ impl bulwark_host::HostApiImports for RequestContext {
     /// # Arguments
     ///
     /// * `key` - The environment variable name. Case-sensitive.
-    async fn get_env_bytes(&mut self, key: String) -> Result<Vec<u8>, wasmtime::Error> {
+    async fn get_env_bytes(
+        &mut self,
+        key: String,
+    ) -> Result<Result<Vec<u8>, bulwark_host::EnvError>, wasmtime::Error> {
         let allowed_env_vars = self
             .permissions
             .env
@@ -700,27 +727,37 @@ impl bulwark_host::HostApiImports for RequestContext {
             .cloned()
             .collect::<BTreeSet<String>>();
         if !allowed_env_vars.contains(&key) {
-            // TODO: convert to error
-            panic!("access to environment variable denied");
+            return Ok(Err(bulwark_host::EnvError::Permission(key)));
         }
-        Ok(std::env::var(key)?.as_bytes().to_vec())
+        match std::env::var(&key) {
+            Ok(var) => Ok(Ok(var.as_bytes().to_vec())),
+            Err(err) => match err {
+                std::env::VarError::NotPresent => Ok(Err(bulwark_host::EnvError::Missing(key))),
+                std::env::VarError::NotUnicode(_) => {
+                    Ok(Err(bulwark_host::EnvError::NotUnicode(key)))
+                }
+            },
+        }
     }
 
     /// Returns the incoming request associated with the request context.
-    async fn get_request(
-        &mut self,
-    ) -> std::result::Result<bulwark_host::RequestInterface, wasmtime::Error> {
+    async fn get_request(&mut self) -> Result<bulwark_host::RequestInterface, wasmtime::Error> {
         Ok(self.request.clone())
     }
 
     /// Returns the response received from the interior service.
+    ///
+    /// If called from `on_request` or `on_request_decision`, it will return `None` since a response
+    /// is not yet available.
     async fn get_response(
         &mut self,
-    ) -> std::result::Result<bulwark_host::ResponseInterface, wasmtime::Error> {
-        let response: MutexGuard<Option<bulwark_host::ResponseInterface>> =
-            self.host_mutable_context.response.lock().unwrap();
-        // TODO: remove unwrap
-        Ok(response.to_owned().unwrap())
+    ) -> Result<Option<bulwark_host::ResponseInterface>, wasmtime::Error> {
+        let response: MutexGuard<Option<bulwark_host::ResponseInterface>> = self
+            .host_mutable_context
+            .response
+            .lock()
+            .expect("poisoned mutex");
+        Ok(response.to_owned())
     }
 
     /// Returns the originating client's IP address, if available.
@@ -740,35 +777,22 @@ impl bulwark_host::HostApiImports for RequestContext {
         &mut self,
         method: String,
         uri: String,
-    ) -> Result<u64, wasmtime::Error> {
-        let allowed_http_domains = self
-            .permissions
-            .http
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<String>>();
-        let parsed_uri = Url::parse(&uri).unwrap();
-        let requested_domain = parsed_uri.domain().unwrap();
-        if !allowed_http_domains.contains(&requested_domain.to_string()) {
-            // TODO: convert to error
-            panic!("access to http resource denied");
-        }
-        let mut outbound_requests = self.outbound_http.lock().unwrap();
-        let method = match method.to_ascii_uppercase().as_str() {
-            "GET" => reqwest::Method::GET,
-            "HEAD" => reqwest::Method::HEAD,
-            "POST" => reqwest::Method::POST,
-            "PUT" => reqwest::Method::PUT,
-            "PATCH" => reqwest::Method::PATCH,
-            "DELETE" => reqwest::Method::DELETE,
-            "OPTIONS" => reqwest::Method::OPTIONS,
-            "TRACE" => reqwest::Method::TRACE,
-            _ => panic!("unsupported http method"),
-        };
-        let builder = self.http_client.request(method, uri);
-        let index: u64 = outbound_requests.len().try_into().unwrap();
-        outbound_requests.insert(index, builder);
-        Ok((outbound_requests.len() - 1).try_into()?)
+    ) -> Result<Result<u64, bulwark_host::HttpError>, wasmtime::Error> {
+        Ok(
+            // Inner function to permit ? operator
+            || -> Result<u64, bulwark_host::HttpError> {
+                verify_http_domains(&self.permissions.http, &uri)?;
+
+                let mut outbound_requests = self.outbound_http.lock().expect("poisoned mutex");
+                let method = reqwest::Method::from_str(&method)
+                    .map_err(|_| bulwark_host::HttpError::InvalidMethod(method))?;
+
+                let builder = self.http_client.request(method, uri);
+                let index: u64 = outbound_requests.len() as u64;
+                outbound_requests.insert(index, builder);
+                Ok(index)
+            }(),
+        )
     }
 
     /// Adds a request header to an outbound HTTP request.
@@ -783,13 +807,20 @@ impl bulwark_host::HostApiImports for RequestContext {
         request_id: u64,
         name: String,
         value: Vec<u8>,
-    ) -> Result<(), wasmtime::Error> {
-        let mut outbound_requests = self.outbound_http.lock().unwrap();
-        // remove/insert to avoid move issues
-        let mut builder = outbound_requests.remove(&request_id).unwrap();
-        builder = builder.header(name, value);
-        outbound_requests.insert(request_id, builder);
-        Ok(())
+    ) -> Result<Result<(), bulwark_host::HttpError>, wasmtime::Error> {
+        Ok(
+            // Inner function to permit ? operator
+            || -> Result<(), bulwark_host::HttpError> {
+                let mut outbound_requests = self.outbound_http.lock().expect("poisoned mutex");
+                // remove/insert to avoid move issues
+                let mut builder = outbound_requests
+                    .remove(&request_id)
+                    .ok_or(bulwark_host::HttpError::MissingId(request_id))?;
+                builder = builder.header(name, value);
+                outbound_requests.insert(request_id, builder);
+                Ok(())
+            }(),
+        )
     }
 
     /// Sets the request body, if any. Returns the response.
@@ -804,35 +835,44 @@ impl bulwark_host::HostApiImports for RequestContext {
         &mut self,
         request_id: u64,
         body: Vec<u8>,
-    ) -> Result<bulwark_host::ResponseInterface, wasmtime::Error> {
+    ) -> Result<Result<bulwark_host::ResponseInterface, bulwark_host::HttpError>, wasmtime::Error>
+    {
         // TODO: handle basic error scenarios like timeouts
-        // TODO: remove unwraps
-        let mut outbound_requests = self.outbound_http.lock().unwrap();
-        // remove/insert to avoid move issues
-        let builder = outbound_requests.remove(&request_id).unwrap();
-        let builder = builder.body(body);
 
-        let response = builder.send().unwrap();
-        let status: u32 = response.status().as_u16().try_into().unwrap();
-        // need to read headers before body because retrieving body bytes will move the response
-        let headers: Vec<HeaderInterface> = response
-            .headers()
-            .iter()
-            .map(|(name, value)| HeaderInterface {
-                name: name.to_string(),
-                value: value.as_bytes().to_vec(),
-            })
-            .collect();
-        let body = response.bytes().unwrap().to_vec();
-        let content_length: u64 = body.len().try_into().unwrap();
-        Ok(bulwark_host::ResponseInterface {
-            status,
-            headers,
-            chunk: body,
-            chunk_start: 0,
-            chunk_length: content_length,
-            end_of_stream: true,
-        })
+        Ok(
+            // Inner function to permit ? operator
+            || -> Result<bulwark_host::ResponseInterface, bulwark_host::HttpError> {
+                let mut outbound_requests = self.outbound_http.lock().expect("poisoned mutex");
+                let builder = outbound_requests
+                    .remove(&request_id)
+                    .ok_or(bulwark_host::HttpError::MissingId(request_id))?;
+                let builder = builder.body(body);
+
+                let response = builder
+                    .send()
+                    .map_err(|err| bulwark_host::HttpError::Transmit(err.to_string()))?;
+                let status: u32 = response.status().as_u16() as u32;
+                // need to read headers before body because retrieving body bytes will move the response
+                let headers: Vec<HeaderInterface> = response
+                    .headers()
+                    .iter()
+                    .map(|(name, value)| HeaderInterface {
+                        name: name.to_string(),
+                        value: value.as_bytes().to_vec(),
+                    })
+                    .collect();
+                let body = response.bytes().unwrap().to_vec();
+                let content_length: u64 = body.len() as u64;
+                Ok(bulwark_host::ResponseInterface {
+                    status,
+                    headers,
+                    chunk: body,
+                    chunk_start: 0,
+                    chunk_length: content_length,
+                    end_of_stream: true,
+                })
+            }(),
+        )
     }
 
     /// Records the decision value the plugin wants to return.
@@ -843,13 +883,20 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn set_decision(
         &mut self,
         decision: bulwark_host::DecisionInterface,
-    ) -> Result<(), wasmtime::Error> {
+    ) -> Result<Result<(), bulwark_host::DecisionError>, wasmtime::Error> {
         let decision = Decision::from(decision);
-        self.accept = decision.accept;
-        self.restrict = decision.restrict;
-        self.unknown = decision.unknown;
-        // TODO: validate
-        Ok(())
+        // Validate on both the guest and the host because we can't guarantee usage of the SDK.
+        match decision.validate() {
+            Ok(_) => {
+                // TODO: self should just have a decision rather than 3 separate components
+                self.accept = decision.accept;
+                self.restrict = decision.restrict;
+                self.unknown = decision.unknown;
+
+                Ok(Ok(()))
+            }
+            Err(err) => Ok(Err(bulwark_host::DecisionError::Invalid(err.to_string()))),
+        }
     }
 
     /// Records the tags the plugin wants to associate with its decision.
@@ -877,31 +924,39 @@ impl bulwark_host::HostApiImports for RequestContext {
     /// Typically used in the feedback phase.
     async fn get_combined_decision(
         &mut self,
-    ) -> Result<bulwark_host::DecisionInterface, wasmtime::Error> {
-        let combined_decision: MutexGuard<Option<bulwark_host::DecisionInterface>> =
-            self.host_mutable_context.combined_decision.lock().unwrap();
-        // TODO: this should probably be an Option return type rather than unwrapping here
-        Ok(combined_decision.to_owned().unwrap())
+    ) -> Result<Option<bulwark_host::DecisionInterface>, wasmtime::Error> {
+        let combined_decision: MutexGuard<Option<bulwark_host::DecisionInterface>> = self
+            .host_mutable_context
+            .combined_decision
+            .lock()
+            .expect("poisoned mutex");
+        Ok(combined_decision.to_owned())
     }
 
     /// Returns the combined set of tags associated with a decision, if available.
     ///
     /// Typically used in the feedback phase.
-    async fn get_combined_tags(&mut self) -> Result<Vec<String>, wasmtime::Error> {
-        let combined_tags: MutexGuard<Option<Vec<String>>> =
-            self.host_mutable_context.combined_tags.lock().unwrap();
-        // TODO: this should probably be an Option return type rather than unwrapping here
-        Ok(combined_tags.to_owned().unwrap())
+    async fn get_combined_tags(&mut self) -> Result<Option<Vec<String>>, wasmtime::Error> {
+        let combined_tags: MutexGuard<Option<Vec<String>>> = self
+            .host_mutable_context
+            .combined_tags
+            .lock()
+            .expect("poisoned mutex");
+        Ok(combined_tags.to_owned())
     }
 
     /// Returns the outcome of the combined decision, if available.
     ///
     /// Typically used in the feedback phase.
-    async fn get_outcome(&mut self) -> Result<bulwark_host::OutcomeInterface, wasmtime::Error> {
-        let outcome: MutexGuard<Option<bulwark_host::OutcomeInterface>> =
-            self.host_mutable_context.outcome.lock().unwrap();
-        // TODO: this should probably be an Option return type rather than unwrapping here
-        Ok(outcome.to_owned().unwrap())
+    async fn get_outcome(
+        &mut self,
+    ) -> Result<Option<bulwark_host::OutcomeInterface>, wasmtime::Error> {
+        let outcome: MutexGuard<Option<bulwark_host::OutcomeInterface>> = self
+            .host_mutable_context
+            .outcome
+            .lock()
+            .expect("poisoned mutex");
+        Ok(outcome.to_owned())
     }
 
     /// Returns the named state value retrieved from Redis.
@@ -914,25 +969,28 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn get_remote_state(
         &mut self,
         key: String,
-    ) -> Result<std::vec::Vec<u8>, wasmtime::Error> {
-        // TODO: figure out how to extract to a helper function?
-        let allowed_key_prefixes = self
-            .permissions
-            .state
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<String>>();
-        if !allowed_key_prefixes
-            .iter()
-            .any(|prefix| key.starts_with(prefix))
-        {
-            // TODO: convert to error
-            panic!("access to state value by prefix denied");
-        }
+    ) -> Result<Result<Vec<u8>, bulwark_host::StateError>, wasmtime::Error> {
+        Ok(
+            // Inner function to permit ? operator
+            || -> Result<Vec<u8>, bulwark_host::StateError> {
+                verify_remote_state_prefixes(&self.permissions.state, &key)?;
 
-        let pool = &self.redis_info.clone().unwrap().pool;
-        let mut conn = pool.get().unwrap();
-        Ok(conn.get(key)?)
+                if let Some(redis_info) = self.redis_info.clone() {
+                    let mut conn = redis_info
+                        .pool
+                        .get()
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?;
+
+                    Ok(conn
+                        .get(key)
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?)
+                } else {
+                    Err(bulwark_host::StateError::Remote(
+                        "no remote state configured".to_string(),
+                    ))
+                }
+            }(),
+        )
     }
 
     /// Set a named value in Redis.
@@ -944,26 +1002,29 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn set_remote_state(
         &mut self,
         key: String,
-        value: std::vec::Vec<u8>,
-    ) -> std::result::Result<(), wasmtime::Error> {
-        // TODO: figure out how to extract to a helper function?
-        let allowed_key_prefixes = self
-            .permissions
-            .state
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<String>>();
-        if !allowed_key_prefixes
-            .iter()
-            .any(|prefix| key.starts_with(prefix))
-        {
-            // TODO: convert to error
-            panic!("access to state value by prefix denied");
-        }
+        value: Vec<u8>,
+    ) -> Result<Result<(), bulwark_host::StateError>, wasmtime::Error> {
+        Ok(
+            // Inner function to permit ? operator
+            || -> Result<(), bulwark_host::StateError> {
+                verify_remote_state_prefixes(&self.permissions.state, &key)?;
 
-        let pool = &self.redis_info.clone().unwrap().pool;
-        let mut conn = pool.get().unwrap();
-        Ok(conn.set(key, value.to_vec())?)
+                if let Some(redis_info) = self.redis_info.clone() {
+                    let mut conn = redis_info
+                        .pool
+                        .get()
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?;
+
+                    conn.set::<String, Vec<u8>, redis::Value>(key, value)
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?;
+                    Ok(())
+                } else {
+                    Err(bulwark_host::StateError::Remote(
+                        "no remote state configured".to_string(),
+                    ))
+                }
+            }(),
+        )
     }
 
     /// Increments a named counter in Redis.
@@ -974,25 +1035,8 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn increment_remote_state(
         &mut self,
         key: String,
-    ) -> std::result::Result<i64, wasmtime::Error> {
-        // TODO: figure out how to extract to a helper function?
-        let allowed_key_prefixes = self
-            .permissions
-            .state
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<String>>();
-        if !allowed_key_prefixes
-            .iter()
-            .any(|prefix| key.starts_with(prefix))
-        {
-            // TODO: convert to error
-            panic!("access to state value by prefix denied");
-        }
-
-        let pool = &self.redis_info.clone().unwrap().pool;
-        let mut conn = pool.get().unwrap();
-        Ok(conn.incr(key, 1)?)
+    ) -> Result<Result<i64, bulwark_host::StateError>, wasmtime::Error> {
+        self.increment_remote_state_by(key, 1).await
     }
 
     /// Increments a named counter in Redis by a specified delta value.
@@ -1005,25 +1049,28 @@ impl bulwark_host::HostApiImports for RequestContext {
         &mut self,
         key: String,
         delta: i64,
-    ) -> std::result::Result<i64, wasmtime::Error> {
-        // TODO: figure out how to extract to a helper function?
-        let allowed_key_prefixes = self
-            .permissions
-            .state
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<String>>();
-        if !allowed_key_prefixes
-            .iter()
-            .any(|prefix| key.starts_with(prefix))
-        {
-            // TODO: convert to error
-            panic!("access to state value by prefix denied");
-        }
+    ) -> Result<Result<i64, bulwark_host::StateError>, wasmtime::Error> {
+        Ok(
+            // Inner function to permit ? operator
+            || -> Result<i64, bulwark_host::StateError> {
+                verify_remote_state_prefixes(&self.permissions.state, &key)?;
 
-        let pool = &self.redis_info.clone().unwrap().pool;
-        let mut conn = pool.get().unwrap();
-        Ok(conn.incr(key, delta)?)
+                if let Some(redis_info) = self.redis_info.clone() {
+                    let mut conn = redis_info
+                        .pool
+                        .get()
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?;
+
+                    Ok(conn
+                        .incr(key, delta)
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?)
+                } else {
+                    Err(bulwark_host::StateError::Remote(
+                        "no remote state configured".to_string(),
+                    ))
+                }
+            }(),
+        )
     }
 
     /// Sets an expiration on a named value in Redis.
@@ -1036,25 +1083,28 @@ impl bulwark_host::HostApiImports for RequestContext {
         &mut self,
         key: String,
         ttl: i64,
-    ) -> std::result::Result<(), wasmtime::Error> {
-        // TODO: figure out how to extract to a helper function?
-        let allowed_key_prefixes = self
-            .permissions
-            .state
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<String>>();
-        if !allowed_key_prefixes
-            .iter()
-            .any(|prefix| key.starts_with(prefix))
-        {
-            // TODO: convert to error
-            panic!("access to state value by prefix denied");
-        }
+    ) -> Result<Result<(), bulwark_host::StateError>, wasmtime::Error> {
+        Ok(
+            // Inner function to permit ? operator
+            || -> Result<(), bulwark_host::StateError> {
+                verify_remote_state_prefixes(&self.permissions.state, &key)?;
 
-        let pool = &self.redis_info.clone().unwrap().pool;
-        let mut conn = pool.get().unwrap();
-        Ok(conn.expire(key, ttl.try_into().unwrap())?)
+                if let Some(redis_info) = self.redis_info.clone() {
+                    let mut conn = redis_info
+                        .pool
+                        .get()
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?;
+
+                    conn.expire::<String, redis::Value>(key, ttl as usize)
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?;
+                    Ok(())
+                } else {
+                    Err(bulwark_host::StateError::Remote(
+                        "no remote state configured".to_string(),
+                    ))
+                }
+            }(),
+        )
     }
 
     /// Increments a rate limit, returning the number of attempts so far and the expiration time.
@@ -1074,37 +1124,40 @@ impl bulwark_host::HostApiImports for RequestContext {
         key: String,
         delta: i64,
         window: i64,
-    ) -> std::result::Result<bulwark_host::RateInterface, wasmtime::Error> {
-        // TODO: figure out how to extract to a helper function?
-        let allowed_key_prefixes = self
-            .permissions
-            .state
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<String>>();
-        if !allowed_key_prefixes
-            .iter()
-            .any(|prefix| key.starts_with(prefix))
-        {
-            // TODO: convert to error
-            panic!("access to state value by prefix denied");
-        }
+    ) -> Result<Result<bulwark_host::RateInterface, bulwark_host::StateError>, wasmtime::Error>
+    {
+        Ok(
+            // Inner function to permit ? operator
+            || -> Result<bulwark_host::RateInterface, bulwark_host::StateError> {
+                verify_remote_state_prefixes(&self.permissions.state, &key)?;
 
-        let redis_info = self.redis_info.clone().unwrap();
-        let mut conn = redis_info.pool.get()?;
-        let dt = Utc::now();
-        let timestamp: i64 = dt.timestamp();
-        let script = redis_info.registry.increment_rate_limit.clone();
-        let (attempts, expiration) = script
-            .key(key)
-            .arg(delta)
-            .arg(window)
-            .arg(timestamp)
-            .invoke::<(i64, i64)>(conn.deref_mut())?;
-        Ok(bulwark_host::RateInterface {
-            attempts,
-            expiration,
-        })
+                if let Some(redis_info) = self.redis_info.clone() {
+                    let mut conn = redis_info
+                        .pool
+                        .get()
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?;
+                    let dt = Utc::now();
+                    let timestamp: i64 = dt.timestamp();
+                    let script = redis_info.registry.increment_rate_limit.clone();
+                    // Invoke the script and map to our rate type
+                    let (attempts, expiration) = script
+                        .key(key)
+                        .arg(delta)
+                        .arg(window)
+                        .arg(timestamp)
+                        .invoke::<(i64, i64)>(conn.deref_mut())
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?;
+                    Ok(bulwark_host::RateInterface {
+                        attempts,
+                        expiration,
+                    })
+                } else {
+                    Err(bulwark_host::StateError::Remote(
+                        "no remote state configured".to_string(),
+                    ))
+                }
+            }(),
+        )
     }
 
     /// Checks a rate limit, returning the number of attempts so far and the expiration time.
@@ -1117,35 +1170,38 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn check_rate_limit(
         &mut self,
         key: String,
-    ) -> std::result::Result<bulwark_host::RateInterface, wasmtime::Error> {
-        // TODO: figure out how to extract to a helper function?
-        let allowed_key_prefixes = self
-            .permissions
-            .state
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<String>>();
-        if !allowed_key_prefixes
-            .iter()
-            .any(|prefix| key.starts_with(prefix))
-        {
-            // TODO: convert to error
-            panic!("access to state value by prefix denied");
-        }
+    ) -> Result<Result<bulwark_host::RateInterface, bulwark_host::StateError>, wasmtime::Error>
+    {
+        Ok(
+            // Inner function to permit ? operator
+            || -> Result<bulwark_host::RateInterface, bulwark_host::StateError> {
+                verify_remote_state_prefixes(&self.permissions.state, &key)?;
 
-        let redis_info = self.redis_info.clone().unwrap();
-        let mut conn = redis_info.pool.get().unwrap();
-        let dt = Utc::now();
-        let timestamp: i64 = dt.timestamp();
-        let script = redis_info.registry.check_rate_limit.clone();
-        let (attempts, expiration) = script
-            .key(key)
-            .arg(timestamp)
-            .invoke::<(i64, i64)>(conn.deref_mut())?;
-        Ok(bulwark_host::RateInterface {
-            attempts,
-            expiration,
-        })
+                if let Some(redis_info) = self.redis_info.clone() {
+                    let mut conn = redis_info
+                        .pool
+                        .get()
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?;
+                    let dt = Utc::now();
+                    let timestamp: i64 = dt.timestamp();
+                    let script = redis_info.registry.check_rate_limit.clone();
+                    // Invoke the script and map to our rate type
+                    let (attempts, expiration) = script
+                        .key(key)
+                        .arg(timestamp)
+                        .invoke::<(i64, i64)>(conn.deref_mut())
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?;
+                    Ok(bulwark_host::RateInterface {
+                        attempts,
+                        expiration,
+                    })
+                } else {
+                    Err(bulwark_host::StateError::Remote(
+                        "no remote state configured".to_string(),
+                    ))
+                }
+            }(),
+        )
     }
 
     /// Increments a circuit breaker, returning the generation count, success count, failure count,
@@ -1167,49 +1223,52 @@ impl bulwark_host::HostApiImports for RequestContext {
         success_delta: i64,
         failure_delta: i64,
         window: i64,
-    ) -> std::result::Result<bulwark_host::BreakerInterface, wasmtime::Error> {
-        // TODO: figure out how to extract to a helper function?
-        let allowed_key_prefixes = self
-            .permissions
-            .state
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<String>>();
-        if !allowed_key_prefixes
-            .iter()
-            .any(|prefix| key.starts_with(prefix))
-        {
-            // TODO: convert to error
-            panic!("access to state value by prefix denied");
-        }
+    ) -> Result<Result<bulwark_host::BreakerInterface, bulwark_host::StateError>, wasmtime::Error>
+    {
+        Ok(
+            // Inner function to permit ? operator
+            || -> Result<bulwark_host::BreakerInterface, bulwark_host::StateError> {
+                verify_remote_state_prefixes(&self.permissions.state, &key)?;
 
-        let redis_info = self.redis_info.clone().unwrap();
-        let mut conn = redis_info.pool.get()?;
-        let dt = Utc::now();
-        let timestamp: i64 = dt.timestamp();
-        let script = redis_info.registry.increment_breaker.clone();
-        let (
-            generation,
-            successes,
-            failures,
-            consecutive_successes,
-            consecutive_failures,
-            expiration,
-        ) = script
-            .key(key)
-            .arg(success_delta)
-            .arg(failure_delta)
-            .arg(window)
-            .arg(timestamp)
-            .invoke::<(i64, i64, i64, i64, i64, i64)>(conn.deref_mut())?;
-        Ok(bulwark_host::BreakerInterface {
-            generation,
-            successes,
-            failures,
-            consecutive_successes,
-            consecutive_failures,
-            expiration,
-        })
+                if let Some(redis_info) = self.redis_info.clone() {
+                    let mut conn = redis_info
+                        .pool
+                        .get()
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?;
+                    let dt = Utc::now();
+                    let timestamp: i64 = dt.timestamp();
+                    let script = redis_info.registry.increment_breaker.clone();
+                    // Invoke the script and map to our breaker type
+                    let (
+                        generation,
+                        successes,
+                        failures,
+                        consecutive_successes,
+                        consecutive_failures,
+                        expiration,
+                    ) = script
+                        .key(key)
+                        .arg(success_delta)
+                        .arg(failure_delta)
+                        .arg(window)
+                        .arg(timestamp)
+                        .invoke::<(i64, i64, i64, i64, i64, i64)>(conn.deref_mut())
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?;
+                    Ok(bulwark_host::BreakerInterface {
+                        generation,
+                        successes,
+                        failures,
+                        consecutive_successes,
+                        consecutive_failures,
+                        expiration,
+                    })
+                } else {
+                    Err(bulwark_host::StateError::Remote(
+                        "no remote state configured".to_string(),
+                    ))
+                }
+            }(),
+        )
     }
 
     /// Checks a circuit breaker, returning the generation count, success count, failure count,
@@ -1223,47 +1282,83 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn check_breaker(
         &mut self,
         key: String,
-    ) -> std::result::Result<bulwark_host::BreakerInterface, wasmtime::Error> {
-        // TODO: figure out how to extract to a helper function?
-        let allowed_key_prefixes = self
-            .permissions
-            .state
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<String>>();
-        if !allowed_key_prefixes
-            .iter()
-            .any(|prefix| key.starts_with(prefix))
-        {
-            // TODO: convert to error
-            panic!("access to state value by prefix denied");
-        }
+    ) -> Result<Result<bulwark_host::BreakerInterface, bulwark_host::StateError>, wasmtime::Error>
+    {
+        Ok(
+            // Inner function to permit ? operator
+            || -> Result<bulwark_host::BreakerInterface, bulwark_host::StateError> {
+                verify_remote_state_prefixes(&self.permissions.state, &key)?;
 
-        let redis_info = self.redis_info.clone().unwrap();
-        let mut conn = redis_info.pool.get()?;
-        let dt = Utc::now();
-        let timestamp: i64 = dt.timestamp();
-        let script = redis_info.registry.check_breaker.clone();
-        let (
-            generation,
-            successes,
-            failures,
-            consecutive_successes,
-            consecutive_failures,
-            expiration,
-        ) = script
-            .key(key)
-            .arg(timestamp)
-            .invoke::<(i64, i64, i64, i64, i64, i64)>(conn.deref_mut())?;
-        Ok(bulwark_host::BreakerInterface {
-            generation,
-            successes,
-            failures,
-            consecutive_successes,
-            consecutive_failures,
-            expiration,
-        })
+                if let Some(redis_info) = self.redis_info.clone() {
+                    let mut conn = redis_info
+                        .pool
+                        .get()
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?;
+                    let dt = Utc::now();
+                    let timestamp: i64 = dt.timestamp();
+                    let script = redis_info.registry.check_breaker.clone();
+                    // Invoke the script and map to our breaker type
+                    let (
+                        generation,
+                        successes,
+                        failures,
+                        consecutive_successes,
+                        consecutive_failures,
+                        expiration,
+                    ) = script
+                        .key(key)
+                        .arg(timestamp)
+                        .invoke::<(i64, i64, i64, i64, i64, i64)>(conn.deref_mut())
+                        .map_err(|err| bulwark_host::StateError::Remote(err.to_string()))?;
+                    Ok(bulwark_host::BreakerInterface {
+                        generation,
+                        successes,
+                        failures,
+                        consecutive_successes,
+                        consecutive_failures,
+                        expiration,
+                    })
+                } else {
+                    Err(bulwark_host::StateError::Remote(
+                        "no remote state configured".to_string(),
+                    ))
+                }
+            }(),
+        )
     }
+}
+
+/// Ensures that access to any HTTP host has the appropriate permissions set.
+fn verify_http_domains(
+    // TODO: BTreeSet<String> instead, all the way up
+    allowed_http_domains: &[String],
+    uri: &str,
+) -> Result<(), bulwark_host::HttpError> {
+    let parsed_uri =
+        Url::parse(uri).map_err(|_| bulwark_host::HttpError::InvalidUri(uri.to_string()))?;
+    let requested_domain = parsed_uri
+        .domain()
+        .ok_or_else(|| bulwark_host::HttpError::InvalidUri(uri.to_string()))?;
+    if !allowed_http_domains.contains(&requested_domain.to_string()) {
+        return Err(bulwark_host::HttpError::Permission(uri.to_string()));
+    }
+    Ok(())
+}
+
+/// Ensures that access to any remote state key has the appropriate permissions set.
+fn verify_remote_state_prefixes(
+    // TODO: BTreeSet<String> instead, all the way up
+    allowed_key_prefixes: &[String],
+    key: &str,
+) -> Result<(), bulwark_host::StateError> {
+    let key = key.to_string();
+    if !allowed_key_prefixes
+        .iter()
+        .any(|prefix| key.starts_with(prefix))
+    {
+        return Err(bulwark_host::StateError::Permission(key));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

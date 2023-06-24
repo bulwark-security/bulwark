@@ -19,7 +19,7 @@ bulwark-wasm-sdk-macros = { path = "../wasm-sdk-macros", version = "0.1.0" }
 thiserror = "1.0.37"
 anyhow = "1"
 http = "0.2"
-validator = { version = "0.16", features = ["derive"] }
+validator = { version = "0.16" }
 approx = "0.5"
 wit-bindgen = "0.7.0"
 serde_json = "1.0.93"

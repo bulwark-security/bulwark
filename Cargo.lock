@@ -388,6 +388,7 @@ dependencies = [
  "thiserror",
  "tokio-test",
  "url",
+ "validator",
  "wasi-cap-std-sync",
  "wasi-common",
  "wasmtime",

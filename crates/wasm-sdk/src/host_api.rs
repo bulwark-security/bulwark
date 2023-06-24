@@ -1,6 +1,6 @@
 use {
     std::{net::IpAddr, str, str::FromStr},
-    validator::{Validate, ValidationErrors},
+    validator::Validate,
 };
 
 // For some reason, doc-tests in this module trigger a linker error, so they're set to no_run
@@ -70,16 +70,14 @@ pub const NO_BODY: BodyChunk = BodyChunk {
     content: vec![],
 };
 
-// NOTE: `pub use` pattern would be better than inlined functions, but apparently that can't be rustdoc'd?
-
 // TODO: might need either get_remote_addr or an extension on the request for non-forwarded IP address
 
 /// Returns the incoming request.
 pub fn get_request() -> Request {
     let raw_request: crate::bulwark_host::RequestInterface = crate::bulwark_host::get_request();
     let chunk: Vec<u8> = raw_request.chunk;
-    // TODO: error handling
-    let method = Method::from_str(raw_request.method.as_str()).unwrap();
+    // This code shouldn't be reachable if the method is invalid
+    let method = Method::from_str(raw_request.method.as_str()).expect("should be a valid method");
     let mut request = http::Request::builder()
         .method(method)
         .uri(raw_request.uri)
@@ -94,27 +92,32 @@ pub fn get_request() -> Request {
             start: raw_request.chunk_start,
             end_of_stream: raw_request.end_of_stream,
         })
-        .unwrap()
+        // Everything going into the builder should have already been validated somewhere else
+        // Proxy layer shouldn't send it through if it's invalid
+        .expect("should be a valid request")
 }
 
 /// Returns the response received from the interior service.
-pub fn get_response() -> Response {
-    let raw_response: crate::bulwark_host::ResponseInterface = crate::bulwark_host::get_response();
+pub fn get_response() -> Option<Response> {
+    let raw_response: crate::bulwark_host::ResponseInterface = crate::bulwark_host::get_response()?;
     let chunk: Vec<u8> = raw_response.chunk;
-    // TODO: error handling
-    let status: u16 = raw_response.status.try_into().unwrap();
+    let status = raw_response.status as u16;
     let mut response = http::Response::builder().status(status);
     for header in raw_response.headers {
         response = response.header(header.name, header.value);
     }
-    response
-        .body(BodyChunk {
-            content: chunk,
-            size: raw_response.chunk_length,
-            start: raw_response.chunk_start,
-            end_of_stream: raw_response.end_of_stream,
-        })
-        .unwrap()
+    Some(
+        response
+            .body(BodyChunk {
+                content: chunk,
+                size: raw_response.chunk_length,
+                start: raw_response.chunk_start,
+                end_of_stream: raw_response.end_of_stream,
+            })
+            // Everything going into the builder should have already been validated somewhere else
+            // Proxy layer shouldn't send it through if it's invalid
+            .expect("should be a valid response"),
+    )
 }
 
 /// Returns the originating client's IP address, if available.
@@ -127,11 +130,10 @@ pub fn get_client_ip() -> Option<IpAddr> {
 /// # Arguments
 ///
 /// * `key` - The key name corresponding to the param value.
-pub fn get_param_value(key: &str) -> Value {
-    // TODO: this should return a result
-    let raw_value = crate::bulwark_host::get_param_value(key);
+pub fn get_param_value(key: &str) -> Result<Value, crate::Error> {
+    let raw_value = crate::bulwark_host::get_param_value(key)?;
     let value: serde_json::Value = serde_json::from_slice(&raw_value).unwrap();
-    value
+    Ok(value)
 }
 
 /// Set a named value in the request context's params.
@@ -140,10 +142,10 @@ pub fn get_param_value(key: &str) -> Value {
 ///
 /// * `key` - The key name corresponding to the param value.
 /// * `value` - The value to record. Values are serialized JSON.
-pub fn set_param_value(key: &str, value: Value) {
-    // TODO: this should return a result
-    let json = serde_json::to_vec(&value).unwrap();
-    crate::bulwark_host::set_param_value(key, &json);
+pub fn set_param_value(key: &str, value: Value) -> Result<(), crate::Error> {
+    let json = serde_json::to_vec(&value)?;
+    crate::bulwark_host::set_param_value(key, &json)?;
+    Ok(())
 }
 
 /// Returns the guest environment's configuration value as a JSON [`Value`].
@@ -179,9 +181,8 @@ pub fn get_config_value(key: &str) -> Option<Value> {
 /// # Arguments
 ///
 /// * `key` - The environment variable name. Case-sensitive.
-pub fn get_env(key: &str) -> String {
-    // TODO: this should return a result
-    String::from_utf8(crate::bulwark_host::get_env_bytes(key)).unwrap()
+pub fn get_env(key: &str) -> Result<String, crate::Error> {
+    Ok(String::from_utf8(crate::bulwark_host::get_env_bytes(key)?)?)
 }
 
 /// Returns a named environment variable value as bytes.
@@ -192,9 +193,8 @@ pub fn get_env(key: &str) -> String {
 /// # Arguments
 ///
 /// * `key` - The environment variable name. Case-sensitive.
-pub fn get_env_bytes(key: &str) -> Vec<u8> {
-    // TODO: this should return a result
-    crate::bulwark_host::get_env_bytes(key)
+pub fn get_env_bytes(key: &str) -> Result<Vec<u8>, crate::Error> {
+    Ok(crate::bulwark_host::get_env_bytes(key)?)
 }
 
 /// Records the decision value the plugin wants to return.
@@ -202,13 +202,15 @@ pub fn get_env_bytes(key: &str) -> Vec<u8> {
 /// # Arguments
 ///
 /// * `decision` - The [`Decision`] output of the plugin.
-pub fn set_decision(decision: Decision) -> Result<(), ValidationErrors> {
+pub fn set_decision(decision: Decision) -> Result<(), crate::Error> {
+    // Validate here because it should provide a better error than the one that the host will give.
     decision.validate()?;
     crate::bulwark_host::set_decision(DecisionInterface {
         accept: decision.accept,
         restrict: decision.restrict,
         unknown: decision.unknown,
-    });
+    })
+    .expect("should not be able to produce an invalid result");
     Ok(())
 }
 
@@ -229,7 +231,8 @@ pub fn set_accepted(value: f64) {
         }
         .scale()
         .into(),
-    );
+    )
+    .expect("should not be able to produce an invalid result");
 }
 
 /// Records a decision indicating that the plugin wants to restrict a request.
@@ -249,7 +252,8 @@ pub fn set_restricted(value: f64) {
         }
         .scale()
         .into(),
-    );
+    )
+    .expect("should not be able to produce an invalid result");
 }
 
 /// Records the tags the plugin wants to associate with its decision.
@@ -308,25 +312,23 @@ pub fn append_tags<I: IntoIterator<Item = V>, V: Into<String>>(tags: I) -> Vec<S
 /// Returns the combined decision, if available.
 ///
 /// Typically used in the feedback phase.
-pub fn get_combined_decision() -> Decision {
-    // TODO: Option<Decision> ?
-    crate::bulwark_host::get_combined_decision().into()
+pub fn get_combined_decision() -> Option<Decision> {
+    crate::bulwark_host::get_combined_decision().map(|decision| decision.into())
 }
 
 /// Returns the combined set of tags associated with a decision, if available.
 ///
 /// Typically used in the feedback phase.
 #[inline]
-pub fn get_combined_tags() -> Vec<String> {
+pub fn get_combined_tags() -> Option<Vec<String>> {
     crate::bulwark_host::get_combined_tags()
 }
 
 /// Returns the outcome of the combined decision, if available.
 ///
 /// Typically used in the feedback phase.
-pub fn get_outcome() -> Outcome {
-    // TODO: Option<Outcome> ?
-    crate::bulwark_host::get_outcome().into()
+pub fn get_outcome() -> Option<Outcome> {
+    crate::bulwark_host::get_outcome().map(|outcome| outcome.into())
 }
 
 /// Sends an outbound HTTP request.
@@ -337,13 +339,13 @@ pub fn get_outcome() -> Outcome {
 /// # Arguments
 ///
 /// * `request` - The HTTP request to send.
-pub fn send_request(request: Request) -> Response {
+pub fn send_request(request: Request) -> Result<Response, crate::Error> {
     let request_id = crate::bulwark_host::prepare_request(
         request.method().as_str(),
         request.uri().to_string().as_str(),
-    );
+    )?;
     for (name, value) in request.headers() {
-        crate::bulwark_host::add_request_header(request_id, name.as_str(), value.as_bytes());
+        crate::bulwark_host::add_request_header(request_id, name.as_str(), value.as_bytes())?;
     }
     let chunk = request.body();
     if !chunk.end_of_stream {
@@ -353,8 +355,8 @@ pub fn send_request(request: Request) -> Response {
     } else if chunk.size > 16384 {
         panic!("the entire request body must be 16384 bytes or less");
     }
-    let response = crate::bulwark_host::set_request_body(request_id, &chunk.content);
-    Response::from(response)
+    let response = crate::bulwark_host::set_request_body(request_id, &chunk.content)?;
+    Ok(Response::from(response))
 }
 
 /// Returns the named state value retrieved from Redis.
@@ -365,8 +367,8 @@ pub fn send_request(request: Request) -> Response {
 ///
 /// * `key` - The key name corresponding to the state value.
 #[inline]
-pub fn get_remote_state(key: &str) -> Vec<u8> {
-    crate::bulwark_host::get_remote_state(key)
+pub fn get_remote_state(key: &str) -> Result<Vec<u8>, crate::Error> {
+    Ok(crate::bulwark_host::get_remote_state(key)?)
 }
 
 /// Parses a counter value from state stored as a string.
@@ -389,8 +391,8 @@ pub fn parse_counter(value: Vec<u8>) -> Result<i64, ParseCounterError> {
 /// * `key` - The key name corresponding to the state value.
 /// * `value` - The value to record. Values are byte strings, but may be interpreted differently by Redis depending on context.
 #[inline]
-pub fn set_remote_state(key: &str, value: &[u8]) {
-    crate::bulwark_host::set_remote_state(key, value)
+pub fn set_remote_state(key: &str, value: &[u8]) -> Result<(), crate::Error> {
+    Ok(crate::bulwark_host::set_remote_state(key, value)?)
 }
 
 /// Increments a named counter in Redis.
@@ -404,8 +406,8 @@ pub fn set_remote_state(key: &str, value: &[u8]) {
 ///
 /// * `key` - The key name corresponding to the state counter.
 #[inline]
-pub fn increment_remote_state(key: &str) -> i64 {
-    crate::bulwark_host::increment_remote_state(key)
+pub fn increment_remote_state(key: &str) -> Result<i64, crate::Error> {
+    Ok(crate::bulwark_host::increment_remote_state(key)?)
 }
 
 /// Increments a named counter in Redis by a specified delta value.
@@ -420,8 +422,8 @@ pub fn increment_remote_state(key: &str) -> i64 {
 /// * `key` - The key name corresponding to the state counter.
 /// * `delta` - The amount to increase the counter by.
 #[inline]
-pub fn increment_remote_state_by(key: &str, delta: i64) -> i64 {
-    crate::bulwark_host::increment_remote_state_by(key, delta)
+pub fn increment_remote_state_by(key: &str, delta: i64) -> Result<i64, crate::Error> {
+    Ok(crate::bulwark_host::increment_remote_state_by(key, delta)?)
 }
 
 /// Sets an expiration on a named value in Redis.
@@ -434,8 +436,8 @@ pub fn increment_remote_state_by(key: &str, delta: i64) -> i64 {
 /// * `key` - The key name corresponding to the state value.
 /// * `ttl` - The time-to-live for the value in seconds.
 #[inline]
-pub fn set_remote_ttl(key: &str, ttl: i64) {
-    crate::bulwark_host::set_remote_ttl(key, ttl)
+pub fn set_remote_ttl(key: &str, ttl: i64) -> Result<(), crate::Error> {
+    Ok(crate::bulwark_host::set_remote_ttl(key, ttl)?)
 }
 
 // TODO: needs an example
@@ -455,8 +457,10 @@ pub fn set_remote_ttl(key: &str, ttl: i64) {
 /// * `delta` - The amount to increase the counter by.
 /// * `window` - How long each period should be in seconds.
 #[inline]
-pub fn increment_rate_limit(key: &str, delta: i64, window: i64) -> Rate {
-    crate::bulwark_host::increment_rate_limit(key, delta, window)
+pub fn increment_rate_limit(key: &str, delta: i64, window: i64) -> Result<Rate, crate::Error> {
+    Ok(crate::bulwark_host::increment_rate_limit(
+        key, delta, window,
+    )?)
 }
 
 /// Checks a rate limit, returning the number of attempts so far and the expiration time.
@@ -470,8 +474,8 @@ pub fn increment_rate_limit(key: &str, delta: i64, window: i64) -> Rate {
 ///
 /// * `key` - The key name corresponding to the state counter.
 #[inline]
-pub fn check_rate_limit(key: &str) -> Rate {
-    crate::bulwark_host::check_rate_limit(key)
+pub fn check_rate_limit(key: &str) -> Result<Rate, crate::Error> {
+    Ok(crate::bulwark_host::check_rate_limit(key)?)
 }
 
 /// Increments a circuit breaker, returning the generation count, success count, failure count,
@@ -493,26 +497,47 @@ pub fn check_rate_limit(key: &str) -> Rate {
 /// # Examples
 ///
 /// ```no_run
-/// use bulwark_wasm_sdk::{increment_breaker, BreakerDelta};
+/// use bulwark_wasm_sdk::*;
 ///
-/// let key = "client.ip:192.168.0.1";
-/// let failure = true;
-/// let breaker = increment_breaker(
-///     key,
-///     if !failure {
-///         BreakerDelta::Success(1)
-///     } else {
-///         BreakerDelta::Failure(1)
-///     },
-///     60 * 60, // 1 hour
-/// );
+/// pub struct CircuitBreaker;
+///
+/// #[bulwark_plugin]
+/// impl Handlers for CircuitBreaker {
+///     fn on_response_decision() -> Result {
+///         if let Some(ip) = get_client_ip() {
+///             let key = format!("client.ip:{ip}");
+///             // "failure" could be determined by other methods besides status code
+///             let failure = get_response().map(|r| r.status().as_u16() >= 500).unwrap_or(true);
+///             let breaker = increment_breaker(
+///                 &key,
+///                 if !failure {
+///                     BreakerDelta::Success(1)
+///                 } else {
+///                     BreakerDelta::Failure(1)
+///                 },
+///                 60 * 60, // 1 hour
+///             )?;
+///             // use breaker here
+///         }
+///         Ok(())
+///     }
+/// }
 /// ```
-pub fn increment_breaker(key: &str, delta: BreakerDelta, window: i64) -> Breaker {
+pub fn increment_breaker(
+    key: &str,
+    delta: BreakerDelta,
+    window: i64,
+) -> Result<Breaker, crate::Error> {
     let (success_delta, failure_delta) = match delta {
         BreakerDelta::Success(d) => (d, 0),
         BreakerDelta::Failure(d) => (0, d),
     };
-    crate::bulwark_host::increment_breaker(key, success_delta, failure_delta, window)
+    Ok(crate::bulwark_host::increment_breaker(
+        key,
+        success_delta,
+        failure_delta,
+        window,
+    )?)
 }
 
 /// Checks a circuit breaker, returning the generation count, success count, failure count,
@@ -527,6 +552,6 @@ pub fn increment_breaker(key: &str, delta: BreakerDelta, window: i64) -> Breaker
 ///
 /// * `key` - The key name corresponding to the state counter.
 #[inline]
-pub fn check_breaker(key: &str) -> Breaker {
-    crate::bulwark_host::check_breaker(key)
+pub fn check_breaker(key: &str) -> Result<Breaker, crate::Error> {
+    Ok(crate::bulwark_host::check_breaker(key)?)
 }
