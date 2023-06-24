@@ -577,7 +577,11 @@ impl PluginInstance {
     /// Records a [`Response`](bulwark_wasm_sdk::Response) so that it will be accessible to the plugin guest
     /// environment.
     pub fn record_response(&mut self, response: Arc<bulwark_wasm_sdk::Response>) {
-        let mut interior_response = self.host_mutable_context.response.lock().unwrap();
+        let mut interior_response = self
+            .host_mutable_context
+            .response
+            .lock()
+            .expect("poisoned mutex");
         *interior_response = Some(bulwark_host::ResponseInterface::from(response));
     }
 
@@ -588,9 +592,17 @@ impl PluginInstance {
         decision_components: &DecisionComponents,
         outcome: Outcome,
     ) {
-        let mut interior_decision = self.host_mutable_context.combined_decision.lock().unwrap();
+        let mut interior_decision = self
+            .host_mutable_context
+            .combined_decision
+            .lock()
+            .expect("poisoned mutex");
         *interior_decision = Some(decision_components.decision.into());
-        let mut interior_outcome = self.host_mutable_context.outcome.lock().unwrap();
+        let mut interior_outcome = self
+            .host_mutable_context
+            .outcome
+            .lock()
+            .expect("poisoned mutex");
         *interior_outcome = Some(outcome.into());
     }
 
@@ -670,7 +682,7 @@ impl bulwark_host::HostApiImports for RequestContext {
         &mut self,
         key: String,
     ) -> Result<Result<Vec<u8>, bulwark_host::ParamError>, wasmtime::Error> {
-        let params = self.params.lock().unwrap();
+        let params = self.params.lock().expect("poisoned mutex");
         let value = params.get(&key).unwrap_or(&bulwark_wasm_sdk::Value::Null);
         match serde_json::to_vec(value) {
             Ok(bytes) => Ok(Ok(bytes)),
@@ -689,7 +701,7 @@ impl bulwark_host::HostApiImports for RequestContext {
         key: String,
         value: Vec<u8>,
     ) -> Result<Result<(), bulwark_host::ParamError>, wasmtime::Error> {
-        let mut params = self.params.lock().unwrap();
+        let mut params = self.params.lock().expect("poisoned mutex");
         match serde_json::from_slice(&value) {
             Ok(value) => {
                 params.insert(key, value);
@@ -740,8 +752,11 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn get_response(
         &mut self,
     ) -> Result<Option<bulwark_host::ResponseInterface>, wasmtime::Error> {
-        let response: MutexGuard<Option<bulwark_host::ResponseInterface>> =
-            self.host_mutable_context.response.lock().unwrap();
+        let response: MutexGuard<Option<bulwark_host::ResponseInterface>> = self
+            .host_mutable_context
+            .response
+            .lock()
+            .expect("poisoned mutex");
         Ok(response.to_owned())
     }
 
@@ -768,7 +783,7 @@ impl bulwark_host::HostApiImports for RequestContext {
             || -> Result<u64, bulwark_host::HttpError> {
                 verify_http_domains(&self.permissions.http, &uri)?;
 
-                let mut outbound_requests = self.outbound_http.lock().unwrap();
+                let mut outbound_requests = self.outbound_http.lock().expect("poisoned mutex");
                 let method = reqwest::Method::from_str(&method)
                     .map_err(|_| bulwark_host::HttpError::InvalidMethod(method))?;
 
@@ -796,7 +811,7 @@ impl bulwark_host::HostApiImports for RequestContext {
         Ok(
             // Inner function to permit ? operator
             || -> Result<(), bulwark_host::HttpError> {
-                let mut outbound_requests = self.outbound_http.lock().unwrap();
+                let mut outbound_requests = self.outbound_http.lock().expect("poisoned mutex");
                 // remove/insert to avoid move issues
                 let mut builder = outbound_requests
                     .remove(&request_id)
@@ -827,7 +842,7 @@ impl bulwark_host::HostApiImports for RequestContext {
         Ok(
             // Inner function to permit ? operator
             || -> Result<bulwark_host::ResponseInterface, bulwark_host::HttpError> {
-                let mut outbound_requests = self.outbound_http.lock().unwrap();
+                let mut outbound_requests = self.outbound_http.lock().expect("poisoned mutex");
                 let builder = outbound_requests
                     .remove(&request_id)
                     .ok_or(bulwark_host::HttpError::MissingId(request_id))?;
@@ -910,8 +925,11 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn get_combined_decision(
         &mut self,
     ) -> Result<Option<bulwark_host::DecisionInterface>, wasmtime::Error> {
-        let combined_decision: MutexGuard<Option<bulwark_host::DecisionInterface>> =
-            self.host_mutable_context.combined_decision.lock().unwrap();
+        let combined_decision: MutexGuard<Option<bulwark_host::DecisionInterface>> = self
+            .host_mutable_context
+            .combined_decision
+            .lock()
+            .expect("poisoned mutex");
         Ok(combined_decision.to_owned())
     }
 
@@ -919,8 +937,11 @@ impl bulwark_host::HostApiImports for RequestContext {
     ///
     /// Typically used in the feedback phase.
     async fn get_combined_tags(&mut self) -> Result<Option<Vec<String>>, wasmtime::Error> {
-        let combined_tags: MutexGuard<Option<Vec<String>>> =
-            self.host_mutable_context.combined_tags.lock().unwrap();
+        let combined_tags: MutexGuard<Option<Vec<String>>> = self
+            .host_mutable_context
+            .combined_tags
+            .lock()
+            .expect("poisoned mutex");
         Ok(combined_tags.to_owned())
     }
 
@@ -930,8 +951,11 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn get_outcome(
         &mut self,
     ) -> Result<Option<bulwark_host::OutcomeInterface>, wasmtime::Error> {
-        let outcome: MutexGuard<Option<bulwark_host::OutcomeInterface>> =
-            self.host_mutable_context.outcome.lock().unwrap();
+        let outcome: MutexGuard<Option<bulwark_host::OutcomeInterface>> = self
+            .host_mutable_context
+            .outcome
+            .lock()
+            .expect("poisoned mutex");
         Ok(outcome.to_owned())
     }
 

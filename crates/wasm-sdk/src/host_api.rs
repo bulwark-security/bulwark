@@ -93,6 +93,7 @@ pub fn get_request() -> Request {
             end_of_stream: raw_request.end_of_stream,
         })
         // Everything going into the builder should have already been validated somewhere else
+        // Proxy layer shouldn't send it through if it's invalid
         .expect("should be a valid request")
 }
 
@@ -114,6 +115,7 @@ pub fn get_response() -> Option<Response> {
                 end_of_stream: raw_response.end_of_stream,
             })
             // Everything going into the builder should have already been validated somewhere else
+            // Proxy layer shouldn't send it through if it's invalid
             .expect("should be a valid response"),
     )
 }
