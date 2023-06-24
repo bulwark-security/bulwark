@@ -800,7 +800,7 @@ impl bulwark_host::HostApiImports for RequestContext {
                 // remove/insert to avoid move issues
                 let mut builder = outbound_requests
                     .remove(&request_id)
-                    .ok_or_else(|| bulwark_host::HttpError::MissingId(request_id))?;
+                    .ok_or(bulwark_host::HttpError::MissingId(request_id))?;
                 builder = builder.header(name, value);
                 outbound_requests.insert(request_id, builder);
                 Ok(())
@@ -830,7 +830,7 @@ impl bulwark_host::HostApiImports for RequestContext {
                 let mut outbound_requests = self.outbound_http.lock().unwrap();
                 let builder = outbound_requests
                     .remove(&request_id)
-                    .ok_or_else(|| bulwark_host::HttpError::MissingId(request_id))?;
+                    .ok_or(bulwark_host::HttpError::MissingId(request_id))?;
                 let builder = builder.body(body);
 
                 let response = builder
