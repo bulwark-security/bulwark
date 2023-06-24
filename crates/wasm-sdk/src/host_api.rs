@@ -70,8 +70,6 @@ pub const NO_BODY: BodyChunk = BodyChunk {
     content: vec![],
 };
 
-// NOTE: `pub use` pattern would be better than inlined functions, but apparently that can't be rustdoc'd?
-
 // TODO: might need either get_remote_addr or an extension on the request for non-forwarded IP address
 
 /// Returns the incoming request.
