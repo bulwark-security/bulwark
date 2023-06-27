@@ -8,7 +8,7 @@ world host-api {
     method: string,
     uri: string,
     version: string,
-    headers: list<header-interface>,
+    headers: list<tuple<string,list<u8>>>,
     chunk: list<u8>,
     chunk-start: u64,
     chunk-length: u64,
@@ -16,15 +16,11 @@ world host-api {
   }
   record response-interface {
     status: u32,
-    headers: list<header-interface>,
+    headers: list<tuple<string,list<u8>>>,
     chunk: list<u8>,
     chunk-start: u64,
     chunk-length: u64,
     end-of-stream: bool,
-  }
-  record header-interface {
-    name: string,
-    value: list<u8>,
   }
   variant ip-interface {
     v4(tuple<u8, u8, u8, u8>),
@@ -72,9 +68,10 @@ world host-api {
     permission(string),
     invalid-method(string),
     invalid-uri(string),
-    // TODO: remove after condense
-    missing-id(u64),
     transmit(string),
+    unavailable-content(string),
+    invalid-start(string),
+    content-too-large(string),
   }
 
   // TODO: many of these should return the result type; historically this wasn't supported but this should be fixed?
@@ -101,10 +98,7 @@ world host-api {
   import increment-remote-state-by: func(key: string, delta: s64) -> result<s64, state-error>
   import set-remote-ttl: func(key: string, ttl: s64) -> result<_, state-error>
 
-  // TODO: condense to one function
-  import prepare-request: func(method: string, uri: string) -> result<u64, http-error>
-  import add-request-header: func(request-id: u64, name: string, value: list<u8>) -> result<_, http-error>
-  import set-request-body: func(request-id: u64, body: list<u8>) -> result<response-interface, http-error>
+  import send-request: func(request: request-interface) -> result<response-interface, http-error>
 
   import increment-rate-limit: func(key: string, delta: s64, window: s64) -> result<rate-interface, state-error>
   import check-rate-limit: func(key: string) -> result<rate-interface, state-error>

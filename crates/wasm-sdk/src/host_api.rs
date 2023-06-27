@@ -82,8 +82,8 @@ pub fn get_request() -> Request {
         .method(method)
         .uri(raw_request.uri)
         .version(http::Version::HTTP_11); // TODO: don't hard-code version
-    for header in raw_request.headers {
-        request = request.header(header.name, header.value);
+    for (name, value) in raw_request.headers {
+        request = request.header(name, value);
     }
     request
         .body(BodyChunk {
@@ -103,8 +103,8 @@ pub fn get_response() -> Option<Response> {
     let chunk: Vec<u8> = raw_response.chunk;
     let status = raw_response.status as u16;
     let mut response = http::Response::builder().status(status);
-    for header in raw_response.headers {
-        response = response.header(header.name, header.value);
+    for (name, value) in raw_response.headers {
+        response = response.header(name, value);
     }
     Some(
         response
@@ -340,23 +340,8 @@ pub fn get_outcome() -> Option<Outcome> {
 ///
 /// * `request` - The HTTP request to send.
 pub fn send_request(request: Request) -> Result<Response, crate::Error> {
-    let request_id = crate::bulwark_host::prepare_request(
-        request.method().as_str(),
-        request.uri().to_string().as_str(),
-    )?;
-    for (name, value) in request.headers() {
-        crate::bulwark_host::add_request_header(request_id, name.as_str(), value.as_bytes())?;
-    }
-    let chunk = request.body();
-    if !chunk.end_of_stream {
-        panic!("the entire request body must be available");
-    } else if chunk.start != 0 {
-        panic!("chunk start must be 0");
-    } else if chunk.size > 16384 {
-        panic!("the entire request body must be 16384 bytes or less");
-    }
-    let response = crate::bulwark_host::set_request_body(request_id, &chunk.content)?;
-    Ok(Response::from(response))
+    let request = crate::bulwark_host::RequestInterface::from(request);
+    Ok(Response::from(crate::bulwark_host::send_request(&request)?))
 }
 
 /// Returns the named state value retrieved from Redis.

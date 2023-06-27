@@ -18,13 +18,13 @@ use {
     },
     async_trait::async_trait,
     bulwark_config::ConfigSerializationError,
-    bulwark_host::{DecisionInterface, HeaderInterface, OutcomeInterface},
+    bulwark_host::{DecisionInterface, OutcomeInterface},
     bulwark_wasm_sdk::{Decision, Outcome},
     chrono::Utc,
     redis::Commands,
     std::str::FromStr,
     std::{
-        collections::{BTreeSet, HashMap},
+        collections::BTreeSet,
         convert::From,
         net::IpAddr,
         ops::DerefMut,
@@ -60,10 +60,7 @@ impl From<Arc<bulwark_wasm_sdk::Request>> for bulwark_host::RequestInterface {
             headers: request
                 .headers()
                 .iter()
-                .map(|(name, value)| bulwark_host::HeaderInterface {
-                    name: name.to_string(),
-                    value: value.as_bytes().to_vec(),
-                })
+                .map(|(name, value)| (name.to_string(), value.as_bytes().to_vec()))
                 .collect(),
             chunk_start: request.body().start,
             chunk_length: request.body().size,
@@ -82,10 +79,7 @@ impl From<Arc<bulwark_wasm_sdk::Response>> for bulwark_host::ResponseInterface {
             headers: response
                 .headers()
                 .iter()
-                .map(|(name, value)| bulwark_host::HeaderInterface {
-                    name: name.to_string(),
-                    value: value.as_bytes().to_vec(),
-                })
+                .map(|(name, value)| (name.to_string(), value.as_bytes().to_vec()))
                 .collect(),
             chunk_start: response.body().start,
             chunk_length: response.body().size,
@@ -310,11 +304,6 @@ pub struct RequestContext {
     client_ip: Option<bulwark_host::IpInterface>,
     /// The Redis connection pool and its associated Lua scripts.
     redis_info: Option<Arc<RedisInfo>>,
-    /// A store of outbound requests being assembled by a plugin.
-    ///
-    /// Due to apparent limitations in WIT, a full request structure cannot be easily sent by a plugin as a single
-    /// record. This is a work-around, but there may be better alternatives to achieve the same effect.
-    outbound_http: Arc<Mutex<HashMap<u64, reqwest::blocking::RequestBuilder>>>,
     /// The HTTP client used to send outbound requests from plugins.
     http_client: reqwest::blocking::Client,
 
@@ -372,7 +361,6 @@ impl RequestContext {
             params,
             request: bulwark_host::RequestInterface::from(request),
             client_ip,
-            outbound_http: Arc::new(Mutex::new(HashMap::new())),
             http_client: reqwest::blocking::Client::new(),
             accept: 0.0,
             restrict: 0.0,
@@ -773,93 +761,49 @@ impl bulwark_host::HostApiImports for RequestContext {
     ///
     /// * `method` - The HTTP method
     /// * `uri` - The absolute URI of the resource to request
-    async fn prepare_request(
+    async fn send_request(
         &mut self,
-        method: String,
-        uri: String,
-    ) -> Result<Result<u64, bulwark_host::HttpError>, wasmtime::Error> {
-        Ok(
-            // Inner function to permit ? operator
-            || -> Result<u64, bulwark_host::HttpError> {
-                verify_http_domains(&self.permissions.http, &uri)?;
-
-                let mut outbound_requests = self.outbound_http.lock().expect("poisoned mutex");
-                let method = reqwest::Method::from_str(&method)
-                    .map_err(|_| bulwark_host::HttpError::InvalidMethod(method))?;
-
-                let builder = self.http_client.request(method, uri);
-                let index: u64 = outbound_requests.len() as u64;
-                outbound_requests.insert(index, builder);
-                Ok(index)
-            }(),
-        )
-    }
-
-    /// Adds a request header to an outbound HTTP request.
-    ///
-    /// # Arguments
-    ///
-    /// * `request_id` - The request ID received from `prepare_request`.
-    /// * `name` - The header name.
-    /// * `value` - The header value bytes.
-    async fn add_request_header(
-        &mut self,
-        request_id: u64,
-        name: String,
-        value: Vec<u8>,
-    ) -> Result<Result<(), bulwark_host::HttpError>, wasmtime::Error> {
-        Ok(
-            // Inner function to permit ? operator
-            || -> Result<(), bulwark_host::HttpError> {
-                let mut outbound_requests = self.outbound_http.lock().expect("poisoned mutex");
-                // remove/insert to avoid move issues
-                let mut builder = outbound_requests
-                    .remove(&request_id)
-                    .ok_or(bulwark_host::HttpError::MissingId(request_id))?;
-                builder = builder.header(name, value);
-                outbound_requests.insert(request_id, builder);
-                Ok(())
-            }(),
-        )
-    }
-
-    /// Sets the request body, if any. Returns the response.
-    ///
-    /// This function is still required even if the request does not have a body. An empty body is acceptable.
-    ///
-    /// # Arguments
-    ///
-    /// * `request_id` - The request ID received from `prepare_request`.
-    /// * `body` - The request body in bytes or an empty slice for no body.
-    async fn set_request_body(
-        &mut self,
-        request_id: u64,
-        body: Vec<u8>,
+        request: bulwark_host::RequestInterface,
     ) -> Result<Result<bulwark_host::ResponseInterface, bulwark_host::HttpError>, wasmtime::Error>
     {
-        // TODO: handle basic error scenarios like timeouts
-
         Ok(
             // Inner function to permit ? operator
             || -> Result<bulwark_host::ResponseInterface, bulwark_host::HttpError> {
-                let mut outbound_requests = self.outbound_http.lock().expect("poisoned mutex");
-                let builder = outbound_requests
-                    .remove(&request_id)
-                    .ok_or(bulwark_host::HttpError::MissingId(request_id))?;
-                let builder = builder.body(body);
+                verify_http_domains(&self.permissions.http, &request.uri)?;
+
+                let method = reqwest::Method::from_str(&request.method)
+                    .map_err(|_| bulwark_host::HttpError::InvalidMethod(request.method.clone()))?;
+
+                let mut builder = self.http_client.request(method, &request.uri);
+                for (name, value) in request.headers {
+                    builder = builder.header(name, value);
+                }
+
+                if !request.end_of_stream {
+                    return Err(bulwark_host::HttpError::UnavailableContent(
+                        "the entire request body must be available".to_string(),
+                    ));
+                } else if request.chunk_start != 0 {
+                    return Err(bulwark_host::HttpError::InvalidStart(
+                        "chunk start must be 0".to_string(),
+                    ));
+                } else if request.chunk_length > 16384 {
+                    return Err(bulwark_host::HttpError::ContentTooLarge(
+                        "the entire request body must be 16384 bytes or less".to_string(),
+                    ));
+                }
+
+                builder = builder.body(request.chunk);
 
                 let response = builder
                     .send()
                     .map_err(|err| bulwark_host::HttpError::Transmit(err.to_string()))?;
                 let status: u32 = response.status().as_u16() as u32;
                 // need to read headers before body because retrieving body bytes will move the response
-                let headers: Vec<HeaderInterface> = response
+                let headers: Vec<(String, Vec<u8>)> = response
                     .headers()
                     .iter()
-                    .map(|(name, value)| HeaderInterface {
-                        name: name.to_string(),
-                        value: value.as_bytes().to_vec(),
-                    })
+                    .map(|(name, value)| (name.to_string(), value.as_bytes().to_vec()))
                     .collect();
                 let body = response.bytes().unwrap().to_vec();
                 let content_length: u64 = body.len() as u64;

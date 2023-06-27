@@ -1,13 +1,32 @@
 use {
-    crate::{BodyChunk, Decision, Outcome, Response},
+    crate::{BodyChunk, Decision, Outcome, Request, Response},
     std::net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
+
+impl From<Request> for crate::bulwark_host::RequestInterface {
+    fn from(request: Request) -> Self {
+        crate::bulwark_host::RequestInterface {
+            method: request.method().to_string(),
+            uri: request.uri().to_string(),
+            version: format!("{:?}", request.version()),
+            headers: request
+                .headers()
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.as_bytes().to_vec()))
+                .collect(),
+            chunk: request.body().content.clone(),
+            chunk_start: request.body().start,
+            chunk_length: request.body().size,
+            end_of_stream: request.body().end_of_stream,
+        }
+    }
+}
 
 impl From<crate::bulwark_host::ResponseInterface> for Response {
     fn from(response: crate::bulwark_host::ResponseInterface) -> Self {
         let mut builder = http::response::Builder::new();
         builder = builder.status::<u16>(response.status.try_into().unwrap());
-        for crate::bulwark_host::HeaderInterface { name, value } in response.headers {
+        for (name, value) in response.headers {
             builder = builder.header(name, value);
         }
         builder
