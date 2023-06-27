@@ -81,11 +81,17 @@ impl From<crate::bulwark_host::HttpError> for Error {
             crate::bulwark_host::HttpError::InvalidUri(uri) => {
                 Error::Http(HttpError::InvalidUri { uri })
             }
-            crate::bulwark_host::HttpError::MissingId(id) => {
-                Error::Http(HttpError::MissingRequestId { id })
-            }
             crate::bulwark_host::HttpError::Transmit(message) => {
                 Error::Http(HttpError::Transmit { message })
+            }
+            crate::bulwark_host::HttpError::UnavailableContent(message) => {
+                Error::Http(HttpError::UnavailableContent { message })
+            }
+            crate::bulwark_host::HttpError::InvalidStart(message) => {
+                Error::Http(HttpError::InvalidStart { message })
+            }
+            crate::bulwark_host::HttpError::ContentTooLarge(message) => {
+                Error::Http(HttpError::ContentTooLarge { message })
             }
         }
     }
@@ -154,8 +160,12 @@ pub enum HttpError {
     InvalidMethod { method: String },
     #[error("invalid uri: '{uri}'")]
     InvalidUri { uri: String },
-    #[error("missing request id: '{id}'")]
-    MissingRequestId { id: u64 },
     #[error("error sending http request: {message}")]
     Transmit { message: String },
+    #[error("{message}")]
+    UnavailableContent { message: String },
+    #[error("{message}")]
+    InvalidStart { message: String },
+    #[error("{message}")]
+    ContentTooLarge { message: String },
 }
