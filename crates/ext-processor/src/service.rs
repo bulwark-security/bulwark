@@ -234,6 +234,7 @@ impl BulwarkProcessor {
                 start: 0,
                 content: vec![],
             };
+            // No current access to HTTP version information via Envoy external processor
             request = request.method(method).uri(request_uri);
             match &header_msg.headers {
                 Some(headers) => {

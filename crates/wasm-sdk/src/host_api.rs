@@ -81,7 +81,14 @@ pub fn get_request() -> Request {
     let mut request = http::Request::builder()
         .method(method)
         .uri(raw_request.uri)
-        .version(http::Version::HTTP_11); // TODO: don't hard-code version
+        .version(match raw_request.version.as_str() {
+            "HTTP/0.9" => http::Version::HTTP_09,
+            "HTTP/1.0" => http::Version::HTTP_10,
+            "HTTP/1.1" => http::Version::HTTP_11,
+            "HTTP/2.0" => http::Version::HTTP_2,
+            "HTTP/3.0" => http::Version::HTTP_3,
+            _ => http::Version::HTTP_11,
+        });
     for (name, value) in raw_request.headers {
         request = request.header(name, value);
     }
