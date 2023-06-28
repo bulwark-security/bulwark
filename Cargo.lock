@@ -281,7 +281,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "bulwark-config",
@@ -316,7 +316,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-config"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bulwark-decision",
  "chrono",
@@ -332,7 +332,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-decision"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "approx",
  "cfg-if 1.0.0",
@@ -344,7 +344,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-ext-processor"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bulwark-config",
  "bulwark-wasm-host",
@@ -371,7 +371,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-wasm-host"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -400,7 +400,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-wasm-sdk"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "approx",
@@ -417,7 +417,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-wasm-sdk-macros"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "proc-macro2",
  "quote",
