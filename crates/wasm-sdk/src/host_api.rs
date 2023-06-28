@@ -7,7 +7,7 @@ use {
 
 use crate::bulwark_host::DecisionInterface;
 
-pub use crate::{Decision, Outcome, ParseCounterError};
+pub use crate::{Decision, Outcome};
 pub use http::{Extensions, Method, StatusCode, Uri, Version};
 pub use serde_json::{Map, Value};
 
@@ -181,7 +181,7 @@ pub fn get_config_value(key: &str) -> Option<Value> {
 /// # Arguments
 ///
 /// * `key` - The environment variable name. Case-sensitive.
-pub fn get_env(key: &str) -> Result<String, crate::Error> {
+pub fn get_env(key: &str) -> Result<String, crate::EnvVarError> {
     Ok(String::from_utf8(crate::bulwark_host::get_env_bytes(key)?)?)
 }
 
@@ -193,7 +193,7 @@ pub fn get_env(key: &str) -> Result<String, crate::Error> {
 /// # Arguments
 ///
 /// * `key` - The environment variable name. Case-sensitive.
-pub fn get_env_bytes(key: &str) -> Result<Vec<u8>, crate::Error> {
+pub fn get_env_bytes(key: &str) -> Result<Vec<u8>, crate::EnvVarError> {
     Ok(crate::bulwark_host::get_env_bytes(key)?)
 }
 
@@ -339,7 +339,7 @@ pub fn get_outcome() -> Option<Outcome> {
 /// # Arguments
 ///
 /// * `request` - The HTTP request to send.
-pub fn send_request(request: Request) -> Result<Response, crate::Error> {
+pub fn send_request(request: Request) -> Result<Response, crate::HttpError> {
     let request = crate::bulwark_host::RequestInterface::from(request);
     Ok(Response::from(crate::bulwark_host::send_request(&request)?))
 }
@@ -352,7 +352,7 @@ pub fn send_request(request: Request) -> Result<Response, crate::Error> {
 ///
 /// * `key` - The key name corresponding to the state value.
 #[inline]
-pub fn get_remote_state(key: &str) -> Result<Vec<u8>, crate::Error> {
+pub fn get_remote_state(key: &str) -> Result<Vec<u8>, crate::RemoteStateError> {
     Ok(crate::bulwark_host::get_remote_state(key)?)
 }
 
@@ -362,7 +362,7 @@ pub fn get_remote_state(key: &str) -> Result<Vec<u8>, crate::Error> {
 ///
 /// * `value` - The string representation of a counter.
 #[inline]
-pub fn parse_counter(value: Vec<u8>) -> Result<i64, ParseCounterError> {
+pub fn parse_counter(value: Vec<u8>) -> Result<i64, crate::ParseCounterError> {
     Ok(str::from_utf8(value.as_slice())?.parse::<i64>()?)
 }
 
@@ -376,7 +376,7 @@ pub fn parse_counter(value: Vec<u8>) -> Result<i64, ParseCounterError> {
 /// * `key` - The key name corresponding to the state value.
 /// * `value` - The value to record. Values are byte strings, but may be interpreted differently by Redis depending on context.
 #[inline]
-pub fn set_remote_state(key: &str, value: &[u8]) -> Result<(), crate::Error> {
+pub fn set_remote_state(key: &str, value: &[u8]) -> Result<(), crate::RemoteStateError> {
     Ok(crate::bulwark_host::set_remote_state(key, value)?)
 }
 
@@ -391,7 +391,7 @@ pub fn set_remote_state(key: &str, value: &[u8]) -> Result<(), crate::Error> {
 ///
 /// * `key` - The key name corresponding to the state counter.
 #[inline]
-pub fn increment_remote_state(key: &str) -> Result<i64, crate::Error> {
+pub fn increment_remote_state(key: &str) -> Result<i64, crate::RemoteStateError> {
     Ok(crate::bulwark_host::increment_remote_state(key)?)
 }
 
@@ -407,7 +407,7 @@ pub fn increment_remote_state(key: &str) -> Result<i64, crate::Error> {
 /// * `key` - The key name corresponding to the state counter.
 /// * `delta` - The amount to increase the counter by.
 #[inline]
-pub fn increment_remote_state_by(key: &str, delta: i64) -> Result<i64, crate::Error> {
+pub fn increment_remote_state_by(key: &str, delta: i64) -> Result<i64, crate::RemoteStateError> {
     Ok(crate::bulwark_host::increment_remote_state_by(key, delta)?)
 }
 
@@ -421,7 +421,7 @@ pub fn increment_remote_state_by(key: &str, delta: i64) -> Result<i64, crate::Er
 /// * `key` - The key name corresponding to the state value.
 /// * `ttl` - The time-to-live for the value in seconds.
 #[inline]
-pub fn set_remote_ttl(key: &str, ttl: i64) -> Result<(), crate::Error> {
+pub fn set_remote_ttl(key: &str, ttl: i64) -> Result<(), crate::RemoteStateError> {
     Ok(crate::bulwark_host::set_remote_ttl(key, ttl)?)
 }
 
@@ -442,7 +442,11 @@ pub fn set_remote_ttl(key: &str, ttl: i64) -> Result<(), crate::Error> {
 /// * `delta` - The amount to increase the counter by.
 /// * `window` - How long each period should be in seconds.
 #[inline]
-pub fn increment_rate_limit(key: &str, delta: i64, window: i64) -> Result<Rate, crate::Error> {
+pub fn increment_rate_limit(
+    key: &str,
+    delta: i64,
+    window: i64,
+) -> Result<Rate, crate::RemoteStateError> {
     Ok(crate::bulwark_host::increment_rate_limit(
         key, delta, window,
     )?)
@@ -459,7 +463,7 @@ pub fn increment_rate_limit(key: &str, delta: i64, window: i64) -> Result<Rate, 
 ///
 /// * `key` - The key name corresponding to the state counter.
 #[inline]
-pub fn check_rate_limit(key: &str) -> Result<Rate, crate::Error> {
+pub fn check_rate_limit(key: &str) -> Result<Rate, crate::RemoteStateError> {
     Ok(crate::bulwark_host::check_rate_limit(key)?)
 }
 
@@ -512,7 +516,7 @@ pub fn increment_breaker(
     key: &str,
     delta: BreakerDelta,
     window: i64,
-) -> Result<Breaker, crate::Error> {
+) -> Result<Breaker, crate::RemoteStateError> {
     let (success_delta, failure_delta) = match delta {
         BreakerDelta::Success(d) => (d, 0),
         BreakerDelta::Failure(d) => (0, d),
@@ -537,6 +541,6 @@ pub fn increment_breaker(
 ///
 /// * `key` - The key name corresponding to the state counter.
 #[inline]
-pub fn check_breaker(key: &str) -> Result<Breaker, crate::Error> {
+pub fn check_breaker(key: &str) -> Result<Breaker, crate::RemoteStateError> {
     Ok(crate::bulwark_host::check_breaker(key)?)
 }
