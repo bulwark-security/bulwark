@@ -3,7 +3,7 @@ use proc_macro2::Span;
 use quote::{quote, quote_spanned};
 use syn::{
     parse_macro_input, parse_quote, punctuated::Punctuated, spanned::Spanned, Attribute, Ident,
-    ItemFn, ItemImpl, ReturnType, Signature, Visibility,
+    ItemFn, ItemImpl, LitStr, ReturnType, Signature, Visibility,
 };
 extern crate proc_macro;
 
@@ -44,6 +44,7 @@ fn {}() -> Result {{
     // attributes and visibility of the inner function that we will inline.
     let (attrs, sig) = outer_handler_info(&raw_handler);
     let (name, inner_fn) = inner_fn_info(raw_handler);
+    let name_str = LitStr::new(name.to_string().as_str(), Span::call_site());
 
     let output;
 
@@ -57,7 +58,7 @@ fn {}() -> Result {{
                     #[inline(always)]
                     #inner_fn
                     #name().map_err(|e| {
-                        println!("error during plugin execution: {}", e);
+                        eprintln!("error in '{}' handler: {}", #name_str, e);
                         append_tags(["error"]);
                         // Absorbs the error, returning () to match desired signature
                     })
