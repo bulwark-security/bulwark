@@ -13,7 +13,7 @@ publish = false
 maintenance = { status = "experimental" }
 
 [dependencies]
-bulwark-wasm-sdk = { path = "../..", version = "0.1.0" }
+bulwark-wasm-sdk = { path = "../..", version = "0.2.0" }
 
 [lib]
 crate-type = ["cdylib"]
