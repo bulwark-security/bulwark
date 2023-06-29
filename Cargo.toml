@@ -7,7 +7,7 @@ license = "Apache-2.0 WITH LLVM-exception"
 homepage = "https://bulwark.security/"
 repository = "https://github.com/bulwark-security/bulwark"
 readme = "README.md"
-keywords = ["bulwark", "security", "fraud", "detection", "webassembly", "wasm"]
+keywords = ["bulwark", "security", "fraud", "detection", "webassembly"]
 categories = ["wasm"]
 
 [badges]
