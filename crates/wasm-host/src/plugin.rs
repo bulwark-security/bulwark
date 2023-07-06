@@ -29,13 +29,16 @@ use {
         net::IpAddr,
         ops::DerefMut,
         path::Path,
-        sync::{Arc, Mutex, MutexGuard},
+        sync::{Arc, Mutex, MutexGuard, RwLock},
     },
     url::Url,
     validator::Validate,
     wasmtime::component::{Component, Linker},
     wasmtime::{AsContextMut, Config, Engine, Store},
-    wasmtime_wasi::preview2::{Table, WasiCtx, WasiCtxBuilder, WasiView},
+    wasmtime_wasi::preview2::{
+        pipe::{ReadPipe, WritePipe},
+        Table, WasiCtx, WasiCtxBuilder, WasiView,
+    },
 };
 
 extern crate redis;
@@ -320,6 +323,7 @@ pub struct RequestContext {
     // TODO: should there be read-only context and guest-mutable context structs as well?
     /// Context values that will be mutated by the host environment.
     host_mutable_context: HostMutableContext,
+    stdio: PluginStdio,
 }
 
 impl RequestContext {
@@ -338,14 +342,12 @@ impl RequestContext {
         params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>,
         request: Arc<bulwark_wasm_sdk::Request>,
     ) -> Result<RequestContext, ContextInstantiationError> {
+        let stdio = PluginStdio::default();
         let mut wasi_table = Table::new();
         let wasi_ctx = WasiCtxBuilder::new()
-            .inherit_stdio()
-            // TODO: assign stdio to something we can capture
-            // TODO: figure out what to do with stdin, if anything?
-            // .set_stdin(stdin)
-            // .set_stdout(stdout)
-            // .set_stderr(stderr)
+            .set_stdin(ReadPipe::from_shared(stdio.stdin.clone()))
+            .set_stdout(WritePipe::from_shared(stdio.stdout.clone()))
+            .set_stderr(WritePipe::from_shared(stdio.stderr.clone()))
             .build(&mut wasi_table)?;
         let client_ip = request
             .extensions()
@@ -366,12 +368,8 @@ impl RequestContext {
             restrict: 0.0,
             unknown: 1.0,
             tags: vec![],
-            host_mutable_context: HostMutableContext {
-                response: Arc::new(Mutex::new(None)),
-                combined_decision: Arc::new(Mutex::new(None)),
-                outcome: Arc::new(Mutex::new(None)),
-                combined_tags: Arc::new(Mutex::new(None)),
-            },
+            host_mutable_context: HostMutableContext::default(),
+            stdio,
         })
     }
 }
@@ -496,7 +494,7 @@ impl Plugin {
 }
 
 /// A collection of values that the host environment will mutate over the lifecycle of a request/response.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct HostMutableContext {
     /// The HTTP response received from the interior service.
     response: Arc<Mutex<Option<bulwark_host::ResponseInterface>>>,
@@ -510,6 +508,36 @@ struct HostMutableContext {
     outcome: Arc<Mutex<Option<bulwark_host::OutcomeInterface>>>,
 }
 
+/// Wraps buffers to capture plugin stdio.
+#[derive(Clone, Default)]
+pub struct PluginStdio {
+    stdin: Arc<RwLock<std::io::Cursor<Vec<u8>>>>,
+    stdout: Arc<RwLock<std::io::Cursor<Vec<u8>>>>,
+    stderr: Arc<RwLock<std::io::Cursor<Vec<u8>>>>,
+}
+
+impl PluginStdio {
+    pub fn into_inner(&self) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+        (
+            self.stdin
+                .read()
+                .expect("poisoned mutex")
+                .clone()
+                .into_inner(),
+            self.stdout
+                .read()
+                .expect("poisoned mutex")
+                .clone()
+                .into_inner(),
+            self.stderr
+                .read()
+                .expect("poisoned mutex")
+                .clone()
+                .into_inner(),
+        )
+    }
+}
+
 /// An instance of a [`Plugin`], associated with a [`RequestContext`].
 pub struct PluginInstance {
     /// A reference to the parent `Plugin` and its configuration.
@@ -519,6 +547,8 @@ pub struct PluginInstance {
     handlers: handlers::Handlers,
     /// All plugin-visible state that the host environment will mutate over the lifecycle of a request/response.
     host_mutable_context: HostMutableContext,
+    /// The buffers for `stdin`, `stdout`, and `stderr` used by the plugin for I/O.
+    stdio: PluginStdio,
 }
 
 impl PluginInstance {
@@ -534,6 +564,9 @@ impl PluginInstance {
     ) -> Result<PluginInstance, PluginInstantiationError> {
         // Clone the host mutable context so that we can make changes to the interior of our request context from the parent.
         let host_mutable_context = request_context.host_mutable_context.clone();
+
+        // Clone the stdio so we can read the captured stdout and stderr buffers after execution has completed.
+        let stdio = request_context.stdio.clone();
 
         // TODO: do we need to retain a reference to the linker value anywhere? explore how other wasm-based systems use it.
         // convert from normal request struct to wasm request interface
@@ -554,7 +587,13 @@ impl PluginInstance {
             store,
             handlers,
             host_mutable_context,
+            stdio,
         })
+    }
+
+    /// Returns `stdout` and `stderr` captured during plugin execution.
+    pub fn stdio(&self) -> PluginStdio {
+        self.stdio.clone()
     }
 
     /// Returns the configured weight value for tuning [`Decision`] values.
