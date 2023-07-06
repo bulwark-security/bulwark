@@ -733,10 +733,12 @@ impl BulwarkProcessor {
         Self::handle_decision_feedback(
             decision_components,
             outcome,
-            plugin_instances,
+            plugin_instances.clone(),
             timeout_duration,
         )
         .await;
+
+        Self::handle_stdio(plugin_instances).await;
     }
 
     async fn handle_decision_feedback(
@@ -760,6 +762,34 @@ impl BulwarkProcessor {
                 })
                 .instrument(response_phase_child_span.or_current()),
             );
+        }
+    }
+
+    #[instrument(name = "plugin output", skip(plugin_instances))]
+    async fn handle_stdio(plugin_instances: Vec<Arc<Mutex<PluginInstance>>>) {
+        for plugin_instance in plugin_instances {
+            let plugin_instance = plugin_instance.lock().await;
+            let (_, stdout, stderr) = plugin_instance.stdio().into_inner();
+            if !stdout.is_empty() {
+                let stdout = str::from_utf8(&stdout).unwrap();
+                for line in stdout.lines() {
+                    info!(
+                        message = "stdout",
+                        plugin = plugin_instance.plugin_reference(),
+                        content = line
+                    );
+                }
+            }
+            if !stderr.is_empty() {
+                let stderr = str::from_utf8(&stderr).unwrap();
+                for line in stderr.lines() {
+                    info!(
+                        message = "stderr",
+                        plugin = plugin_instance.plugin_reference(),
+                        content = line
+                    );
+                }
+            }
         }
     }
 
