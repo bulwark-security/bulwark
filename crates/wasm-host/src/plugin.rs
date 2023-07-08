@@ -154,6 +154,7 @@ impl From<Outcome> for OutcomeInterface {
 /// represented by `DecisionComponents`. The latter is the result of applying Dempster-Shafer combination to each
 /// `decision` value in a [`DecisionComponents`] list and then taking the union set of all `tags` lists and forming
 /// a new [`DecisionComponents`] with both results.
+#[derive(Clone, Default)]
 pub struct DecisionComponents {
     /// A `Decision` made by a plugin or a group of plugins
     pub decision: Decision,
@@ -296,11 +297,10 @@ pub struct RequestContext {
     wasi_ctx: WasiCtx,
     wasi_table: Table,
 
+    // TODO: should there be read-only context as well?
     config: Arc<Vec<u8>>,
     /// The set of permissions granted to a plugin.
     permissions: bulwark_config::Permissions,
-    /// The `params` are a key-value map shared between all plugin instances for a single request.
-    params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>, // TODO: remove Arc? move to host mutable context?
     /// The HTTP request that the plugin is processing.
     request: bulwark_host::RequestInterface,
     /// The IP address of the client that originated the request, if available.
@@ -310,19 +310,11 @@ pub struct RequestContext {
     /// The HTTP client used to send outbound requests from plugins.
     http_client: reqwest::blocking::Client,
 
-    // TODO: wrap these with `DecisionComponents`
-    /// The `accept` component of a [`Decision`].
-    accept: f64,
-    /// The `restrict` component of a [`Decision`].
-    restrict: f64,
-    /// The `unknown` component of a [`Decision`].
-    unknown: f64,
-    /// The tags annotating a plugins decision.
-    tags: Vec<String>, // TODO: use BTreeSet for merging sorted tag lists?
-
-    // TODO: should there be read-only context and guest-mutable context structs as well?
+    /// Context values that will be mutated by the guest environment.
+    guest_mutable_context: GuestMutableContext,
     /// Context values that will be mutated by the host environment.
     host_mutable_context: HostMutableContext,
+    /// The standard I/O buffers used by WASI and captured for logging.
     stdio: PluginStdio,
 }
 
@@ -360,14 +352,13 @@ impl RequestContext {
             redis_info,
             config: Arc::new(plugin.guest_config()?),
             permissions: plugin.permissions(),
-            params,
             request: bulwark_host::RequestInterface::from(request),
             client_ip,
             http_client: reqwest::blocking::Client::new(),
-            accept: 0.0,
-            restrict: 0.0,
-            unknown: 1.0,
-            tags: vec![],
+            guest_mutable_context: GuestMutableContext {
+                params,
+                decision_components: DecisionComponents::default(),
+            },
             host_mutable_context: HostMutableContext::default(),
             stdio,
         })
@@ -491,6 +482,15 @@ impl Plugin {
     fn permissions(&self) -> bulwark_config::Permissions {
         self.config.permissions.clone()
     }
+}
+
+/// A collection of values that the guest environment will mutate over the lifecycle of a request/response.
+#[derive(Clone, Default)]
+struct GuestMutableContext {
+    /// The `params` are a key-value map shared between all plugin instances for a single request.
+    params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>,
+    /// The plugin's decision and tags annotating it.
+    decision_components: DecisionComponents,
 }
 
 /// A collection of values that the host environment will mutate over the lifecycle of a request/response.
@@ -682,14 +682,7 @@ impl PluginInstance {
     pub fn decision(&mut self) -> DecisionComponents {
         let ctx = self.store.data();
 
-        DecisionComponents {
-            decision: Decision {
-                accept: ctx.accept,
-                restrict: ctx.restrict,
-                unknown: ctx.unknown,
-            },
-            tags: ctx.tags.clone(),
-        }
+        ctx.guest_mutable_context.decision_components.clone()
     }
 }
 
@@ -709,7 +702,11 @@ impl bulwark_host::HostApiImports for RequestContext {
         &mut self,
         key: String,
     ) -> Result<Result<Vec<u8>, bulwark_host::ParamError>, wasmtime::Error> {
-        let params = self.params.lock().expect("poisoned mutex");
+        let params = self
+            .guest_mutable_context
+            .params
+            .lock()
+            .expect("poisoned mutex");
         let value = params.get(&key).unwrap_or(&bulwark_wasm_sdk::Value::Null);
         match serde_json::to_vec(value) {
             Ok(bytes) => Ok(Ok(bytes)),
@@ -728,7 +725,11 @@ impl bulwark_host::HostApiImports for RequestContext {
         key: String,
         value: Vec<u8>,
     ) -> Result<Result<(), bulwark_host::ParamError>, wasmtime::Error> {
-        let mut params = self.params.lock().expect("poisoned mutex");
+        let mut params = self
+            .guest_mutable_context
+            .params
+            .lock()
+            .expect("poisoned mutex");
         match serde_json::from_slice(&value) {
             Ok(value) => {
                 params.insert(key, value);
@@ -871,11 +872,7 @@ impl bulwark_host::HostApiImports for RequestContext {
         // Validate on both the guest and the host because we can't guarantee usage of the SDK.
         match decision.validate() {
             Ok(_) => {
-                // TODO: self should just have a decision rather than 3 separate components
-                self.accept = decision.accept;
-                self.restrict = decision.restrict;
-                self.unknown = decision.unknown;
-
+                self.guest_mutable_context.decision_components.decision = decision;
                 Ok(Ok(()))
             }
             Err(err) => Ok(Err(bulwark_host::DecisionError::Invalid(err.to_string()))),
@@ -888,7 +885,7 @@ impl bulwark_host::HostApiImports for RequestContext {
     ///
     /// * `tags` - The list of tags to associate with a [`Decision`].
     async fn set_tags(&mut self, tags: Vec<String>) -> Result<(), wasmtime::Error> {
-        self.tags = tags;
+        self.guest_mutable_context.decision_components.tags = tags;
         Ok(())
     }
 
@@ -898,8 +895,11 @@ impl bulwark_host::HostApiImports for RequestContext {
     ///
     /// * `tags` - The list of tags to associate with a [`Decision`].
     async fn append_tags(&mut self, mut tags: Vec<String>) -> Result<Vec<String>, wasmtime::Error> {
-        self.tags.append(&mut tags);
-        Ok(self.tags.clone())
+        self.guest_mutable_context
+            .decision_components
+            .tags
+            .append(&mut tags);
+        Ok(self.guest_mutable_context.decision_components.tags.clone())
     }
 
     /// Returns the combined decision, if available.
