@@ -154,6 +154,7 @@ impl From<Outcome> for OutcomeInterface {
 /// represented by `DecisionComponents`. The latter is the result of applying Dempster-Shafer combination to each
 /// `decision` value in a [`DecisionComponents`] list and then taking the union set of all `tags` lists and forming
 /// a new [`DecisionComponents`] with both results.
+#[derive(Clone, Default)]
 pub struct DecisionComponents {
     /// A `Decision` made by a plugin or a group of plugins
     pub decision: Decision,
@@ -293,36 +294,17 @@ impl Default for ScriptRegistry {
 
 /// The RequestContext provides a store of information that needs to cross the plugin sandbox boundary.
 pub struct RequestContext {
+    /// The WASI context that determines how things like stdio map to our buffers.
     wasi_ctx: WasiCtx,
+    /// The WASI table that maps handles to resources.
     wasi_table: Table,
-
-    config: Arc<Vec<u8>>,
-    /// The set of permissions granted to a plugin.
-    permissions: bulwark_config::Permissions,
-    /// The `params` are a key-value map shared between all plugin instances for a single request.
-    params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>, // TODO: remove Arc? move to host mutable context?
-    /// The HTTP request that the plugin is processing.
-    request: bulwark_host::RequestInterface,
-    /// The IP address of the client that originated the request, if available.
-    client_ip: Option<bulwark_host::IpInterface>,
-    /// The Redis connection pool and its associated Lua scripts.
-    redis_info: Option<Arc<RedisInfo>>,
-    /// The HTTP client used to send outbound requests from plugins.
-    http_client: reqwest::blocking::Client,
-
-    // TODO: wrap these with `DecisionComponents`
-    /// The `accept` component of a [`Decision`].
-    accept: f64,
-    /// The `restrict` component of a [`Decision`].
-    restrict: f64,
-    /// The `unknown` component of a [`Decision`].
-    unknown: f64,
-    /// The tags annotating a plugins decision.
-    tags: Vec<String>, // TODO: use BTreeSet for merging sorted tag lists?
-
-    // TODO: should there be read-only context and guest-mutable context structs as well?
+    /// Context values that will not be modified.
+    read_only_ctx: ReadOnlyContext,
+    /// Context values that will be mutated by the guest environment.
+    guest_mut_ctx: GuestMutableContext,
     /// Context values that will be mutated by the host environment.
-    host_mutable_context: HostMutableContext,
+    host_mut_ctx: HostMutableContext,
+    /// The standard I/O buffers used by WASI and captured for logging.
     stdio: PluginStdio,
 }
 
@@ -357,18 +339,19 @@ impl RequestContext {
         Ok(RequestContext {
             wasi_ctx,
             wasi_table,
-            redis_info,
-            config: Arc::new(plugin.guest_config()?),
-            permissions: plugin.permissions(),
-            params,
-            request: bulwark_host::RequestInterface::from(request),
-            client_ip,
-            http_client: reqwest::blocking::Client::new(),
-            accept: 0.0,
-            restrict: 0.0,
-            unknown: 1.0,
-            tags: vec![],
-            host_mutable_context: HostMutableContext::default(),
+            read_only_ctx: ReadOnlyContext {
+                config: Arc::new(plugin.guest_config()?),
+                permissions: plugin.permissions(),
+                request: bulwark_host::RequestInterface::from(request),
+                client_ip,
+                redis_info,
+                http_client: reqwest::blocking::Client::new(),
+            },
+            guest_mut_ctx: GuestMutableContext {
+                params,
+                decision_components: DecisionComponents::default(),
+            },
+            host_mut_ctx: HostMutableContext::default(),
             stdio,
         })
     }
@@ -493,6 +476,35 @@ impl Plugin {
     }
 }
 
+/// A collection of values that will not change over the lifecycle of a request/response.
+struct ReadOnlyContext {
+    /// Plugin-specific configuration. Stored as bytes and deserialized as JSON values by the SDK.
+    ///
+    /// There may be multiple instances of the same plugin with different values for this configuration
+    /// causing the plugin behavior to be different. For instance, a plugin might define a pattern-matching
+    /// algorithm in its code while reading the specific patterns to match from this configuration.
+    config: Arc<Vec<u8>>,
+    /// The set of permissions granted to a plugin.
+    permissions: bulwark_config::Permissions,
+    /// The HTTP request that the plugin is processing.
+    request: bulwark_host::RequestInterface,
+    /// The IP address of the client that originated the request, if available.
+    client_ip: Option<bulwark_host::IpInterface>,
+    /// The Redis connection pool and its associated Lua scripts.
+    redis_info: Option<Arc<RedisInfo>>,
+    /// The HTTP client used to send outbound requests from plugins.
+    http_client: reqwest::blocking::Client,
+}
+
+/// A collection of values that the guest environment will mutate over the lifecycle of a request/response.
+#[derive(Clone, Default)]
+struct GuestMutableContext {
+    /// The `params` are a key-value map shared between all plugin instances for a single request.
+    params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>,
+    /// The plugin's decision and tags annotating it.
+    decision_components: DecisionComponents,
+}
+
 /// A collection of values that the host environment will mutate over the lifecycle of a request/response.
 #[derive(Clone, Default)]
 struct HostMutableContext {
@@ -546,7 +558,7 @@ pub struct PluginInstance {
     store: Store<RequestContext>,
     handlers: handlers::Handlers,
     /// All plugin-visible state that the host environment will mutate over the lifecycle of a request/response.
-    host_mutable_context: HostMutableContext,
+    host_mut_ctx: HostMutableContext,
     /// The buffers for `stdin`, `stdout`, and `stderr` used by the plugin for I/O.
     stdio: PluginStdio,
 }
@@ -563,7 +575,7 @@ impl PluginInstance {
         request_context: RequestContext,
     ) -> Result<PluginInstance, PluginInstantiationError> {
         // Clone the host mutable context so that we can make changes to the interior of our request context from the parent.
-        let host_mutable_context = request_context.host_mutable_context.clone();
+        let host_mut_ctx = request_context.host_mut_ctx.clone();
 
         // Clone the stdio so we can read the captured stdout and stderr buffers after execution has completed.
         let stdio = request_context.stdio.clone();
@@ -586,7 +598,7 @@ impl PluginInstance {
             plugin,
             store,
             handlers,
-            host_mutable_context,
+            host_mut_ctx,
             stdio,
         })
     }
@@ -604,11 +616,7 @@ impl PluginInstance {
     /// Records a [`Response`](bulwark_wasm_sdk::Response) so that it will be accessible to the plugin guest
     /// environment.
     pub fn record_response(&mut self, response: Arc<bulwark_wasm_sdk::Response>) {
-        let mut interior_response = self
-            .host_mutable_context
-            .response
-            .lock()
-            .expect("poisoned mutex");
+        let mut interior_response = self.host_mut_ctx.response.lock().expect("poisoned mutex");
         *interior_response = Some(bulwark_host::ResponseInterface::from(response));
     }
 
@@ -620,16 +628,12 @@ impl PluginInstance {
         outcome: Outcome,
     ) {
         let mut interior_decision = self
-            .host_mutable_context
+            .host_mut_ctx
             .combined_decision
             .lock()
             .expect("poisoned mutex");
         *interior_decision = Some(decision_components.decision.into());
-        let mut interior_outcome = self
-            .host_mutable_context
-            .outcome
-            .lock()
-            .expect("poisoned mutex");
+        let mut interior_outcome = self.host_mut_ctx.outcome.lock().expect("poisoned mutex");
         *interior_outcome = Some(outcome.into());
     }
 
@@ -682,14 +686,7 @@ impl PluginInstance {
     pub fn decision(&mut self) -> DecisionComponents {
         let ctx = self.store.data();
 
-        DecisionComponents {
-            decision: Decision {
-                accept: ctx.accept,
-                restrict: ctx.restrict,
-                unknown: ctx.unknown,
-            },
-            tags: ctx.tags.clone(),
-        }
+        ctx.guest_mut_ctx.decision_components.clone()
     }
 }
 
@@ -697,7 +694,7 @@ impl PluginInstance {
 impl bulwark_host::HostApiImports for RequestContext {
     /// Returns the guest environment's configuration value as serialized JSON.
     async fn get_config(&mut self) -> Result<Vec<u8>, wasmtime::Error> {
-        Ok(self.config.to_vec())
+        Ok(self.read_only_ctx.config.to_vec())
     }
 
     /// Returns a named value from the request context's params.
@@ -709,7 +706,7 @@ impl bulwark_host::HostApiImports for RequestContext {
         &mut self,
         key: String,
     ) -> Result<Result<Vec<u8>, bulwark_host::ParamError>, wasmtime::Error> {
-        let params = self.params.lock().expect("poisoned mutex");
+        let params = self.guest_mut_ctx.params.lock().expect("poisoned mutex");
         let value = params.get(&key).unwrap_or(&bulwark_wasm_sdk::Value::Null);
         match serde_json::to_vec(value) {
             Ok(bytes) => Ok(Ok(bytes)),
@@ -728,7 +725,7 @@ impl bulwark_host::HostApiImports for RequestContext {
         key: String,
         value: Vec<u8>,
     ) -> Result<Result<(), bulwark_host::ParamError>, wasmtime::Error> {
-        let mut params = self.params.lock().expect("poisoned mutex");
+        let mut params = self.guest_mut_ctx.params.lock().expect("poisoned mutex");
         match serde_json::from_slice(&value) {
             Ok(value) => {
                 params.insert(key, value);
@@ -748,6 +745,7 @@ impl bulwark_host::HostApiImports for RequestContext {
         key: String,
     ) -> Result<Result<Vec<u8>, bulwark_host::EnvError>, wasmtime::Error> {
         let allowed_env_vars = self
+            .read_only_ctx
             .permissions
             .env
             .iter()
@@ -769,7 +767,7 @@ impl bulwark_host::HostApiImports for RequestContext {
 
     /// Returns the incoming request associated with the request context.
     async fn get_request(&mut self) -> Result<bulwark_host::RequestInterface, wasmtime::Error> {
-        Ok(self.request.clone())
+        Ok(self.read_only_ctx.request.clone())
     }
 
     /// Returns the response received from the interior service.
@@ -779,11 +777,8 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn get_response(
         &mut self,
     ) -> Result<Option<bulwark_host::ResponseInterface>, wasmtime::Error> {
-        let response: MutexGuard<Option<bulwark_host::ResponseInterface>> = self
-            .host_mutable_context
-            .response
-            .lock()
-            .expect("poisoned mutex");
+        let response: MutexGuard<Option<bulwark_host::ResponseInterface>> =
+            self.host_mut_ctx.response.lock().expect("poisoned mutex");
         Ok(response.to_owned())
     }
 
@@ -791,7 +786,7 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn get_client_ip(
         &mut self,
     ) -> Result<Option<bulwark_host::IpInterface>, wasmtime::Error> {
-        Ok(self.client_ip)
+        Ok(self.read_only_ctx.client_ip)
     }
 
     /// Begins an outbound request. Returns a request ID used by `add_request_header` and `set_request_body`.
@@ -808,12 +803,12 @@ impl bulwark_host::HostApiImports for RequestContext {
         Ok(
             // Inner function to permit ? operator
             || -> Result<bulwark_host::ResponseInterface, bulwark_host::HttpError> {
-                verify_http_domains(&self.permissions.http, &request.uri)?;
+                verify_http_domains(&self.read_only_ctx.permissions.http, &request.uri)?;
 
                 let method = reqwest::Method::from_str(&request.method)
                     .map_err(|_| bulwark_host::HttpError::InvalidMethod(request.method.clone()))?;
 
-                let mut builder = self.http_client.request(method, &request.uri);
+                let mut builder = self.read_only_ctx.http_client.request(method, &request.uri);
                 for (name, value) in request.headers {
                     builder = builder.header(name, value);
                 }
@@ -871,11 +866,7 @@ impl bulwark_host::HostApiImports for RequestContext {
         // Validate on both the guest and the host because we can't guarantee usage of the SDK.
         match decision.validate() {
             Ok(_) => {
-                // TODO: self should just have a decision rather than 3 separate components
-                self.accept = decision.accept;
-                self.restrict = decision.restrict;
-                self.unknown = decision.unknown;
-
+                self.guest_mut_ctx.decision_components.decision = decision;
                 Ok(Ok(()))
             }
             Err(err) => Ok(Err(bulwark_host::DecisionError::Invalid(err.to_string()))),
@@ -888,7 +879,7 @@ impl bulwark_host::HostApiImports for RequestContext {
     ///
     /// * `tags` - The list of tags to associate with a [`Decision`].
     async fn set_tags(&mut self, tags: Vec<String>) -> Result<(), wasmtime::Error> {
-        self.tags = tags;
+        self.guest_mut_ctx.decision_components.tags = tags;
         Ok(())
     }
 
@@ -898,8 +889,11 @@ impl bulwark_host::HostApiImports for RequestContext {
     ///
     /// * `tags` - The list of tags to associate with a [`Decision`].
     async fn append_tags(&mut self, mut tags: Vec<String>) -> Result<Vec<String>, wasmtime::Error> {
-        self.tags.append(&mut tags);
-        Ok(self.tags.clone())
+        self.guest_mut_ctx
+            .decision_components
+            .tags
+            .append(&mut tags);
+        Ok(self.guest_mut_ctx.decision_components.tags.clone())
     }
 
     /// Returns the combined decision, if available.
@@ -909,7 +903,7 @@ impl bulwark_host::HostApiImports for RequestContext {
         &mut self,
     ) -> Result<Option<bulwark_host::DecisionInterface>, wasmtime::Error> {
         let combined_decision: MutexGuard<Option<bulwark_host::DecisionInterface>> = self
-            .host_mutable_context
+            .host_mut_ctx
             .combined_decision
             .lock()
             .expect("poisoned mutex");
@@ -921,7 +915,7 @@ impl bulwark_host::HostApiImports for RequestContext {
     /// Typically used in the feedback phase.
     async fn get_combined_tags(&mut self) -> Result<Option<Vec<String>>, wasmtime::Error> {
         let combined_tags: MutexGuard<Option<Vec<String>>> = self
-            .host_mutable_context
+            .host_mut_ctx
             .combined_tags
             .lock()
             .expect("poisoned mutex");
@@ -934,11 +928,8 @@ impl bulwark_host::HostApiImports for RequestContext {
     async fn get_outcome(
         &mut self,
     ) -> Result<Option<bulwark_host::OutcomeInterface>, wasmtime::Error> {
-        let outcome: MutexGuard<Option<bulwark_host::OutcomeInterface>> = self
-            .host_mutable_context
-            .outcome
-            .lock()
-            .expect("poisoned mutex");
+        let outcome: MutexGuard<Option<bulwark_host::OutcomeInterface>> =
+            self.host_mut_ctx.outcome.lock().expect("poisoned mutex");
         Ok(outcome.to_owned())
     }
 
@@ -956,9 +947,9 @@ impl bulwark_host::HostApiImports for RequestContext {
         Ok(
             // Inner function to permit ? operator
             || -> Result<Vec<u8>, bulwark_host::StateError> {
-                verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                verify_remote_state_prefixes(&self.read_only_ctx.permissions.state, &key)?;
 
-                if let Some(redis_info) = self.redis_info.clone() {
+                if let Some(redis_info) = self.read_only_ctx.redis_info.clone() {
                     let mut conn = redis_info
                         .pool
                         .get()
@@ -990,9 +981,9 @@ impl bulwark_host::HostApiImports for RequestContext {
         Ok(
             // Inner function to permit ? operator
             || -> Result<(), bulwark_host::StateError> {
-                verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                verify_remote_state_prefixes(&self.read_only_ctx.permissions.state, &key)?;
 
-                if let Some(redis_info) = self.redis_info.clone() {
+                if let Some(redis_info) = self.read_only_ctx.redis_info.clone() {
                     let mut conn = redis_info
                         .pool
                         .get()
@@ -1036,9 +1027,9 @@ impl bulwark_host::HostApiImports for RequestContext {
         Ok(
             // Inner function to permit ? operator
             || -> Result<i64, bulwark_host::StateError> {
-                verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                verify_remote_state_prefixes(&self.read_only_ctx.permissions.state, &key)?;
 
-                if let Some(redis_info) = self.redis_info.clone() {
+                if let Some(redis_info) = self.read_only_ctx.redis_info.clone() {
                     let mut conn = redis_info
                         .pool
                         .get()
@@ -1070,9 +1061,9 @@ impl bulwark_host::HostApiImports for RequestContext {
         Ok(
             // Inner function to permit ? operator
             || -> Result<(), bulwark_host::StateError> {
-                verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                verify_remote_state_prefixes(&self.read_only_ctx.permissions.state, &key)?;
 
-                if let Some(redis_info) = self.redis_info.clone() {
+                if let Some(redis_info) = self.read_only_ctx.redis_info.clone() {
                     let mut conn = redis_info
                         .pool
                         .get()
@@ -1112,9 +1103,9 @@ impl bulwark_host::HostApiImports for RequestContext {
         Ok(
             // Inner function to permit ? operator
             || -> Result<bulwark_host::RateInterface, bulwark_host::StateError> {
-                verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                verify_remote_state_prefixes(&self.read_only_ctx.permissions.state, &key)?;
 
-                if let Some(redis_info) = self.redis_info.clone() {
+                if let Some(redis_info) = self.read_only_ctx.redis_info.clone() {
                     let mut conn = redis_info
                         .pool
                         .get()
@@ -1158,9 +1149,9 @@ impl bulwark_host::HostApiImports for RequestContext {
         Ok(
             // Inner function to permit ? operator
             || -> Result<bulwark_host::RateInterface, bulwark_host::StateError> {
-                verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                verify_remote_state_prefixes(&self.read_only_ctx.permissions.state, &key)?;
 
-                if let Some(redis_info) = self.redis_info.clone() {
+                if let Some(redis_info) = self.read_only_ctx.redis_info.clone() {
                     let mut conn = redis_info
                         .pool
                         .get()
@@ -1211,9 +1202,9 @@ impl bulwark_host::HostApiImports for RequestContext {
         Ok(
             // Inner function to permit ? operator
             || -> Result<bulwark_host::BreakerInterface, bulwark_host::StateError> {
-                verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                verify_remote_state_prefixes(&self.read_only_ctx.permissions.state, &key)?;
 
-                if let Some(redis_info) = self.redis_info.clone() {
+                if let Some(redis_info) = self.read_only_ctx.redis_info.clone() {
                     let mut conn = redis_info
                         .pool
                         .get()
@@ -1270,9 +1261,9 @@ impl bulwark_host::HostApiImports for RequestContext {
         Ok(
             // Inner function to permit ? operator
             || -> Result<bulwark_host::BreakerInterface, bulwark_host::StateError> {
-                verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                verify_remote_state_prefixes(&self.read_only_ctx.permissions.state, &key)?;
 
-                if let Some(redis_info) = self.redis_info.clone() {
+                if let Some(redis_info) = self.read_only_ctx.redis_info.clone() {
                     let mut conn = redis_info
                         .pool
                         .get()
