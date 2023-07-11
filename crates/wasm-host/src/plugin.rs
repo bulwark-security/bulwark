@@ -342,16 +342,17 @@ impl RequestContext {
             read_only_ctx: ReadOnlyContext {
                 config: Arc::new(plugin.guest_config()?),
                 permissions: plugin.permissions(),
-                request: bulwark_host::RequestInterface::from(request),
                 client_ip,
                 redis_info,
                 http_client: reqwest::blocking::Client::new(),
             },
             guest_mut_ctx: GuestMutableContext {
+                receive_request_body: Arc::new(Mutex::new(false)),
+                receive_response_body: Arc::new(Mutex::new(false)),
                 params,
                 decision_components: DecisionComponents::default(),
             },
-            host_mut_ctx: HostMutableContext::default(),
+            host_mut_ctx: HostMutableContext::new(bulwark_host::RequestInterface::from(request)),
             stdio,
         })
     }
@@ -486,8 +487,6 @@ struct ReadOnlyContext {
     config: Arc<Vec<u8>>,
     /// The set of permissions granted to a plugin.
     permissions: bulwark_config::Permissions,
-    /// The HTTP request that the plugin is processing.
-    request: bulwark_host::RequestInterface,
     /// The IP address of the client that originated the request, if available.
     client_ip: Option<bulwark_host::IpInterface>,
     /// The Redis connection pool and its associated Lua scripts.
@@ -499,6 +498,10 @@ struct ReadOnlyContext {
 /// A collection of values that the guest environment will mutate over the lifecycle of a request/response.
 #[derive(Clone, Default)]
 struct GuestMutableContext {
+    /// Whether this plugin instance expects to process a request body.
+    receive_request_body: Arc<Mutex<bool>>,
+    /// Whether this plugin instance expects to process a response body.
+    receive_response_body: Arc<Mutex<bool>>,
     /// The `params` are a key-value map shared between all plugin instances for a single request.
     params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>,
     /// The plugin's decision and tags annotating it.
@@ -506,8 +509,10 @@ struct GuestMutableContext {
 }
 
 /// A collection of values that the host environment will mutate over the lifecycle of a request/response.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct HostMutableContext {
+    /// The HTTP request received from the exterior client.
+    request: Arc<Mutex<bulwark_host::RequestInterface>>,
     /// The HTTP response received from the interior service.
     response: Arc<Mutex<Option<bulwark_host::ResponseInterface>>>,
     /// The combined decision of all plugins at the end of the request phase.
@@ -518,6 +523,18 @@ struct HostMutableContext {
     combined_tags: Arc<Mutex<Option<Vec<String>>>>,
     /// The decision outcome after the decision has been checked against configured thresholds.
     outcome: Arc<Mutex<Option<bulwark_host::OutcomeInterface>>>,
+}
+
+impl HostMutableContext {
+    fn new(request: bulwark_host::RequestInterface) -> Self {
+        HostMutableContext {
+            request: Arc::new(Mutex::new(request)),
+            response: Arc::new(Mutex::new(None)),
+            combined_decision: Arc::new(Mutex::new(None)),
+            combined_tags: Arc::new(Mutex::new(None)),
+            outcome: Arc::new(Mutex::new(None)),
+        }
+    }
 }
 
 /// Wraps buffers to capture plugin stdio.
@@ -642,6 +659,16 @@ impl PluginInstance {
         self.plugin.reference.clone()
     }
 
+    /// Executes the guest's `init` function.
+    pub async fn handle_init(&mut self) -> Result<(), PluginExecutionError> {
+        let _result = self
+            .handlers
+            .call_on_init(self.store.as_context_mut())
+            .await?;
+
+        Ok(())
+    }
+
     /// Executes the guest's `on_request` function.
     pub async fn handle_request(&mut self) -> Result<(), PluginExecutionError> {
         let _result = self
@@ -667,6 +694,26 @@ impl PluginInstance {
         let _result = self
             .handlers
             .call_on_response_decision(self.store.as_context_mut())
+            .await?;
+
+        Ok(())
+    }
+
+    /// Executes the guest's `on_request_body_decision` function.
+    pub async fn handle_request_body_decision(&mut self) -> Result<(), PluginExecutionError> {
+        let _result = self
+            .handlers
+            .call_on_request_body_decision(self.store.as_context_mut())
+            .await?;
+
+        Ok(())
+    }
+
+    /// Executes the guest's `on_response_body_decision` function.
+    pub async fn handle_response_body_decision(&mut self) -> Result<(), PluginExecutionError> {
+        let _result = self
+            .handlers
+            .call_on_response_body_decision(self.store.as_context_mut())
             .await?;
 
         Ok(())
@@ -767,7 +814,8 @@ impl bulwark_host::HostApiImports for RequestContext {
 
     /// Returns the incoming request associated with the request context.
     async fn get_request(&mut self) -> Result<bulwark_host::RequestInterface, wasmtime::Error> {
-        Ok(self.read_only_ctx.request.clone())
+        let request = self.host_mut_ctx.request.lock().expect("poisoned mutex");
+        Ok(request.clone())
     }
 
     /// Returns the response received from the interior service.
@@ -780,6 +828,28 @@ impl bulwark_host::HostApiImports for RequestContext {
         let response: MutexGuard<Option<bulwark_host::ResponseInterface>> =
             self.host_mut_ctx.response.lock().expect("poisoned mutex");
         Ok(response.to_owned())
+    }
+
+    /// Determines whether the request body will be received by the plugin in the `on_request_body_decision` handler.
+    async fn receive_request_body(&mut self, body: bool) -> Result<(), wasmtime::Error> {
+        let mut receive_request_body = self
+            .guest_mut_ctx
+            .receive_request_body
+            .lock()
+            .expect("poisoned mutex");
+        *receive_request_body = body;
+        Ok(())
+    }
+
+    /// Determines whether the response body will be received by the plugin in the `on_response_body_decision` handler.
+    async fn receive_response_body(&mut self, body: bool) -> Result<(), wasmtime::Error> {
+        let mut receive_response_body = self
+            .guest_mut_ctx
+            .receive_response_body
+            .lock()
+            .expect("poisoned mutex");
+        *receive_response_body = body;
+        Ok(())
     }
 
     /// Returns the originating client's IP address, if available.

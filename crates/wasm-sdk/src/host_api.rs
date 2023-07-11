@@ -127,6 +127,32 @@ pub fn get_response() -> Option<Response> {
     )
 }
 
+/// Determines whether the `on_request_body_decision` handler will be called with a request body or not.
+///
+/// The [`bulwark_plugin`](bulwark_wasm_sdk_macros::bulwark_plugin) macro will automatically call this function
+/// within an auto-generated `on_init` handler. Normally, plugin authors do not need to call it directly.
+/// However, the default may be overriden if a plugin intends to cancel processing of the request body despite
+/// having a handler available for processing it.
+///
+/// However, if the `on_init` handler is replaced, this function will need to be called manually. Most plugins
+/// will not need to do this.
+pub fn receive_request_body(body: bool) {
+    crate::bulwark_host::receive_request_body(body)
+}
+
+/// Determines whether the `on_response_body_decision` handler will be called with a response body or not.
+///
+/// The [`bulwark_plugin`](bulwark_wasm_sdk_macros::bulwark_plugin) macro will automatically call this function
+/// within an auto-generated `on_init` handler. Normally, plugin authors do not need to call it directly.
+/// However, the default may be overriden if a plugin intends to cancel processing of the response body despite
+/// having a handler available for processing it.
+///
+/// However, if the `on_init` handler is replaced, this function will need to be called manually. Most plugins
+/// will not need to do this.
+pub fn receive_response_body(body: bool) {
+    crate::bulwark_host::receive_response_body(body)
+}
+
 /// Returns the originating client's IP address, if available.
 pub fn get_client_ip() -> Option<IpAddr> {
     crate::bulwark_host::get_client_ip().map(|ip| ip.into())
