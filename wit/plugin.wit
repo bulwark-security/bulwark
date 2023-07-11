@@ -11,6 +11,7 @@ world host-api {
     uri: string,
     version: string,
     headers: list<tuple<string,list<u8>>>,
+    body-received: bool,
     chunk: list<u8>,
     chunk-start: u64,
     chunk-length: u64,
@@ -19,6 +20,7 @@ world host-api {
   record response-interface {
     status: u32,
     headers: list<tuple<string,list<u8>>>,
+    body-received: bool,
     chunk: list<u8>,
     chunk-start: u64,
     chunk-length: u64,

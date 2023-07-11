@@ -54,6 +54,8 @@ pub struct RemoteIP(pub IpAddr);
 /// of the client that originated the request rather than the immediately exterior proxy or load balancer.
 pub struct ForwardedIP(pub IpAddr);
 
+// TODO: from.rs
+
 impl From<Arc<bulwark_wasm_sdk::Request>> for bulwark_host::RequestInterface {
     fn from(request: Arc<bulwark_wasm_sdk::Request>) -> Self {
         bulwark_host::RequestInterface {
@@ -65,6 +67,7 @@ impl From<Arc<bulwark_wasm_sdk::Request>> for bulwark_host::RequestInterface {
                 .iter()
                 .map(|(name, value)| (name.to_string(), value.as_bytes().to_vec()))
                 .collect(),
+            body_received: request.body().received,
             chunk_start: request.body().start,
             chunk_length: request.body().size,
             end_of_stream: request.body().end_of_stream,
@@ -84,6 +87,7 @@ impl From<Arc<bulwark_wasm_sdk::Response>> for bulwark_host::ResponseInterface {
                 .iter()
                 .map(|(name, value)| (name.to_string(), value.as_bytes().to_vec()))
                 .collect(),
+            body_received: response.body().received,
             chunk_start: response.body().start,
             chunk_length: response.body().size,
             end_of_stream: response.body().end_of_stream,
@@ -914,6 +918,7 @@ impl bulwark_host::HostApiImports for RequestContext {
                 Ok(bulwark_host::ResponseInterface {
                     status,
                     headers,
+                    body_received: true,
                     chunk: body,
                     chunk_start: 0,
                     chunk_length: content_length,
@@ -1437,12 +1442,7 @@ mod tests {
                 .method("GET")
                 .uri("/")
                 .version(http::Version::HTTP_11)
-                .body(bulwark_wasm_sdk::BodyChunk {
-                    content: vec![],
-                    start: 0,
-                    size: 0,
-                    end_of_stream: true,
-                })?,
+                .body(bulwark_wasm_sdk::NO_BODY)?,
         );
         let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
         let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
@@ -1474,12 +1474,7 @@ mod tests {
                 .uri("/example")
                 .version(http::Version::HTTP_11)
                 .header("Content-Type", "application/json")
-                .body(bulwark_wasm_sdk::BodyChunk {
-                    content: "{\"number\": 42}".as_bytes().to_vec(),
-                    start: 0,
-                    size: 14,
-                    end_of_stream: true,
-                })?,
+                .body(bulwark_wasm_sdk::UNAVAILABLE_BODY)?,
         );
         let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
         let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
@@ -1499,12 +1494,7 @@ mod tests {
                 .version(http::Version::HTTP_11)
                 .header("Content-Type", "application/json")
                 .header("Evil", "true")
-                .body(bulwark_wasm_sdk::BodyChunk {
-                    content: "{\"number\": 42}".as_bytes().to_vec(),
-                    start: 0,
-                    size: 14,
-                    end_of_stream: true,
-                })?,
+                .body(bulwark_wasm_sdk::UNAVAILABLE_BODY)?,
         );
         let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
         let request_context = RequestContext::new(plugin.clone(), None, params, request)?;

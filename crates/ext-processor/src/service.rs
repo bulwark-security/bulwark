@@ -227,12 +227,11 @@ impl BulwarkProcessor {
             let request_uri = Self::get_header_value(&header_msg.headers, ":path")
                 .ok_or(PrepareRequestError::MissingPath)?;
             let mut request = http::Request::builder();
-            // TODO: read the request body
-            let request_chunk = bulwark_wasm_sdk::BodyChunk {
-                end_of_stream: header_msg.end_of_stream,
-                size: 0,
-                start: 0,
-                content: vec![],
+            let request_chunk = if header_msg.end_of_stream {
+                bulwark_wasm_sdk::NO_BODY
+            } else {
+                // Have to obtain this from envoy later if we need it
+                bulwark_wasm_sdk::UNAVAILABLE_BODY
             };
             // No current access to HTTP version information via Envoy external processor
             request = request.method(method).uri(request_uri);
@@ -275,12 +274,11 @@ impl BulwarkProcessor {
                 .ok_or(PrepareResponseError::MissingStatus)?;
 
             let mut response = http::Response::builder();
-            // TODO: read the response body
-            let response_chunk = bulwark_wasm_sdk::BodyChunk {
-                end_of_stream: header_msg.end_of_stream,
-                size: 0,
-                start: 0,
-                content: vec![],
+            let response_chunk = if header_msg.end_of_stream {
+                bulwark_wasm_sdk::NO_BODY
+            } else {
+                // Have to obtain this from envoy later if we need it
+                bulwark_wasm_sdk::UNAVAILABLE_BODY
             };
             response = response.status(status);
             match &header_msg.headers {

@@ -55,6 +55,7 @@ pub enum BreakerDelta {
 /// more tolerant to trunctation are recommended in such cases. There will be some situations where this limitation
 /// prevents useful parsing entirely and plugins may need to make use of the `unknown` result value to express this.
 pub struct BodyChunk {
+    pub received: bool,
     pub end_of_stream: bool,
     pub size: u64,
     pub start: u64,
@@ -64,6 +65,16 @@ pub struct BodyChunk {
 
 /// An empty HTTP body
 pub const NO_BODY: BodyChunk = BodyChunk {
+    received: true,
+    end_of_stream: true,
+    size: 0,
+    start: 0,
+    content: vec![],
+};
+
+/// An unavailable HTTP body
+pub const UNAVAILABLE_BODY: BodyChunk = BodyChunk {
+    received: false,
     end_of_stream: true,
     size: 0,
     start: 0,
@@ -94,6 +105,7 @@ pub fn get_request() -> Request {
     }
     request
         .body(BodyChunk {
+            received: raw_request.body_received,
             content: chunk,
             size: raw_request.chunk_length,
             start: raw_request.chunk_start,
@@ -116,6 +128,7 @@ pub fn get_response() -> Option<Response> {
     Some(
         response
             .body(BodyChunk {
+                received: raw_response.body_received,
                 content: chunk,
                 size: raw_response.chunk_length,
                 start: raw_response.chunk_start,
