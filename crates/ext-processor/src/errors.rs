@@ -26,7 +26,7 @@ pub enum PrepareRequestError {
     MissingAuthority,
     #[error("missing http path pseudo-header")]
     MissingPath,
-    #[error("missing envoy headers")]
+    #[error("no headers received from envoy")]
     MissingHeaders,
 }
 

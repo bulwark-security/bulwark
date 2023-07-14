@@ -9,7 +9,6 @@ extern crate proc_macro;
 
 /// The `bulwark_plugin` attribute generates default implementations for all handler traits in a module
 /// and produces friendly errors for common mistakes.
-#[doc(hidden)]
 #[proc_macro_attribute]
 pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
     // Parse the input token stream as an impl, or return an error.

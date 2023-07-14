@@ -47,11 +47,13 @@ extern crate redis;
 ///
 /// In an architecture with proxies or load balancers in front of Bulwark, this IP will belong to the immediately
 /// exterior proxy or load balancer rather than the IP address of the client that originated the request.
+#[derive(Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct RemoteIP(pub IpAddr);
 /// Wraps an [`IpAddr`] representing the forwarded IP for the incoming request.
 ///
 /// In an architecture with proxies or load balancers in front of Bulwark, this IP will belong to the IP address
 /// of the client that originated the request rather than the immediately exterior proxy or load balancer.
+#[derive(Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct ForwardedIP(pub IpAddr);
 
 // TODO: from.rs
@@ -578,6 +580,8 @@ pub struct PluginInstance {
     /// The WASM store that holds state associated with the incoming request.
     store: Store<RequestContext>,
     handlers: handlers::Handlers,
+    receive_request_body: Arc<Mutex<bool>>,
+    receive_response_body: Arc<Mutex<bool>>,
     /// All plugin-visible state that the host environment will mutate over the lifecycle of a request/response.
     host_mut_ctx: HostMutableContext,
     /// The buffers for `stdin`, `stdout`, and `stderr` used by the plugin for I/O.
@@ -595,6 +599,10 @@ impl PluginInstance {
         plugin: Arc<Plugin>,
         request_context: RequestContext,
     ) -> Result<PluginInstance, PluginInstantiationError> {
+        // Clone the request/response body receive flags so we can provide them to the service layer.
+        let receive_request_body = request_context.guest_mut_ctx.receive_request_body.clone();
+        let receive_response_body = request_context.guest_mut_ctx.receive_response_body.clone();
+
         // Clone the host mutable context so that we can make changes to the interior of our request context from the parent.
         let host_mut_ctx = request_context.host_mut_ctx.clone();
 
@@ -619,6 +627,8 @@ impl PluginInstance {
             plugin,
             store,
             handlers,
+            receive_request_body,
+            receive_response_body,
             host_mut_ctx,
             stdio,
         })
@@ -629,9 +639,28 @@ impl PluginInstance {
         self.stdio.clone()
     }
 
+    /// Returns whether this plugin instance expects to process a request body.
+    pub fn receive_request_body(&self) -> bool {
+        let receive_request_body = self.receive_request_body.lock().expect("poisoned mutex");
+        *receive_request_body
+    }
+
+    /// Returns whether this plugin instance expects to process a response body.
+    pub fn receive_response_body(&self) -> bool {
+        let receive_response_body = self.receive_response_body.lock().expect("poisoned mutex");
+        *receive_response_body
+    }
+
     /// Returns the configured weight value for tuning [`Decision`] values.
     pub fn weight(&self) -> f64 {
         self.plugin.config.weight
+    }
+
+    /// Records a [`Request`](bulwark_wasm_sdk::Request) so that it will be accessible to the plugin guest
+    /// environment. Overwrites the existing `Request`.
+    pub fn record_request(&mut self, request: Arc<bulwark_wasm_sdk::Request>) {
+        let mut interior_request = self.host_mut_ctx.request.lock().expect("poisoned mutex");
+        *interior_request = bulwark_host::RequestInterface::from(request);
     }
 
     /// Records a [`Response`](bulwark_wasm_sdk::Response) so that it will be accessible to the plugin guest
