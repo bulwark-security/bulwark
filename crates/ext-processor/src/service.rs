@@ -3,7 +3,7 @@
 use {
     crate::{
         serialize_decision_sfv, serialize_tags_sfv, PluginGroupInstantiationError,
-        PrepareRequestError, PrepareResponseError, ProcessingMessageError, SfvError,
+        ProcessingMessageError, RequestError, ResponseError, SfvError,
     },
     bulwark_config::{Config, Thresholds},
     bulwark_wasm_host::{
@@ -215,22 +215,22 @@ impl BulwarkProcessor {
     async fn prepare_request(
         stream: &mut Streaming<ProcessingRequest>,
         proxy_hops: usize,
-    ) -> Result<bulwark_wasm_sdk::Request, PrepareRequestError> {
+    ) -> Result<bulwark_wasm_sdk::Request, RequestError> {
         if let Some(header_msg) = Self::get_request_headers(stream).await {
             // TODO: currently this information isn't used and isn't accessible to the plugin environment yet
             // TODO: does this go into a request extension?
             // TODO: :protocol?
             let _authority = Self::get_header_value(&header_msg.headers, ":authority")
-                .ok_or(PrepareRequestError::MissingAuthority)?;
+                .ok_or(RequestError::MissingAuthority)?;
             let _scheme = Self::get_header_value(&header_msg.headers, ":scheme")
-                .ok_or(PrepareRequestError::MissingScheme)?;
+                .ok_or(RequestError::MissingScheme)?;
 
             let method = http::Method::from_str(
                 Self::get_header_value(&header_msg.headers, ":method")
-                    .ok_or(PrepareRequestError::MissingMethod)?,
+                    .ok_or(RequestError::MissingMethod)?,
             )?;
             let request_uri = Self::get_header_value(&header_msg.headers, ":path")
-                .ok_or(PrepareRequestError::MissingPath)?;
+                .ok_or(RequestError::MissingPath)?;
             let mut request = http::Request::builder();
             let request_chunk = if header_msg.end_of_stream {
                 bulwark_wasm_sdk::NO_BODY
@@ -268,7 +268,7 @@ impl BulwarkProcessor {
 
             return Ok(request.body(request_chunk)?);
         }
-        Err(PrepareRequestError::MissingHeaders)
+        Err(RequestError::MissingHeaders)
     }
 
     async fn merge_request_body(
@@ -308,10 +308,10 @@ impl BulwarkProcessor {
     async fn prepare_response(
         stream: &mut Streaming<ProcessingRequest>,
         version: http::Version,
-    ) -> Result<bulwark_wasm_sdk::Response, PrepareResponseError> {
+    ) -> Result<bulwark_wasm_sdk::Response, ResponseError> {
         if let Some(header_msg) = Self::get_response_headers(stream).await {
             let status = Self::get_header_value(&header_msg.headers, ":status")
-                .ok_or(PrepareResponseError::MissingStatus)?;
+                .ok_or(ResponseError::MissingStatus)?;
 
             let mut response = http::Response::builder();
             let response_chunk = if header_msg.end_of_stream {
@@ -334,7 +334,7 @@ impl BulwarkProcessor {
             }
             return Ok(response.body(response_chunk)?);
         }
-        Err(PrepareResponseError::MissingHeaders)
+        Err(ResponseError::MissingHeaders)
     }
 
     async fn merge_response_body(
