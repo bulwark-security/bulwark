@@ -400,7 +400,7 @@ impl BulwarkProcessor {
         timeout_duration: std::time::Duration,
     ) {
         let mut init_phase_tasks = JoinSet::new();
-        for plugin_instance in plugin_instances.clone() {
+        for plugin_instance in plugin_instances {
             let init_phase_child_span = tracing::info_span!("execute on_init",);
             init_phase_tasks.spawn(
                 timeout(timeout_duration, async move {
@@ -439,7 +439,7 @@ impl BulwarkProcessor {
         timeout_duration: std::time::Duration,
     ) -> DecisionComponents {
         Self::execute_request_enrichment_phase(plugin_instances.clone(), timeout_duration).await;
-        Self::execute_request_decision_phase(plugin_instances.clone(), timeout_duration).await
+        Self::execute_request_decision_phase(plugin_instances, timeout_duration).await
     }
 
     async fn execute_request_enrichment_phase(
@@ -447,7 +447,7 @@ impl BulwarkProcessor {
         timeout_duration: std::time::Duration,
     ) {
         let mut enrichment_phase_tasks = JoinSet::new();
-        for plugin_instance in plugin_instances.clone() {
+        for plugin_instance in plugin_instances {
             let enrichment_phase_child_span = tracing::info_span!("execute on_request",);
             enrichment_phase_tasks.spawn(
                 timeout(timeout_duration, async move {
@@ -487,7 +487,7 @@ impl BulwarkProcessor {
     ) -> DecisionComponents {
         let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
         let mut decision_phase_tasks = JoinSet::new();
-        for plugin_instance in plugin_instances.clone() {
+        for plugin_instance in plugin_instances {
             let decision_phase_child_span = tracing::info_span!("execute on_request_decision",);
             let decision_components = decision_components.clone();
             decision_phase_tasks.spawn(
@@ -570,7 +570,7 @@ impl BulwarkProcessor {
     ) -> DecisionComponents {
         let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
         let mut decision_phase_tasks = JoinSet::new();
-        for plugin_instance in plugin_instances.clone() {
+        for plugin_instance in plugin_instances {
             let decision_phase_child_span =
                 tracing::info_span!("execute on_request_body_decision",);
             {
@@ -660,7 +660,7 @@ impl BulwarkProcessor {
     ) -> DecisionComponents {
         let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
         let mut response_phase_tasks = JoinSet::new();
-        for plugin_instance in plugin_instances.clone() {
+        for plugin_instance in plugin_instances {
             let response_phase_child_span = tracing::info_span!("execute on_response_decision",);
             {
                 // Make sure the plugin instance knows about the response
@@ -749,7 +749,7 @@ impl BulwarkProcessor {
     ) -> DecisionComponents {
         let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
         let mut response_phase_tasks = JoinSet::new();
-        for plugin_instance in plugin_instances.clone() {
+        for plugin_instance in plugin_instances {
             let response_phase_child_span =
                 tracing::info_span!("execute on_response_body_decision",);
             {
@@ -1000,7 +1000,7 @@ impl BulwarkProcessor {
                 )
                 .await,
                 thresholds,
-                plugin_instances.clone(),
+                plugin_instances,
                 timeout_duration,
             )
             .await;
@@ -1015,7 +1015,7 @@ impl BulwarkProcessor {
                 Self::execute_response_phase(plugin_instances.clone(), http_resp, timeout_duration)
                     .await,
                 thresholds,
-                plugin_instances.clone(),
+                plugin_instances,
                 timeout_duration,
             )
             .await;
@@ -1104,7 +1104,7 @@ impl BulwarkProcessor {
                 Self::execute_response_phase(plugin_instances.clone(), http_resp, timeout_duration)
                     .await,
                 thresholds,
-                plugin_instances.clone(),
+                plugin_instances,
                 timeout_duration,
             )
             .await;
@@ -1208,7 +1208,7 @@ impl BulwarkProcessor {
                 )
                 .await,
                 thresholds,
-                plugin_instances.clone(),
+                plugin_instances,
                 timeout_duration,
             )
             .await;
