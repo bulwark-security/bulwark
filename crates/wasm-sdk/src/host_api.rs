@@ -55,6 +55,7 @@ pub enum BreakerDelta {
 /// more tolerant to trunctation are recommended in such cases. There will be some situations where this limitation
 /// prevents useful parsing entirely and plugins may need to make use of the `unknown` result value to express this.
 pub struct BodyChunk {
+    pub received: bool,
     pub end_of_stream: bool,
     pub size: u64,
     pub start: u64,
@@ -64,6 +65,16 @@ pub struct BodyChunk {
 
 /// An empty HTTP body
 pub const NO_BODY: BodyChunk = BodyChunk {
+    received: true,
+    end_of_stream: true,
+    size: 0,
+    start: 0,
+    content: vec![],
+};
+
+/// An unavailable HTTP body
+pub const UNAVAILABLE_BODY: BodyChunk = BodyChunk {
+    received: false,
     end_of_stream: true,
     size: 0,
     start: 0,
@@ -94,6 +105,7 @@ pub fn get_request() -> Request {
     }
     request
         .body(BodyChunk {
+            received: raw_request.body_received,
             content: chunk,
             size: raw_request.chunk_length,
             start: raw_request.chunk_start,
@@ -116,6 +128,7 @@ pub fn get_response() -> Option<Response> {
     Some(
         response
             .body(BodyChunk {
+                received: raw_response.body_received,
                 content: chunk,
                 size: raw_response.chunk_length,
                 start: raw_response.chunk_start,
@@ -125,6 +138,32 @@ pub fn get_response() -> Option<Response> {
             // Proxy layer shouldn't send it through if it's invalid
             .expect("should be a valid response"),
     )
+}
+
+/// Determines whether the `on_request_body_decision` handler will be called with a request body or not.
+///
+/// The [`bulwark_plugin`](bulwark_wasm_sdk_macros::bulwark_plugin) macro will automatically call this function
+/// within an auto-generated `on_init` handler. Normally, plugin authors do not need to call it directly.
+/// However, the default may be overriden if a plugin intends to cancel processing of the request body despite
+/// having a handler available for processing it.
+///
+/// However, if the `on_init` handler is replaced, this function will need to be called manually. Most plugins
+/// will not need to do this.
+pub fn receive_request_body(body: bool) {
+    crate::bulwark_host::receive_request_body(body)
+}
+
+/// Determines whether the `on_response_body_decision` handler will be called with a response body or not.
+///
+/// The [`bulwark_plugin`](bulwark_wasm_sdk_macros::bulwark_plugin) macro will automatically call this function
+/// within an auto-generated `on_init` handler. Normally, plugin authors do not need to call it directly.
+/// However, the default may be overriden if a plugin intends to cancel processing of the response body despite
+/// having a handler available for processing it.
+///
+/// However, if the `on_init` handler is replaced, this function will need to be called manually. Most plugins
+/// will not need to do this.
+pub fn receive_response_body(body: bool) {
+    crate::bulwark_host::receive_response_body(body)
 }
 
 /// Returns the originating client's IP address, if available.

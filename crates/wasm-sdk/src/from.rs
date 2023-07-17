@@ -14,6 +14,7 @@ impl From<Request> for crate::bulwark_host::RequestInterface {
                 .iter()
                 .map(|(name, value)| (name.to_string(), value.as_bytes().to_vec()))
                 .collect(),
+            body_received: request.body().received,
             chunk: request.body().content.clone(),
             chunk_start: request.body().start,
             chunk_length: request.body().size,
@@ -31,7 +32,8 @@ impl From<crate::bulwark_host::ResponseInterface> for Response {
         }
         builder
             .body(BodyChunk {
-                end_of_stream: true,
+                received: response.body_received,
+                end_of_stream: response.end_of_stream,
                 size: response.chunk.len().try_into().unwrap(),
                 start: 0,
                 content: response.chunk,
@@ -89,6 +91,7 @@ impl From<crate::bulwark_host::OutcomeInterface> for Outcome {
 impl From<&str> for BodyChunk {
     fn from(content: &str) -> Self {
         BodyChunk {
+            received: true,
             end_of_stream: true,
             size: content.len() as u64,
             start: 0,
@@ -100,6 +103,7 @@ impl From<&str> for BodyChunk {
 impl From<String> for BodyChunk {
     fn from(content: String) -> Self {
         BodyChunk {
+            received: true,
             end_of_stream: true,
             size: content.len() as u64,
             start: 0,
@@ -111,6 +115,7 @@ impl From<String> for BodyChunk {
 impl From<Vec<u8>> for BodyChunk {
     fn from(content: Vec<u8>) -> Self {
         BodyChunk {
+            received: true,
             end_of_stream: true,
             size: content.len() as u64,
             start: 0,

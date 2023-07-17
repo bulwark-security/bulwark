@@ -1,6 +1,8 @@
 package bulwark:plugin
 
 // TODO: See https://github.com/WebAssembly/wasi-http for a more complete canonical http component interface
+// TODO: request/response bodies might be better handled as resource types?
+// see: https://github.com/WebAssembly/component-model/blob/main/design/mvp/WIT.md#item-resource
 
 world host-api {
   // TODO: should these strings all be list<u8>?
@@ -9,6 +11,7 @@ world host-api {
     uri: string,
     version: string,
     headers: list<tuple<string,list<u8>>>,
+    body-received: bool,
     chunk: list<u8>,
     chunk-start: u64,
     chunk-length: u64,
@@ -17,6 +20,7 @@ world host-api {
   record response-interface {
     status: u32,
     headers: list<tuple<string,list<u8>>>,
+    body-received: bool,
     chunk: list<u8>,
     chunk-start: u64,
     chunk-length: u64,
@@ -83,6 +87,8 @@ world host-api {
 
   import get-request: func() -> request-interface
   import get-response: func() -> option<response-interface>
+  import receive-request-body: func(body: bool)
+  import receive-response-body: func(body: bool)
   import get-client-ip: func() -> option<ip-interface>
 
   import set-decision: func(decision: decision-interface) -> result<_, decision-error>
@@ -106,8 +112,11 @@ world host-api {
   import check-breaker: func(key: string) -> result<breaker-interface, state-error>
 }
 world handlers {
+  export on-init: func() -> result
   export on-request: func() -> result
-  export on-response-decision: func() -> result
   export on-request-decision: func() -> result
+  export on-response-decision: func() -> result
+  export on-request-body-decision: func() -> result
+  export on-response-body-decision: func() -> result
   export on-decision-feedback: func() -> result
 }

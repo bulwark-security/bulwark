@@ -10,10 +10,24 @@ pub enum PluginGroupInstantiationError {
     PluginInstantiation(#[from] PluginInstantiationError),
 }
 
+/// Returned when the Envoy external processor is unable to handle an incoming message successfully.
+#[derive(thiserror::Error, Debug)]
+pub enum HandlerError {
+    #[error(transparent)]
+    PluginInstantiation(#[from] PluginGroupInstantiationError),
+    #[error(transparent)]
+    Request(#[from] RequestError),
+    #[error(transparent)]
+    Response(#[from] ResponseError),
+    // TODO: remove once default routes are implemented
+    #[error(transparent)]
+    RouteMatch(#[from] matchit::MatchError),
+}
+
 /// Returned when trying to assemble a [`Request`](bulwark_wasm_sdk::Request) struct and Envoy sends missing
 /// or invalid information or an [HTTP error](http::Error) occurs.
 #[derive(thiserror::Error, Debug)]
-pub enum PrepareRequestError {
+pub enum RequestError {
     #[error(transparent)]
     InvalidMethod(#[from] http::method::InvalidMethod),
     #[error(transparent)]
@@ -26,14 +40,14 @@ pub enum PrepareRequestError {
     MissingAuthority,
     #[error("missing http path pseudo-header")]
     MissingPath,
-    #[error("missing envoy headers")]
+    #[error("no headers received from envoy")]
     MissingHeaders,
 }
 
 /// Returned when trying to assemble a [`Response`](bulwark_wasm_sdk::Response) struct and Envoy sends missing
 /// or invalid information or an [HTTP error](http::Error) occurs.
 #[derive(thiserror::Error, Debug)]
-pub enum PrepareResponseError {
+pub enum ResponseError {
     #[error(transparent)]
     Http(#[from] http::Error),
     #[error("missing http status pseudo-header")]

@@ -3,18 +3,197 @@ use proc_macro2::Span;
 use quote::{quote, quote_spanned};
 use syn::{
     parse_macro_input, parse_quote, punctuated::Punctuated, spanned::Spanned, Attribute, Ident,
-    ItemFn, ItemImpl, LitStr, ReturnType, Signature, Visibility,
+    ItemFn, ItemImpl, LitBool, LitStr, ReturnType, Signature, Visibility,
 };
 extern crate proc_macro;
 
+/// The `bulwark_plugin` attribute generates default implementations for all handler traits in a module
+/// and produces friendly errors for common mistakes.
+#[proc_macro_attribute]
+pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
+    // Parse the input token stream as an impl, or return an error.
+    let raw_impl = parse_macro_input!(input as ItemImpl);
+
+    // The trait must be specified by the developer even though there's only one valid value.
+    // If we inject it, that leads to a very surprising result when developers try to define helper functions
+    // in the same struct impl and can't because it's really a trait impl.
+    if let Some((_, path, _)) = raw_impl.trait_ {
+        let trait_name = path.get_ident().map_or(String::new(), |id| id.to_string());
+        if &trait_name != "Handlers" {
+            return syn::Error::new(
+                path.span(),
+                format!(
+                    "`bulwark_plugin` encountered unexpected trait `{}` for the impl",
+                    trait_name
+                ),
+            )
+            .to_compile_error()
+            .into();
+        }
+    } else {
+        return syn::Error::new(
+            raw_impl.self_ty.span(),
+            "`bulwark_plugin` requires an impl for the `Handlers` trait",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let struct_type = &raw_impl.self_ty;
+    let mut init_handler_found = false;
+    let mut request_body_handler_found = false;
+    let mut response_body_handler_found = false;
+
+    let mut handlers = vec![
+        "on_request",
+        "on_request_decision",
+        "on_response_decision",
+        "on_request_body_decision",
+        "on_response_body_decision",
+        "on_decision_feedback",
+    ];
+
+    let mut new_items = Vec::with_capacity(raw_impl.items.len());
+    for item in &raw_impl.items {
+        if let syn::ImplItem::Fn(iifn) = item {
+            match iifn.sig.ident.to_string().as_str() {
+                "on_init" => init_handler_found = true,
+                "on_request_body_decision" => request_body_handler_found = true,
+                "on_response_body_decision" => response_body_handler_found = true,
+                _ => {}
+            }
+            let initial_len = handlers.len();
+            // Find and record the implemented handlers, removing any we find from the list above.
+            handlers.retain(|h| *h != iifn.sig.ident.to_string().as_str());
+            // Verify that any functions with a handler name we find have set the `handler` attribute.
+            let mut use_original_item = true;
+            if handlers.len() < initial_len {
+                let mut handler_attr_found = false;
+                for attr in &iifn.attrs {
+                    if let Some(ident) = attr.meta.path().get_ident() {
+                        if ident.to_string().as_str() == "handler" {
+                            handler_attr_found = true;
+                            break;
+                        }
+                    }
+                }
+                if !handler_attr_found {
+                    use_original_item = false;
+                    let mut new_iifn = iifn.clone();
+                    new_iifn.attrs.push(parse_quote! {
+                        #[handler]
+                    });
+                    new_items.push(syn::ImplItem::Fn(new_iifn));
+                }
+            }
+            if use_original_item {
+                new_items.push(item.clone());
+            }
+        } else {
+            new_items.push(item.clone());
+        }
+    }
+
+    // Define the missing handlers with no-op defaults
+    let noop_handlers = handlers
+        .iter()
+        .map(|handler_name| {
+            let handler_ident = Ident::new(handler_name, Span::call_site());
+            quote! {
+                #[handler]
+                fn #handler_ident() -> Result {
+                    Ok(())
+                }
+            }
+        })
+        .collect::<Vec<proc_macro2::TokenStream>>();
+
+    let init_handler = if init_handler_found {
+        // Empty token stream if an init handler was already defined, we'll generate nothing and use that instead
+        quote! {}
+    } else {
+        let receive_request_body = LitBool::new(request_body_handler_found, Span::call_site());
+        let receive_response_body = LitBool::new(response_body_handler_found, Span::call_site());
+        quote! {
+            #[handler]
+            fn on_init() -> Result {
+                receive_request_body(#receive_request_body);
+                receive_response_body(#receive_response_body);
+                Ok(())
+            }
+        }
+    };
+
+    let output = quote! {
+        impl bulwark_wasm_sdk::handlers::Handlers for #struct_type {
+            #init_handler
+            #(#new_items)*
+            #(#noop_handlers)*
+        }
+        const _: () = {
+            #[doc(hidden)]
+            #[export_name = "on-init"]
+            #[allow(non_snake_case)]
+            unsafe extern "C" fn __export_handlers_on_init() -> i32 {
+                handlers::call_on_init::<#struct_type>()
+            }
+            #[doc(hidden)]
+            #[export_name = "on-request"]
+            #[allow(non_snake_case)]
+            unsafe extern "C" fn __export_handlers_on_request() -> i32 {
+                handlers::call_on_request::<#struct_type>()
+            }
+            #[doc(hidden)]
+            #[export_name = "on-request-decision"]
+            #[allow(non_snake_case)]
+            unsafe extern "C" fn __export_handlers_on_request_decision() -> i32 {
+                handlers::call_on_request_decision::<#struct_type>()
+            }
+            #[doc(hidden)]
+            #[export_name = "on-response-decision"]
+            #[allow(non_snake_case)]
+            unsafe extern "C" fn __export_handlers_on_response_decision() -> i32 {
+                handlers::call_on_response_decision::<#struct_type>()
+            }
+            #[doc(hidden)]
+            #[export_name = "on-request-body-decision"]
+            #[allow(non_snake_case)]
+            unsafe extern "C" fn __export_handlers_on_request_body_decision() -> i32 {
+                handlers::call_on_request_body_decision::<#struct_type>()
+            }
+            #[doc(hidden)]
+            #[export_name = "on-response-body-decision"]
+            #[allow(non_snake_case)]
+            unsafe extern "C" fn __export_handlers_on_response_body_decision() -> i32 {
+                handlers::call_on_response_body_decision::<#struct_type>()
+            }
+            #[doc(hidden)]
+            #[export_name = "on-decision-feedback"]
+            #[allow(non_snake_case)]
+            unsafe extern "C" fn __export_handlers_on_decision_feedback() -> i32 {
+                handlers::call_on_decision_feedback::<#struct_type>()
+            }
+        };
+    };
+
+    output.into()
+}
+
 /// The `handler` attribute makes the associated function into a Bulwark event handler.
 ///
-/// The function must take no parameters and return a `bulwark_wasm_sdk::Result`. It may only be
+/// The `handler` attribute is normally applied automatically by the `bulwark_plugin` macro and
+/// need not be specified explicitly.
+///
+/// The associated function must take no parameters and return a `bulwark_wasm_sdk::Result`. It may only be
 /// named one of the following:
+/// - `on_init`
 /// - `on_request`
 /// - `on_request_decision`
 /// - `on_response_decision`
+/// - `on_request_body_decision`
+/// - `on_response_body_decision`
 /// - `on_decision_feedback`
+#[doc(hidden)]
 #[proc_macro_attribute]
 pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
     // Parse the input token stream as a free-standing function, or return an error.
@@ -49,7 +228,13 @@ fn {}() -> Result {{
     let output;
 
     match name.to_string().as_str() {
-        "on_request" | "on_request_decision" | "on_response_decision" | "on_decision_feedback" => {
+        "on_init"
+        | "on_request"
+        | "on_request_decision"
+        | "on_response_decision"
+        | "on_request_body_decision"
+        | "on_response_body_decision"
+        | "on_decision_feedback" => {
             output = quote_spanned! {inner_fn.span() =>
                 #(#attrs)*
                 #sig {
@@ -70,9 +255,12 @@ fn {}() -> Result {{
                 inner_fn.sig.span(),
                 "`handler` expects a function named one of:
                 
+- `on_init`
 - `on_request`
 - `on_request_decision`
 - `on_response_decision`
+- `on_request_body_decision`
+- `on_response_body_decision`
 - `on_decision_feedback`
 ",
             )
@@ -142,131 +330,4 @@ fn inner_fn_info(mut inner_handler: ItemFn) -> (Ident, ItemFn) {
         .attrs
         .retain(|attr| !attr.path().is_ident("no_mangle"));
     (name, inner_handler)
-}
-
-/// The `bulwark_plugin` attribute generates default implementations for all handler traits in a module
-/// and produces friendly errors for common mistakes.
-#[doc(hidden)]
-#[proc_macro_attribute]
-pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
-    // Parse the input token stream as an impl, or return an error.
-    let raw_impl = parse_macro_input!(input as ItemImpl);
-
-    // The trait must be specified by the developer even though there's only one valid value.
-    // If we inject it, that leads to a very surprising result when developers try to define helper functions
-    // in the same struct impl and can't because it's really a trait impl.
-    if let Some((_, path, _)) = raw_impl.trait_ {
-        let trait_name = path.get_ident().map_or(String::new(), |id| id.to_string());
-        if &trait_name != "Handlers" {
-            return syn::Error::new(
-                path.span(),
-                format!(
-                    "`bulwark_plugin` encountered unexpected trait `{}` for the impl",
-                    trait_name
-                ),
-            )
-            .to_compile_error()
-            .into();
-        }
-    } else {
-        return syn::Error::new(
-            raw_impl.self_ty.span(),
-            "`bulwark_plugin` requires an impl for the `Handlers` trait",
-        )
-        .to_compile_error()
-        .into();
-    }
-
-    let struct_type = &raw_impl.self_ty;
-
-    let mut handlers = vec![
-        "on_request",
-        "on_request_decision",
-        "on_response_decision",
-        "on_decision_feedback",
-    ];
-
-    let mut new_items = Vec::with_capacity(raw_impl.items.len());
-    for item in &raw_impl.items {
-        if let syn::ImplItem::Fn(iifn) = item {
-            let initial_len = handlers.len();
-            // Find and record the implemented handlers, removing any we find from the list above.
-            handlers.retain(|h| *h != iifn.sig.ident.to_string().as_str());
-            // Verify that any functions with a handler name we find have set the `handler` attribute.
-            let mut use_original_item = true;
-            if handlers.len() < initial_len {
-                let mut handler_attr_found = false;
-                for attr in &iifn.attrs {
-                    if let Some(ident) = attr.meta.path().get_ident() {
-                        if ident.to_string().as_str() == "handler" {
-                            handler_attr_found = true;
-                            break;
-                        }
-                    }
-                }
-                if !handler_attr_found {
-                    use_original_item = false;
-                    let mut new_iifn = iifn.clone();
-                    new_iifn.attrs.push(parse_quote! {
-                        #[handler]
-                    });
-                    new_items.push(syn::ImplItem::Fn(new_iifn));
-                }
-            }
-            if use_original_item {
-                new_items.push(item.clone());
-            }
-        } else {
-            new_items.push(item.clone());
-        }
-    }
-
-    // Define the missing handlers with no-op defaults
-    let noop_handlers = handlers
-        .iter()
-        .map(|handler_name| {
-            let handler_ident = Ident::new(handler_name, Span::call_site());
-            quote! {
-                #[handler]
-                fn #handler_ident() -> Result {
-                    Ok(())
-                }
-            }
-        })
-        .collect::<Vec<proc_macro2::TokenStream>>();
-
-    let output = quote! {
-        impl bulwark_wasm_sdk::handlers::Handlers for #struct_type {
-            #(#new_items)*
-            #(#noop_handlers)*
-        }
-        const _: () = {
-            #[doc(hidden)]
-            #[export_name = "on-request"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_request() -> i32 {
-                handlers::call_on_request::<#struct_type>()
-            }
-            #[doc(hidden)]
-            #[export_name = "on-request-decision"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_request_decision() -> i32 {
-                handlers::call_on_request_decision::<#struct_type>()
-            }
-            #[doc(hidden)]
-            #[export_name = "on-response-decision"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_response_decision() -> i32 {
-                handlers::call_on_response_decision::<#struct_type>()
-            }
-            #[doc(hidden)]
-            #[export_name = "on-decision-feedback"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_decision_feedback() -> i32 {
-                handlers::call_on_decision_feedback::<#struct_type>()
-            }
-        };
-    };
-
-    output.into()
 }
