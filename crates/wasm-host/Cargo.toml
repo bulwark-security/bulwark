@@ -41,7 +41,7 @@ validator = { version = "0.16" }
 
 [dev-dependencies]
 wasi-cap-std-sync = { version = "10" }
-wit-component = "0.11.0"
+wit-component = "0.12.0"
 wat = "1.0.57"
 tokio-test = "0.4.2"
 
