@@ -34,13 +34,13 @@ struct Cli {
     /// Log levels: error, warn, info, debug, trace
     ///
     /// Default is "info".
-    #[arg(short, long)]
+    #[arg(short = 'l', long)]
     log_level: Option<String>,
 
     /// Log formats: ecs, forest
     ///
     /// Default is "ecs".
-    #[arg(short, long)]
+    #[arg(short = 'f', long)]
     log_format: Option<String>,
 
     #[command(subcommand)]
