@@ -1,6 +1,9 @@
 use crate::errors::BuildError;
 use cargo_metadata::Message;
 use cargo_metadata::{CargoOpt, MetadataCommand};
+use color_eyre::install;
+use std::collections::HashMap;
+use std::io::prelude::*;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -33,6 +36,38 @@ fn adapt_wasm_output(wasm_bytes: Vec<u8>, adapter_bytes: Vec<u8>) -> Result<Vec<
     Ok(component.to_vec())
 }
 
+fn installed_targets() -> Result<HashMap<String, bool>, BuildError> {
+    let mut command = Command::new("rustup")
+        .args(&["target", "list"])
+        .stdout(Stdio::piped())
+        .spawn()?;
+
+    let reader = std::io::BufReader::new(command.stdout.take().unwrap());
+    let mut targets = HashMap::new();
+    for line in reader.lines() {
+        let line = line?;
+        let installed = line.contains("(installed)");
+        let target = line.replace("(installed)", "").trim().to_string();
+        targets.insert(target, installed);
+    }
+    let exit_status = command.wait()?;
+    if !exit_status.success() {
+        return Err(BuildError::SubprocessError);
+    }
+    Ok(targets)
+}
+
+fn install_wasm32_wasi_target() -> Result<(), BuildError> {
+    let mut command = Command::new("rustup")
+        .args(&["target", "install", "wasm32-wasi"])
+        .spawn()?;
+    let exit_status = command.wait()?;
+    if !exit_status.success() {
+        return Err(BuildError::SubprocessError);
+    }
+    Ok(())
+}
+
 /// Builds a plugin.
 ///
 /// Compiles the plugin with the `wasm32-wasi` target, and installs it if it is missing.
@@ -47,6 +82,22 @@ pub fn build_plugin(path: impl AsRef<Path>, output: impl AsRef<Path>) -> Result<
     let path = path.as_ref();
     let output = output.as_ref();
     let output_dir = output.parent().ok_or(BuildError::MissingParent)?;
+
+    let installed_targets = installed_targets()?;
+    let wasi_installed = installed_targets.get("wasm32-wasi");
+    if !wasi_installed.unwrap_or(&false) {
+        println!("The required wasm32-wasi target is not installed.");
+        print!("Install it? (y/N) ");
+        std::io::stdout().flush();
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        let input = input.trim().to_ascii_lowercase();
+        if &input == "y" || &input == "yes" {
+            install_wasm32_wasi_target()?;
+        } else {
+            return Err(BuildError::MissingTarget);
+        }
+    }
 
     let mut args = vec!["build", "--target=wasm32-wasi"];
     // TODO: don't hard-code --release
@@ -70,6 +121,8 @@ pub fn build_plugin(path: impl AsRef<Path>, output: impl AsRef<Path>) -> Result<
         let adapted_bytes = adapt_wasm_output(wasm_bytes, adapter_bytes.to_vec())?;
         std::fs::create_dir_all(output_dir)?;
         std::fs::write(output, adapted_bytes)?;
+    } else {
+        return Err(BuildError::SubprocessError);
     }
 
     Ok(())
