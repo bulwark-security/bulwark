@@ -314,7 +314,7 @@ dependencies = [
  "tracing-log",
  "tracing-opentelemetry",
  "tracing-subscriber",
- "wit-component",
+ "wit-component 0.11.0",
 ]
 
 [[package]]

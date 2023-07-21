@@ -1,13 +1,12 @@
 use crate::errors::BuildError;
-use cargo_metadata::Message;
-use cargo_metadata::{CargoOpt, MetadataCommand};
-use color_eyre::install;
+use cargo_metadata::MetadataCommand;
 use std::collections::HashMap;
 use std::io::prelude::*;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-pub fn plugin_name(path: impl AsRef<Path>) -> Result<String, BuildError> {
+/// Returns the name of the plugin as read from the Cargo metadata.
+fn plugin_name(path: impl AsRef<Path>) -> Result<String, BuildError> {
     let path = path.as_ref();
 
     let metadata = MetadataCommand::new()
@@ -18,9 +17,10 @@ pub fn plugin_name(path: impl AsRef<Path>) -> Result<String, BuildError> {
     Ok(root.name.clone())
 }
 
-pub fn wasm_filename(path: impl AsRef<Path>) -> Result<String, BuildError> {
+/// Returns the filename that the compiled plugin will use.
+pub(crate) fn wasm_filename(path: impl AsRef<Path>) -> Result<String, BuildError> {
     let plugin_name = plugin_name(path)?;
-    Ok(format!("{}.wasm", plugin_name.replace("-", "_")))
+    Ok(format!("{}.wasm", plugin_name.replace('-', "_")))
 }
 
 fn adapt_wasm_output(wasm_bytes: Vec<u8>, adapter_bytes: Vec<u8>) -> Result<Vec<u8>, BuildError> {
@@ -38,7 +38,7 @@ fn adapt_wasm_output(wasm_bytes: Vec<u8>, adapter_bytes: Vec<u8>) -> Result<Vec<
 
 fn installed_targets() -> Result<HashMap<String, bool>, BuildError> {
     let mut command = Command::new("rustup")
-        .args(&["target", "list"])
+        .args(["target", "list"])
         .stdout(Stdio::piped())
         .spawn()?;
 
@@ -59,7 +59,7 @@ fn installed_targets() -> Result<HashMap<String, bool>, BuildError> {
 
 fn install_wasm32_wasi_target() -> Result<(), BuildError> {
     let mut command = Command::new("rustup")
-        .args(&["target", "install", "wasm32-wasi"])
+        .args(["target", "install", "wasm32-wasi"])
         .spawn()?;
     let exit_status = command.wait()?;
     if !exit_status.success() {
@@ -76,7 +76,10 @@ fn install_wasm32_wasi_target() -> Result<(), BuildError> {
 ///
 /// Calls out to `cargo` via [`Command`], so `cargo` must be available on the path for this
 /// function to work.
-pub fn build_plugin(path: impl AsRef<Path>, output: impl AsRef<Path>) -> Result<(), BuildError> {
+pub(crate) fn build_plugin(
+    path: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+) -> Result<(), BuildError> {
     // TODO: install wasm32-wasi target if missing
     let adapter_bytes = include_bytes!("../adapter/wasi_snapshot_preview1.reactor.wasm");
     let path = path.as_ref();
@@ -88,7 +91,7 @@ pub fn build_plugin(path: impl AsRef<Path>, output: impl AsRef<Path>) -> Result<
     if !wasi_installed.unwrap_or(&false) {
         println!("The required wasm32-wasi target is not installed.");
         print!("Install it? (y/N) ");
-        std::io::stdout().flush();
+        std::io::stdout().flush()?;
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
         let input = input.trim().to_ascii_lowercase();
