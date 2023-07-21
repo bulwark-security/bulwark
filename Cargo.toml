@@ -47,9 +47,12 @@ tower-layer = "0.3.2"
 chrono = { version = "0.4.26", features = ["serde"] }
 quoted-string = "0.6.1"
 tracing-core = "0.1.31"
+cargo_metadata = "0.15.4"
+wit-component = "0.11.0"
 
 [build-dependencies]
 clap_mangen = "0.2.5"
+reqwest = { version = "0.11.14", features = ["rustls-tls", "blocking"] }
 
 [workspace]
 members = [

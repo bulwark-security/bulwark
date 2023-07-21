@@ -1,5 +1,6 @@
 use axum::ServiceExt;
 
+mod build;
 mod ecs;
 mod errors;
 
@@ -59,7 +60,19 @@ enum Command {
     // TODO: Implement ReverseProxy subcommand
     // TODO: Implement Check subcommand
     // TODO: Implement Test subcommand
-    // TODO: Implement Compile subcommand
+    /// Compile a Bulwark plugin
+    Build {
+        /// Sets the input directory for the build.
+        ///
+        /// Default is the current working directory.
+        #[arg(short, long, value_name = "FILE")]
+        path: Option<PathBuf>,
+        /// Sets the output file for the build.
+        ///
+        /// Default is `./dist/name_of_plugin.wasm`.
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
+    },
 }
 
 /// The health state structure tracks the health of the primary service, primarily for the benefit of
@@ -271,9 +284,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        Some(Command::Build { path, output }) => {
+            let current_dir = std::env::current_dir()?;
+            let path = path.clone().unwrap_or(current_dir.clone());
+            let wasm_filename = crate::build::wasm_filename(&path)?;
+            // Defaults to joining with the current working directory, not the input path
+            let output = output
+                .clone()
+                .unwrap_or(current_dir.join("dist").join(wasm_filename));
+            crate::build::build_plugin(&path, &output)?;
+        }
         None => todo!(),
     }
 
-    // Continued program logic goes here...
     Ok(())
 }
