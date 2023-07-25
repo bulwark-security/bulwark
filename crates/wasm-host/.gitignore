@@ -1,3 +1,0 @@
-# Generated WIT bindings
-src/bindings.rs
-tests/wasi_snapshot_preview1.reactor.wasm
