@@ -232,7 +232,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if admin_enabled {
                 let health_state = health_state.clone();
 
-                // TODO: make admin service optional
                 service_tasks.spawn(async move {
                     // And run our service using `hyper`.
                     let addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::UNSPECIFIED), admin_port));
