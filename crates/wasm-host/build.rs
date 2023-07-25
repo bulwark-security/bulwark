@@ -2,13 +2,6 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-fn fetch_adapter() {
-    let dest_path = Path::new("./tests");
-    let file_path = dest_path.join("wasi_snapshot_preview1.reactor.wasm");
-    let body = reqwest::blocking::get("https://github.com/bytecodealliance/wasmtime/releases/download/dev/wasi_snapshot_preview1.reactor.wasm").unwrap().bytes().unwrap();
-    std::fs::write(file_path, body).unwrap();
-}
-
 #[allow(unused_must_use)]
 fn build_test_example_wasm(name: &str) {
     let dest_path = Path::new("./tests");
@@ -49,5 +42,4 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     build_test_example_wasm("blank-slate");
     build_test_example_wasm("evil-bit");
-    fetch_adapter();
 }
