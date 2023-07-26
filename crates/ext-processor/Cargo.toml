@@ -39,6 +39,7 @@ redis = { version = "0.23.0", features = [
 ] }
 r2d2 = "0.8.10"
 forwarded-header-value = "0.1.1"
+metrics = "0.21.1"
 
 [build-dependencies]
 # This dependency declaration and the other prost dependencies above prevent `cargo update`

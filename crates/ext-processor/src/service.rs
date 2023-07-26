@@ -158,6 +158,24 @@ impl BulwarkProcessor {
     ///
     /// * `config` - The root of the Bulwark configuration structure to be used to initialize the service.
     pub fn new(config: Config) -> Result<Self, PluginLoadError> {
+        // Get all outcomes registered even if those outcomes don't happen immediately.
+        metrics::register_counter!(
+            "combined_decision",
+            "outcome" => "trusted",
+        );
+        metrics::register_counter!(
+            "combined_decision",
+            "outcome" => "accepted",
+        );
+        metrics::register_counter!(
+            "combined_decision",
+            "outcome" => "suspicious",
+        );
+        metrics::register_counter!(
+            "combined_decision",
+            "outcome" => "restricted",
+        );
+
         let redis_info = if let Some(remote_state_addr) = config.service.remote_state_uri.as_ref() {
             let pool_size = config.service.remote_state_pool_size;
             // TODO: better error handling instead of unwrap/panic
@@ -836,24 +854,54 @@ impl BulwarkProcessor {
         plugin_instance: Arc<Mutex<PluginInstance>>,
     ) -> Result<(), PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
-        plugin_instance.handle_init().await
-        // TODO: track success/error metrics
+        let result = plugin_instance.handle_init().await;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_wasm_on_init",
+                "ref" => plugin_instance.plugin_reference(), "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_wasm_on_init",
+                "ref" => plugin_instance.plugin_reference(), "result" => "error"
+            ),
+        }
+        result
     }
 
     async fn execute_on_request(
         plugin_instance: Arc<Mutex<PluginInstance>>,
     ) -> Result<(), PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
-        plugin_instance.handle_request().await
-        // TODO: track success/error metrics
+        let result = plugin_instance.handle_request().await;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_wasm_on_request",
+                "ref" => plugin_instance.plugin_reference(), "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_wasm_on_request",
+                "ref" => plugin_instance.plugin_reference(), "result" => "error"
+            ),
+        }
+        result
     }
 
     async fn execute_on_request_decision(
         plugin_instance: Arc<Mutex<PluginInstance>>,
     ) -> Result<DecisionComponents, PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
-        plugin_instance.handle_request_decision().await?;
-        // TODO: track success/error metrics
+        let result = plugin_instance.handle_request_decision().await;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_wasm_on_request_decision",
+                "ref" => plugin_instance.plugin_reference(), "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_wasm_on_request_decision",
+                "ref" => plugin_instance.plugin_reference(), "result" => "error"
+            ),
+        }
+        result?;
         Ok(plugin_instance.decision())
     }
 
@@ -861,8 +909,18 @@ impl BulwarkProcessor {
         plugin_instance: Arc<Mutex<PluginInstance>>,
     ) -> Result<DecisionComponents, PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
-        plugin_instance.handle_request_body_decision().await?;
-        // TODO: track success/error metrics
+        let result = plugin_instance.handle_request_body_decision().await;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_wasm_on_request_body_decision",
+                "ref" => plugin_instance.plugin_reference(), "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_wasm_on_request_body_decision",
+                "ref" => plugin_instance.plugin_reference(), "result" => "error"
+            ),
+        }
+        result?;
         Ok(plugin_instance.decision())
     }
 
@@ -870,8 +928,18 @@ impl BulwarkProcessor {
         plugin_instance: Arc<Mutex<PluginInstance>>,
     ) -> Result<DecisionComponents, PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
-        plugin_instance.handle_response_decision().await?;
-        // TODO: track success/error metrics
+        let result = plugin_instance.handle_response_decision().await;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_wasm_on_response_decision",
+                "ref" => plugin_instance.plugin_reference(), "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_wasm_on_response_decision",
+                "ref" => plugin_instance.plugin_reference(), "result" => "error"
+            ),
+        }
+        result?;
         Ok(plugin_instance.decision())
     }
 
@@ -879,8 +947,18 @@ impl BulwarkProcessor {
         plugin_instance: Arc<Mutex<PluginInstance>>,
     ) -> Result<DecisionComponents, PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
-        plugin_instance.handle_response_body_decision().await?;
-        // TODO: track success/error metrics
+        let result = plugin_instance.handle_response_body_decision().await;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_wasm_on_response_body_decision",
+                "ref" => plugin_instance.plugin_reference(), "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_wasm_on_response_body_decision",
+                "ref" => plugin_instance.plugin_reference(), "result" => "error"
+            ),
+        }
+        result?;
         Ok(plugin_instance.decision())
     }
 
@@ -888,8 +966,18 @@ impl BulwarkProcessor {
         plugin_instance: Arc<Mutex<PluginInstance>>,
     ) -> Result<(), PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
-        plugin_instance.handle_decision_feedback().await
-        // TODO: track success/error metrics
+        let result = plugin_instance.handle_decision_feedback().await;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_wasm_on_decision_feedback",
+                "ref" => plugin_instance.plugin_reference(), "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_wasm_on_decision_feedback",
+                "ref" => plugin_instance.plugin_reference(), "result" => "error"
+            ),
+        }
+        result
     }
 
     async fn handle_request_phase_decision(
@@ -922,6 +1010,11 @@ impl BulwarkProcessor {
                 .collect::<Vec<&str>>()
                 .to_vec()
                 .join(","),
+        );
+        metrics::increment_counter!(
+            "plugin_request_phase_decision",
+            "outcome" => outcome.to_string(),
+            "observe_only" => thresholds.observe_only.to_string(),
         );
 
         let mut receive_request_body = false;
@@ -1053,6 +1146,11 @@ impl BulwarkProcessor {
                 .to_vec()
                 .join(","),
         );
+        metrics::increment_counter!(
+            "plugin_request_body_phase_decision",
+            "outcome" => outcome.to_string(),
+            "observe_only" => thresholds.observe_only.to_string(),
+        );
 
         match outcome {
             bulwark_wasm_sdk::Outcome::Trusted
@@ -1141,6 +1239,11 @@ impl BulwarkProcessor {
                 .collect::<Vec<&str>>()
                 .to_vec()
                 .join(","),
+        );
+        metrics::increment_counter!(
+            "plugin_response_phase_decision",
+            "outcome" => outcome.to_string(),
+            "observe_only" => thresholds.observe_only.to_string(),
         );
 
         // Iterator with `any` would be cleaner, but there's an async lock.
@@ -1255,6 +1358,11 @@ impl BulwarkProcessor {
                 .to_vec()
                 .join(","),
         );
+        metrics::increment_counter!(
+            "plugin_response_body_phase_decision",
+            "outcome" => outcome.to_string(),
+            "observe_only" => thresholds.observe_only.to_string(),
+        );
 
         match outcome {
             bulwark_wasm_sdk::Outcome::Trusted
@@ -1305,6 +1413,11 @@ impl BulwarkProcessor {
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
     ) {
+        metrics::increment_counter!(
+            "combined_decision",
+            "outcome" => outcome.to_string(),
+        );
+
         for plugin_instance in plugin_instances {
             let response_phase_child_span = tracing::info_span!("execute on_decision_feedback",);
             {

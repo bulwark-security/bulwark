@@ -49,6 +49,7 @@ quoted-string = "0.6.1"
 tracing-core = "0.1.31"
 cargo_metadata = "0.15.4"
 wit-component = "0.11.0"
+metrics-exporter-prometheus = "0.12.1"
 
 [build-dependencies]
 clap_mangen = "0.2.5"
