@@ -169,12 +169,13 @@ impl BulwarkProcessor {
         );
         metrics::register_counter!(
             "combined_decision",
-            "outcome" => "suspicious",
+            "outcome" => "suspected",
         );
         metrics::register_counter!(
             "combined_decision",
             "outcome" => "restricted",
         );
+        metrics::register_histogram!("combined_decision_score");
 
         let redis_info = if let Some(remote_state_addr) = config.service.remote_state_uri.as_ref() {
             let pool_size = config.service.remote_state_pool_size;
@@ -1417,6 +1418,10 @@ impl BulwarkProcessor {
             "combined_decision",
             "outcome" => outcome.to_string(),
         );
+        metrics::histogram!(
+            "combined_decision_score",
+            decision_components.decision.pignistic().restrict
+        );
 
         for plugin_instance in plugin_instances {
             let response_phase_child_span = tracing::info_span!("execute on_decision_feedback",);
@@ -1424,6 +1429,11 @@ impl BulwarkProcessor {
                 // Make sure the plugin instance knows about the final combined decision
                 let mut plugin_instance = plugin_instance.lock().await;
                 plugin_instance.record_combined_decision(&decision_components, outcome);
+                metrics::histogram!(
+                    "decision_score",
+                    plugin_instance.decision().decision.pignistic().restrict,
+                    "ref" => plugin_instance.plugin_reference(),
+                );
             }
             tokio::spawn(
                 timeout(timeout_duration, async move {
