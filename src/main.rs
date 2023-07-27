@@ -14,6 +14,7 @@ use {
     color_eyre::eyre::Result,
     envoy_control_plane::envoy::service::ext_proc::v3::external_processor_server::ExternalProcessorServer,
     errors::*,
+    metrics_exporter_prometheus::Matcher,
     metrics_exporter_statsd::StatsdBuilder,
     serde::Serialize,
     std::net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -163,7 +164,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let Some(statsd_host) = &config_root.metrics.statsd_host {
                 prometheus_handle = None;
-                let prefix = if &config_root.metrics.statsd_prefix == "" {
+                let prefix = if config_root.metrics.statsd_prefix.as_str().is_empty() {
                     None
                 } else {
                     Some(config_root.metrics.statsd_prefix.as_str())
@@ -175,16 +176,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .with_queue_size(config_root.metrics.statsd_queue_size)
                 .with_buffer_size(config_root.metrics.statsd_buffer_size)
                 .histogram_is_distribution()
-                .build(prefix)?;
+                .build(prefix)
+                .map_err(MetricsError::from)?;
 
-                metrics::set_boxed_recorder(Box::new(recorder))
-                    .expect("failed to install StatsD recorder");
+                metrics::set_boxed_recorder(Box::new(recorder)).map_err(MetricsError::from)?;
             } else {
-                prometheus_handle = Some(
-                    crate::admin::PrometheusBuilder::new()
-                        .install_recorder()
-                        .expect("failed to install Prometheus recorder"),
-                );
+                let thresholds = config_root.thresholds;
+                let mut builder = crate::admin::PrometheusBuilder::new()
+                    .set_quantiles(&[
+                        // Customize quantiles to work better with scores rather than durations
+                        0.0, 0.001, 0.01, 0.05, 0.1, 0.5, 0.9, 0.95, 0.99, 0.999, 1.0,
+                    ])
+                    .map_err(MetricsError::from)?;
+                if !config_root.metrics.prometheus_summary {
+                    builder = builder
+                        // Setting buckets forces histograms to be rendered as native histograms rather than summaries
+                        .set_buckets_for_metric(
+                            Matcher::Suffix("decision_score".to_string()),
+                            &[
+                                thresholds.trust,
+                                thresholds.suspicious,
+                                thresholds.restrict,
+                                1.0,
+                            ],
+                        )
+                        .map_err(MetricsError::from)?
+                }
+                prometheus_handle = Some(builder.install_recorder().map_err(MetricsError::from)?);
 
                 // TODO: Enable process metrics collection. (libproc.h issue, maybe behind cfg feature)
                 // let process = metrics_process::Collector::default();

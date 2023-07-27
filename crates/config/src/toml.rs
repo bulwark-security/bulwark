@@ -122,6 +122,8 @@ struct Metrics {
     statsd_buffer_size: usize,
     #[serde(default)]
     statsd_prefix: String,
+    #[serde(default = "default_prometheus_summary")]
+    prometheus_summary: bool,
 }
 
 fn default_statsd_port() -> Option<u16> {
@@ -136,6 +138,10 @@ fn default_statsd_buffer_size() -> usize {
     crate::DEFAULT_STATSD_BUFFER_SIZE
 }
 
+fn default_prometheus_summary() -> bool {
+    crate::DEFAULT_PROMETHEUS_SUMMARY
+}
+
 impl Default for Metrics {
     /// Default metrics config
     fn default() -> Self {
@@ -145,6 +151,7 @@ impl Default for Metrics {
             statsd_queue_size: default_statsd_queue_size(),
             statsd_buffer_size: default_statsd_buffer_size(),
             statsd_prefix: String::from(""),
+            prometheus_summary: default_prometheus_summary(),
         }
     }
 }
@@ -157,6 +164,7 @@ impl From<Metrics> for crate::Metrics {
             statsd_queue_size: metrics.statsd_queue_size,
             statsd_buffer_size: metrics.statsd_buffer_size,
             statsd_prefix: metrics.statsd_prefix,
+            prometheus_summary: metrics.prometheus_summary,
         }
     }
 }
