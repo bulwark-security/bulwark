@@ -1525,7 +1525,7 @@ impl BulwarkProcessor {
                     // TODO: add decision debug
                     details: "blocked by bulwark".to_string(),
                     // TODO: better default response + customizability
-                    body: "Access Denied".to_string(),
+                    body: "Access Denied\n".to_string(),
                     headers: None,
                     grpc_status: None,
                 },
@@ -1558,7 +1558,7 @@ impl BulwarkProcessor {
                     // TODO: add decision debug
                     details: "blocked by bulwark".to_string(),
                     // TODO: better default response + customizability
-                    body: "Access Denied".to_string(),
+                    body: "Access Denied\n".to_string(),
                     headers: None,
                     grpc_status: None,
                 },
@@ -1602,7 +1602,7 @@ impl BulwarkProcessor {
                     // TODO: add decision debug
                     details: "blocked by bulwark".to_string(),
                     // TODO: better default response + customizability
-                    body: "Access Denied".to_string(),
+                    body: "Access Denied\n".to_string(),
                     headers: None,
                     grpc_status: None,
                 },
@@ -1635,7 +1635,7 @@ impl BulwarkProcessor {
                     // TODO: add decision debug
                     details: "blocked by bulwark".to_string(),
                     // TODO: better default response + customizability
-                    body: "Access Denied".to_string(),
+                    body: "Access Denied\n".to_string(),
                     headers: None,
                     grpc_status: None,
                 },
