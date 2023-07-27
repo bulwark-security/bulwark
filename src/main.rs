@@ -14,6 +14,7 @@ use {
     color_eyre::eyre::Result,
     envoy_control_plane::envoy::service::ext_proc::v3::external_processor_server::ExternalProcessorServer,
     errors::*,
+    metrics_exporter_statsd::StatsdBuilder,
     serde::Serialize,
     std::net::{IpAddr, Ipv4Addr, SocketAddr},
     std::{
@@ -158,14 +159,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let port = config_root.service.port;
             let admin_port = config_root.service.admin_port;
             let admin_enabled = config_root.service.admin_enabled;
+            let prometheus_handle;
 
-            let prometheus_handle = crate::admin::PrometheusBuilder::new()
-                .install_recorder()
-                .expect("failed to install Prometheus recorder");
+            if let Some(statsd_host) = &config_root.metrics.statsd_host {
+                prometheus_handle = None;
+                let prefix = if &config_root.metrics.statsd_prefix == "" {
+                    None
+                } else {
+                    Some(config_root.metrics.statsd_prefix.as_str())
+                };
+                let recorder = StatsdBuilder::from(
+                    statsd_host,
+                    config_root.metrics.statsd_port.unwrap_or(8125),
+                )
+                .with_queue_size(config_root.metrics.statsd_queue_size)
+                .with_buffer_size(config_root.metrics.statsd_buffer_size)
+                .histogram_is_distribution()
+                .build(prefix)?;
 
-            // TODO: Enable process metrics collection. (libproc.h issue, maybe behind cfg feature)
-            // let process = metrics_process::Collector::default();
-            // process.describe();
+                metrics::set_boxed_recorder(Box::new(recorder))
+                    .expect("failed to install StatsD recorder");
+            } else {
+                prometheus_handle = Some(
+                    crate::admin::PrometheusBuilder::new()
+                        .install_recorder()
+                        .expect("failed to install Prometheus recorder"),
+                );
+
+                // TODO: Enable process metrics collection. (libproc.h issue, maybe behind cfg feature)
+                // let process = metrics_process::Collector::default();
+                // process.describe();
+            }
 
             let admin_state = Arc::new(Mutex::new(AdminState {
                 health: HealthState {

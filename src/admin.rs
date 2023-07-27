@@ -92,9 +92,14 @@ pub(super) async fn metrics_handler(
     // TODO: Enable process metrics collection. (libproc.h issue, maybe behind cfg feature)
     // (*state.metrics.collect)();
 
-    let metrics = state.metrics.prometheus_handle.render();
-    // TODO: Add gzip compression support.
-    let body: Vec<u8> = metrics.into();
+    let body: Vec<u8>;
+    if let Some(prometheus_handle) = &state.metrics.prometheus_handle {
+        let metrics = prometheus_handle.render();
+        // TODO: Add gzip compression support.
+        body = metrics.into();
+    } else {
+        body = vec![];
+    }
 
     (StatusCode::OK, headers, body)
 }
@@ -102,14 +107,14 @@ pub(super) async fn metrics_handler(
 /// State for the metrics endpoint
 #[derive(Clone)]
 pub(super) struct MetricsState {
-    prometheus_handle: PrometheusHandle,
+    prometheus_handle: Option<PrometheusHandle>,
     // collect: Arc<dyn Fn() + Send + Sync + 'static>,
 }
 
 impl MetricsState {
     /// Creates a new [`MetricsState`] with a Prometheus recorder.
     pub(super) fn new(
-        prometheus_handle: PrometheusHandle,
+        prometheus_handle: Option<PrometheusHandle>,
         // collect: impl Fn() + Send + Sync + 'static,
     ) -> Self {
         Self {

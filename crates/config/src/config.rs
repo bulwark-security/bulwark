@@ -18,6 +18,8 @@ lazy_static! {
 pub struct Config {
     /// Configuration for the services being launched.
     pub service: Service,
+    /// Configuration for metrics collection.
+    pub metrics: Metrics,
     /// Configuration for the decision thresholds.
     pub thresholds: Thresholds,
     /// A list of configurations for individual plugins.
@@ -87,6 +89,52 @@ pub const DEFAULT_PORT: u16 = 8089;
 pub const DEFAULT_ADMIN_PORT: u16 = 8090;
 /// The default [`Service::remote_state_pool_size`] value.
 pub const DEFAULT_REMOTE_STATE_POOL_SIZE: u32 = 16;
+
+impl Default for Service {
+    /// Default service config
+    fn default() -> Self {
+        Self {
+            port: DEFAULT_PORT,
+            admin_port: DEFAULT_ADMIN_PORT,
+            admin_enabled: true,
+            remote_state_uri: None,
+            remote_state_pool_size: DEFAULT_REMOTE_STATE_POOL_SIZE,
+            proxy_hops: 0,
+        }
+    }
+}
+
+/// Configuration for metrics collection.
+#[derive(Debug, Clone)]
+pub struct Metrics {
+    pub statsd_host: Option<String>,
+    pub statsd_port: Option<u16>,
+    pub statsd_queue_size: usize,
+    pub statsd_buffer_size: usize,
+    pub statsd_prefix: String,
+}
+
+/// The default [`Metrics::statsd_port`] value.
+pub const DEFAULT_STATSD_PORT: Option<u16> = Some(8125);
+
+/// The default [`Metrics::statsd_queue_size`] value.
+pub const DEFAULT_STATSD_QUEUE_SIZE: usize = 5000;
+
+/// The default [`Metrics::statsd_buffer_size`] value.
+pub const DEFAULT_STATSD_BUFFER_SIZE: usize = 1024;
+
+impl Default for Metrics {
+    /// Default metrics config
+    fn default() -> Self {
+        Self {
+            statsd_host: None,
+            statsd_port: DEFAULT_STATSD_PORT,
+            statsd_queue_size: DEFAULT_STATSD_QUEUE_SIZE,
+            statsd_buffer_size: DEFAULT_STATSD_BUFFER_SIZE,
+            statsd_prefix: String::from(""),
+        }
+    }
+}
 
 /// Configuration for the decision thresholds.
 ///

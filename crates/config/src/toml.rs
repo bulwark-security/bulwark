@@ -19,6 +19,8 @@ struct Config {
     #[serde(default)]
     service: Service,
     #[serde(default)]
+    metrics: Metrics,
+    #[serde(default)]
     thresholds: Thresholds,
     #[serde(default, rename(serialize = "include", deserialize = "include"))]
     includes: Vec<Include>,
@@ -103,6 +105,58 @@ impl From<Service> for crate::Service {
             remote_state_uri: service.remote_state_uri.clone(),
             remote_state_pool_size: service.remote_state_pool_size,
             proxy_hops: service.proxy_hops,
+        }
+    }
+}
+
+/// The TOML serialization for a Metrics structure.
+#[derive(Serialize, Deserialize)]
+struct Metrics {
+    #[serde(default)]
+    statsd_host: Option<String>,
+    #[serde(default = "default_statsd_port")]
+    statsd_port: Option<u16>,
+    #[serde(default = "default_statsd_queue_size")]
+    statsd_queue_size: usize,
+    #[serde(default = "default_statsd_buffer_size")]
+    statsd_buffer_size: usize,
+    #[serde(default)]
+    statsd_prefix: String,
+}
+
+fn default_statsd_port() -> Option<u16> {
+    crate::DEFAULT_STATSD_PORT
+}
+
+fn default_statsd_queue_size() -> usize {
+    crate::DEFAULT_STATSD_QUEUE_SIZE
+}
+
+fn default_statsd_buffer_size() -> usize {
+    crate::DEFAULT_STATSD_BUFFER_SIZE
+}
+
+impl Default for Metrics {
+    /// Default metrics config
+    fn default() -> Self {
+        Self {
+            statsd_host: None,
+            statsd_port: default_statsd_port(),
+            statsd_queue_size: default_statsd_queue_size(),
+            statsd_buffer_size: default_statsd_buffer_size(),
+            statsd_prefix: String::from(""),
+        }
+    }
+}
+
+impl From<Metrics> for crate::Metrics {
+    fn from(metrics: Metrics) -> Self {
+        Self {
+            statsd_host: metrics.statsd_host.clone(),
+            statsd_port: metrics.statsd_port,
+            statsd_queue_size: metrics.statsd_queue_size,
+            statsd_buffer_size: metrics.statsd_buffer_size,
+            statsd_prefix: metrics.statsd_prefix,
         }
     }
 }
@@ -421,6 +475,7 @@ where
     // Transfer to the public config type, checking reference enums
     let config = crate::Config {
         service: root.service.into(),
+        metrics: root.metrics.into(),
         thresholds: root.thresholds.into(),
         plugins: root.plugins.iter().map(|plugin| plugin.into()).collect(),
         presets: root
@@ -460,6 +515,10 @@ mod tests {
         port = 10002
         remote_state_uri = "redis://10.0.0.1:6379"
 
+        [metrics]
+        statsd_host = "10.0.0.2"
+        statsd_prefix = "bulwark_"
+
         [thresholds]
         restrict = 0.75
     
@@ -487,6 +546,10 @@ mod tests {
             root.service.remote_state_uri,
             Some(String::from("redis://10.0.0.1:6379"))
         );
+
+        assert_eq!(root.metrics.statsd_host, Some(String::from("10.0.0.2")));
+        assert_eq!(root.metrics.statsd_port, Some(8125));
+        assert_eq!(root.metrics.statsd_prefix, String::from("bulwark_"));
 
         assert_eq!(root.thresholds.restrict, 0.75); // non-default
         assert_eq!(
@@ -529,6 +592,10 @@ mod tests {
 
         assert_eq!(root.service.port, 10002); // non-default
         assert_eq!(root.service.admin_port, crate::DEFAULT_ADMIN_PORT);
+
+        assert_eq!(root.metrics.statsd_host, Some(String::from("10.0.0.2")));
+        assert_eq!(root.metrics.statsd_port, Some(8125));
+        assert_eq!(root.metrics.statsd_prefix, String::from("bulwark_"));
 
         assert_eq!(root.thresholds.restrict, 0.75); // non-default
         assert_eq!(

@@ -295,7 +295,9 @@ dependencies = [
  "envoy-control-plane",
  "http",
  "hyper",
+ "metrics",
  "metrics-exporter-prometheus",
+ "metrics-exporter-statsd",
  "quoted-string",
  "reqwest",
  "serde",
@@ -457,6 +459,15 @@ name = "bytes"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
+
+[[package]]
+name = "cadence"
+version = "0.29.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f39286bc075b023101dccdb79456a1334221c768b8faede0c2aff7ed29a9482d"
+dependencies = [
+ "crossbeam-channel",
+]
 
 [[package]]
 name = "camino"
@@ -1991,6 +2002,17 @@ dependencies = [
  "thiserror",
  "tokio 1.29.1",
  "tracing",
+]
+
+[[package]]
+name = "metrics-exporter-statsd"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff3e663a227629a870aaa1d599ba54adc03bb1bf8a449eed6816f2cfbe81575a"
+dependencies = [
+ "cadence",
+ "metrics",
+ "thiserror",
 ]
 
 [[package]]
