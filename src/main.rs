@@ -182,14 +182,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 metrics::set_boxed_recorder(Box::new(recorder)).map_err(MetricsError::from)?;
             } else {
                 let thresholds = config_root.thresholds;
-                let mut builder = crate::admin::PrometheusBuilder::new()
-                    .set_quantiles(&[
-                        // Customize quantiles to work better with scores rather than durations
-                        0.0, 0.001, 0.01, 0.05, 0.1, 0.5, 0.9, 0.95, 0.99, 0.999, 1.0,
-                    ])
-                    .map_err(MetricsError::from)?;
-                if !config_root.metrics.prometheus_summary {
-                    builder = builder
+                prometheus_handle = Some(
+                    crate::admin::PrometheusBuilder::new()
                         // Setting buckets forces histograms to be rendered as native histograms rather than summaries
                         .set_buckets_for_metric(
                             Matcher::Suffix("decision_score".to_string()),
@@ -201,8 +195,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ],
                         )
                         .map_err(MetricsError::from)?
-                }
-                prometheus_handle = Some(builder.install_recorder().map_err(MetricsError::from)?);
+                        .install_recorder()
+                        .map_err(MetricsError::from)?,
+                );
 
                 // TODO: Enable process metrics collection. (libproc.h issue, maybe behind cfg feature)
                 // let process = metrics_process::Collector::default();

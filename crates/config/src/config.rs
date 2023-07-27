@@ -112,7 +112,6 @@ pub struct Metrics {
     pub statsd_queue_size: usize,
     pub statsd_buffer_size: usize,
     pub statsd_prefix: String,
-    pub prometheus_summary: bool,
 }
 
 /// The default [`Metrics::statsd_port`] value.
@@ -124,9 +123,6 @@ pub const DEFAULT_STATSD_QUEUE_SIZE: usize = 5000;
 /// The default [`Metrics::statsd_buffer_size`] value.
 pub const DEFAULT_STATSD_BUFFER_SIZE: usize = 1024;
 
-/// The default [`Metrics::prometheus_summary`] value.
-pub const DEFAULT_PROMETHEUS_SUMMARY: bool = false;
-
 impl Default for Metrics {
     /// Default metrics config
     fn default() -> Self {
@@ -136,7 +132,6 @@ impl Default for Metrics {
             statsd_queue_size: DEFAULT_STATSD_QUEUE_SIZE,
             statsd_buffer_size: DEFAULT_STATSD_BUFFER_SIZE,
             statsd_prefix: String::from(""),
-            prometheus_summary: DEFAULT_PROMETHEUS_SUMMARY,
         }
     }
 }
