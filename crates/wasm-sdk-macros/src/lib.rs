@@ -242,11 +242,20 @@ fn {}() -> Result {{
                     // basic error handling on the result
                     #[inline(always)]
                     #inner_fn
-                    #name().map_err(|e| {
+                    let result = #name().map_err(|e| {
                         eprintln!("error in '{}' handler: {}", #name_str, e);
                         append_tags(["error"]);
                         // Absorbs the error, returning () to match desired signature
-                    })
+                    });
+                    #[allow(unused_must_use)]
+                    {
+                        // Apparently we can exit the guest environment before IO is flushed,
+                        // causing it to never be captured? This ensures IO is flushed and captured.
+                        use std::io::Write;
+                        std::io::stdout().flush();
+                        std::io::stderr().flush();
+                    }
+                    result
                 }
             }
         }
