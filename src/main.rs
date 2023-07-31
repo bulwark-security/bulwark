@@ -1,16 +1,21 @@
-use axum::ServiceExt;
-
+mod admin;
 mod build;
 mod ecs;
 mod errors;
 
 use {
-    axum::{extract::Path, extract::State, http::StatusCode, response::Json, routing::get, Router},
+    crate::admin::{AdminState, HealthState, MetricsState},
+    axum::{
+        extract::Path, extract::State, http::StatusCode, response::Json, routing::get, Router,
+        ServiceExt,
+    },
     bulwark_ext_processor::BulwarkProcessor,
     clap::{Parser, Subcommand},
     color_eyre::eyre::Result,
     envoy_control_plane::envoy::service::ext_proc::v3::external_processor_server::ExternalProcessorServer,
     errors::*,
+    metrics_exporter_prometheus::Matcher,
+    metrics_exporter_statsd::StatsdBuilder,
     serde::Serialize,
     std::net::{IpAddr, Ipv4Addr, SocketAddr},
     std::{
@@ -73,72 +78,6 @@ enum Command {
         #[arg(short, long, value_name = "FILE")]
         output: Option<PathBuf>,
     },
-}
-
-/// The health state structure tracks the health of the primary service, primarily for the benefit of
-/// external monitoring by load balancers or container orchestration systems.
-#[derive(Serialize, Clone, Copy)]
-struct HealthState {
-    /// Indicates that the primary service is live and and has not entered an unrecoverable state.
-    ///
-    /// In theory, this could become false after the service has started if the system detects that it has
-    /// entered a deadlock state, however this is not currently implemented. See
-    /// [Kubernete's liveness probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#define-a-liveness-http-request)
-    /// for discussion.
-    pub live: bool,
-    /// Indicates that the primary service has successfully initialized and is ready to receive requests.
-    ///
-    /// Once true, it will remain true for the lifetime of the process.
-    pub started: bool,
-    /// Indicates that the primary service has successfully initialized and is ready to receive requests.
-    ///
-    /// Once true, it will remain true for the lifetime of the process.
-    /// While semantically different from startup state, it's implementation logic is identical.
-    pub ready: bool,
-}
-
-/// The default probe handler is intended to be at the apex of the health check resource. It simply performs
-/// a liveness health check by default.
-///
-/// See probe_handler.
-async fn default_probe_handler(
-    State(state): State<Arc<Mutex<HealthState>>>,
-) -> (StatusCode, Json<HealthState>) {
-    probe_handler(State(state), Path(String::from("live"))).await
-}
-
-/// The probe handler returns a JSON `HealthState` with a status code that depends on the probe type requested.
-///
-/// - live - Always returns an HTTP OK status if the endpoint is serving requests.
-/// - started - Returns an HTTP OK status if the primary service has started and is ready to receive requests
-///     and a Service Unavailable status otherwise.
-/// - ready - Returns an HTTP OK status if the primary service is available and ready to receive requests
-///     and a Service Unavailable status otherwise.
-async fn probe_handler(
-    State(state): State<Arc<Mutex<HealthState>>>,
-    Path(probe): Path<String>,
-) -> (StatusCode, Json<HealthState>) {
-    let state = state.lock().expect("poisoned mutex");
-    let status = match probe.as_str() {
-        "live" => StatusCode::OK,
-        "started" => {
-            if state.started {
-                StatusCode::OK
-            } else {
-                StatusCode::SERVICE_UNAVAILABLE
-            }
-        }
-        "ready" => {
-            if state.ready {
-                StatusCode::OK
-            } else {
-                StatusCode::SERVICE_UNAVAILABLE
-            }
-        }
-        // hint that the wrong probe value was sent
-        _ => StatusCode::NOT_FOUND,
-    };
-    (status, Json(state.to_owned()))
 }
 
 /// An [`EnvFilter`] pattern to limit matched log events to error events.
@@ -221,25 +160,77 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let port = config_root.service.port;
             let admin_port = config_root.service.admin_port;
             let admin_enabled = config_root.service.admin_enabled;
-            let health_state = Arc::new(Mutex::new(HealthState {
-                live: true,
-                started: false,
-                ready: false,
+            let prometheus_handle;
+
+            if let Some(statsd_host) = &config_root.metrics.statsd_host {
+                prometheus_handle = None;
+                let prefix = if config_root.metrics.statsd_prefix.as_str().is_empty() {
+                    None
+                } else {
+                    Some(config_root.metrics.statsd_prefix.as_str())
+                };
+                let recorder = StatsdBuilder::from(
+                    statsd_host,
+                    config_root.metrics.statsd_port.unwrap_or(8125),
+                )
+                .with_queue_size(config_root.metrics.statsd_queue_size)
+                .with_buffer_size(config_root.metrics.statsd_buffer_size)
+                .histogram_is_distribution()
+                .build(prefix)
+                .map_err(MetricsError::from)?;
+
+                metrics::set_boxed_recorder(Box::new(recorder)).map_err(MetricsError::from)?;
+            } else {
+                let thresholds = config_root.thresholds;
+                prometheus_handle = Some(
+                    crate::admin::PrometheusBuilder::new()
+                        // Setting buckets forces histograms to be rendered as native histograms rather than summaries
+                        .set_buckets_for_metric(
+                            Matcher::Suffix("decision_score".to_string()),
+                            &[
+                                thresholds.trust,
+                                thresholds.suspicious,
+                                thresholds.restrict,
+                                1.0,
+                            ],
+                        )
+                        .map_err(MetricsError::from)?
+                        .install_recorder()
+                        .map_err(MetricsError::from)?,
+                );
+
+                // TODO: Enable process metrics collection. (libproc.h issue, maybe behind cfg feature)
+                // let process = metrics_process::Collector::default();
+                // process.describe();
+            }
+
+            let admin_state = Arc::new(Mutex::new(AdminState {
+                health: HealthState {
+                    live: true,
+                    started: false,
+                    ready: false,
+                },
+                metrics: MetricsState::new(
+                    prometheus_handle,
+                    // TODO: Enable process metrics collection. (libproc.h issue, maybe behind cfg feature)
+                    // collect: move || process.collect(),
+                ),
             }));
 
             // TODO: need a reference to the bulwark processor to pass to the admin service but that doesn't exist yet
 
             if admin_enabled {
-                let health_state = health_state.clone();
+                let admin_state = admin_state.clone();
 
                 service_tasks.spawn(async move {
                     // And run our service using `hyper`.
                     let addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::UNSPECIFIED), admin_port));
                     let app = NormalizePathLayer::trim_trailing_slash().layer(
                         Router::new()
-                            .route("/health", get(default_probe_handler)) // :probe is optional and defaults to liveness probe
-                            .route("/health/:probe", get(probe_handler))
-                            .with_state(health_state),
+                            .route("/health", get(admin::default_probe_handler)) // :probe is optional and defaults to liveness probe
+                            .route("/health/:probe", get(admin::probe_handler))
+                            .route("/metrics", get(admin::metrics_handler))
+                            .with_state(admin_state),
                     );
 
                     axum::Server::bind(&addr)
@@ -253,13 +244,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let ext_processor = ExternalProcessorServer::new(bulwark_processor);
 
             {
-                let health_state = health_state.clone();
+                let admin_state = admin_state.clone();
 
                 service_tasks.spawn(async move {
                     {
-                        let mut health_state = health_state.lock().expect("poisoned mutex");
-                        health_state.started = true;
-                        health_state.ready = true;
+                        let mut admin_state = admin_state.lock().expect("poisoned mutex");
+                        admin_state.health.started = true;
+                        admin_state.health.ready = true;
                     }
                     Server::builder()
                         .add_service(ext_processor)

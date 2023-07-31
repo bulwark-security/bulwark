@@ -694,70 +694,140 @@ impl PluginInstance {
 
     /// Executes the guest's `init` function.
     pub async fn handle_init(&mut self) -> Result<(), PluginExecutionError> {
-        let _result = self
+        let result = self
             .handlers
             .call_on_init(self.store.as_context_mut())
             .await?;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_on_init",
+                "ref" => self.plugin_reference(), "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_on_init",
+                "ref" => self.plugin_reference(), "result" => "error"
+            ),
+        }
 
         Ok(())
     }
 
     /// Executes the guest's `on_request` function.
     pub async fn handle_request(&mut self) -> Result<(), PluginExecutionError> {
-        let _result = self
+        let result = self
             .handlers
             .call_on_request(self.store.as_context_mut())
             .await?;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_on_request",
+                "ref" => self.plugin_reference(), "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_on_request",
+                "ref" => self.plugin_reference(), "result" => "error"
+            ),
+        }
 
         Ok(())
     }
 
     /// Executes the guest's `on_request_decision` function.
     pub async fn handle_request_decision(&mut self) -> Result<(), PluginExecutionError> {
-        let _result = self
+        let result = self
             .handlers
             .call_on_request_decision(self.store.as_context_mut())
             .await?;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_on_request_decision",
+                "ref" => self.plugin_reference(), "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_on_request_decision",
+                "ref" => self.plugin_reference(), "result" => "error"
+            ),
+        }
 
         Ok(())
     }
 
     /// Executes the guest's `on_response_decision` function.
     pub async fn handle_response_decision(&mut self) -> Result<(), PluginExecutionError> {
-        let _result = self
+        let result = self
             .handlers
             .call_on_response_decision(self.store.as_context_mut())
             .await?;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_on_request_body_decision",
+                "ref" => self.plugin_reference(), "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_on_request_body_decision",
+                "ref" => self.plugin_reference(), "result" => "error"
+            ),
+        }
 
         Ok(())
     }
 
     /// Executes the guest's `on_request_body_decision` function.
     pub async fn handle_request_body_decision(&mut self) -> Result<(), PluginExecutionError> {
-        let _result = self
+        let result = self
             .handlers
             .call_on_request_body_decision(self.store.as_context_mut())
             .await?;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_on_response_decision",
+                "ref" => self.plugin_reference(), "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_on_response_decision",
+                "ref" => self.plugin_reference(), "result" => "error"
+            ),
+        }
 
         Ok(())
     }
 
     /// Executes the guest's `on_response_body_decision` function.
     pub async fn handle_response_body_decision(&mut self) -> Result<(), PluginExecutionError> {
-        let _result = self
+        let result = self
             .handlers
             .call_on_response_body_decision(self.store.as_context_mut())
             .await?;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_on_response_body_decision",
+                "ref" => self.plugin_reference(), "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_on_response_body_decision",
+                "ref" => self.plugin_reference(), "result" => "error"
+            ),
+        }
 
         Ok(())
     }
 
     /// Executes the guest's `on_decision_feedback` function.
     pub async fn handle_decision_feedback(&mut self) -> Result<(), PluginExecutionError> {
-        let _result = self
+        let result = self
             .handlers
             .call_on_decision_feedback(self.store.as_context_mut())
             .await?;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_on_decision_feedback",
+                "ref" => self.plugin_reference(), "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_on_decision_feedback",
+                "ref" => self.plugin_reference(), "result" => "error"
+            ),
+        }
 
         Ok(())
     }

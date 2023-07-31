@@ -13,6 +13,16 @@ pub enum ServiceError {
 }
 
 #[derive(thiserror::Error, Debug)]
+pub enum MetricsError {
+    #[error("failed to install Prometheus metrics exporter: {0}")]
+    Prometheus(#[from] metrics_exporter_prometheus::BuildError),
+    #[error("failed to install StatsD metrics exporter: {0}")]
+    Statsd(#[from] metrics_exporter_statsd::StatsdError),
+    #[error("failed to install metrics exporter: {0}")]
+    Install(#[from] metrics::SetRecorderError),
+}
+
+#[derive(thiserror::Error, Debug)]
 pub enum BuildError {
     #[error("missing file '{0}': {1}")]
     NotFound(String, std::io::Error),
