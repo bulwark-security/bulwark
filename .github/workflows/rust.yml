@@ -69,4 +69,4 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -p bulwark-cli -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk
+          args: -p bulwark-cli -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk -p bulwark-wasm-sdk-macros
