@@ -279,9 +279,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let path = path.clone().unwrap_or(current_dir.clone());
             let wasm_filename = crate::build::wasm_filename(&path)?;
             // Defaults to joining with the current working directory, not the input path
-            let output = output
+            let mut output = output
                 .clone()
-                .unwrap_or(current_dir.join("dist").join(wasm_filename));
+                .unwrap_or(current_dir.join("dist/plugins").join(&wasm_filename));
+            if output.is_dir() {
+                output = output.join(wasm_filename);
+            }
             crate::build::build_plugin(&path, output)?;
         }
         None => todo!(),

@@ -109,7 +109,10 @@ pub(crate) fn build_plugin(
         args.push("--release");
     }
 
-    let mut command = Command::new("cargo").args(&args).spawn()?;
+    let mut command = Command::new("cargo")
+        .current_dir(path)
+        .args(&args)
+        .spawn()?;
 
     let exit_status = command.wait()?;
     if exit_status.success() {
