@@ -9,6 +9,22 @@ extern crate proc_macro;
 
 /// The `bulwark_plugin` attribute generates default implementations for all handler traits in a module
 /// and produces friendly errors for common mistakes.
+///
+/// # Example
+///
+/// ```no_compile
+/// use bulwark_wasm_sdk::*;
+///
+/// struct ExamplePlugin;
+///
+/// #[bulwark_plugin]
+/// impl Handlers for ExamplePlugin {
+///     fn on_request_decision() -> Result {
+///         // implement detection logic here
+///         Ok(())
+///     }
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
     // Parse the input token stream as an impl, or return an error.
