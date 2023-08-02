@@ -1,3 +1,4 @@
+#[doc(hidden)]
 mod bulwark_host {
     wasmtime::component::bindgen!({
         world: "bulwark:plugin/host-api",
@@ -5,6 +6,7 @@ mod bulwark_host {
     });
 }
 
+#[doc(hidden)]
 mod handlers {
     wasmtime::component::bindgen!({
         world: "bulwark:plugin/handlers",

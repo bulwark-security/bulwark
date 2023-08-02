@@ -4,12 +4,14 @@ pub use bulwark_wasm_sdk_macros::{bulwark_plugin, handler};
 
 // Each macro invocation has to be scoped to its own mod to avoid fixed constant name collisions
 #[allow(unused_macros)]
+#[doc(hidden)]
 pub mod bulwark_host {
     wit_bindgen::generate!({
         world: "bulwark:plugin/host-api"
     });
 }
 #[allow(unused_macros)]
+#[doc(hidden)]
 pub mod handlers {
     wit_bindgen::generate!({
         world: "bulwark:plugin/handlers"
