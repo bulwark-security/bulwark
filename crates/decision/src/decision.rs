@@ -19,14 +19,21 @@ pub enum Outcome {
     Restricted,
 }
 
-/// A two-state [Dempster-Shafer](https://en.wikipedia.org/wiki/Dempster%E2%80%93Shafer_theory) mass
-/// function that represents whether an operation should be accepted or restricted. The power set is represented
-/// by the `unknown` value.
+/// A `Decision` represents evidence in favor of either accepting or restricting an operation under consideration.
+///
+/// It is composed of three values: `accept`, `restrict` and `unknown`. Each must be between 0.0 and 1.0 inclusive
+/// and the sum of all three must equal 1.0. The `unknown` value represents uncertainty about the evidence, with
+/// a 1.0 `unknown` value indicating total uncertainty or a "no opinion" verdict. Similarly, a 1.0 `accept` or
+/// `restrict` value indicates total certainty that the verdict should be to accept or to restrict, respectively.
 ///
 /// This representation allows for a fairly intuitive way of characterizing evidence in favor of or against
-/// blocking an operation, while capturing uncertainty. Limiting to two states rather than a wider range of
+/// blocking an operation, while still capturing any uncertainty. Limiting to two states rather than a wider range of
 /// classification possibilities allows for better performance optimizations, simplifies code readability, and
-/// enables useful transformations like reweighting.
+/// enables useful transformations like reweighting a `Decision`.
+///
+/// This data structure is a two-state [Dempster-Shafer](https://en.wikipedia.org/wiki/Dempster%E2%80%93Shafer_theory)
+/// mass function, with the power set represented by the `unknown` value. This enables the use of combination rules
+/// to aggregate decisions from multiple sources. However, knowledge of Dempster-Shafer theory should not be necessary.
 #[derive(Debug, Validate, Copy, Clone)]
 #[validate(schema(function = "validate_sum", skip_on_field_errors = false))]
 pub struct Decision {
