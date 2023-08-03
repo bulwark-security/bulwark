@@ -25,6 +25,10 @@ mod host_api;
 pub use bulwark_decision::*;
 pub use errors::*;
 pub use from::*;
+/// The handler functions a plugin needs to expose to process requests and generate decisions.
+///
+/// See the [`bulwark_plugin`](https://docs.rs/bulwark-wasm-sdk/latest/bulwark_wasm_sdk/attr.bulwark_plugin.html)
+/// attribute for additional details on how to use this trait.
 pub use handlers::Handlers;
 pub use host_api::*;
 
