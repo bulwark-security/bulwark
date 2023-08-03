@@ -36,6 +36,7 @@ use {
 /// bulwark-cli launches and interacts with the Bulwark service.
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
+#[clap(arg_required_else_help = true)]
 struct Cli {
     /// Log levels: error, warn, info, debug, trace
     ///
@@ -152,8 +153,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // You can check for the existence of subcommands, and if found use their
     // matches just as you would the top level cmd
-    match &cli.command {
-        Some(Command::ExtProcessor { config }) => {
+    match &cli.command.ok_or(CliArgumentError::MissingSubcommand)? {
+        Command::ExtProcessor { config } => {
             let mut service_tasks: JoinSet<std::result::Result<(), ServiceError>> = JoinSet::new();
 
             let config_root = bulwark_config::toml::load_config(config)?;
@@ -274,7 +275,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        Some(Command::Build { path, output }) => {
+        Command::Build { path, output } => {
             let current_dir = std::env::current_dir()?;
             let path = path.clone().unwrap_or(current_dir.clone());
             let wasm_filename = crate::build::wasm_filename(&path)?;
@@ -287,7 +288,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             crate::build::build_plugin(&path, output)?;
         }
-        None => todo!(),
     }
 
     Ok(())
