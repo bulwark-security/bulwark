@@ -9,6 +9,54 @@ extern crate proc_macro;
 
 /// The `bulwark_plugin` attribute generates default implementations for all handler traits in a module
 /// and produces friendly errors for common mistakes.
+///
+/// All trait functions for `Handlers` are optional when used in conjunction with this macro. A no-op
+/// implementation will be automatically generated if a handler function has not been defined. Handler
+/// functions are called in sequence, in the order below. All `*_decision` handlers render an updated
+/// decision. In the case of a `restricted` outcome, no further processing will occur. Otherwise,
+/// processing will continue to the next handler.
+///
+/// # Trait Functions
+/// - `on_init` - Not typically used. Called when the plugin is first loaded. If defined, overrides the
+///   default macro behavior of calling
+///   [`receive_request_body(true)`](https://docs.rs/bulwark-wasm-sdk/latest/bulwark_wasm_sdk/fn.receive_request_body.html)
+///   or [`receive_response_body(true)`](https://docs.rs/bulwark-wasm-sdk/latest/bulwark_wasm_sdk/fn.receive_response_body.html)
+///   when the corresponding handlers have been defined.
+/// - `on_request` - This handler is called for every incoming request, before any decision-making will occur.
+///   It is typically used to perform enrichment tasks with the
+///   [`set_param_value`](https://docs.rs/bulwark-wasm-sdk/latest/bulwark_wasm_sdk/fn.set_param_value.html) function.
+///   The request body will not yet be available when this handler is called.
+/// - `on_request_decision` - This handler is called to make an initial decision.
+/// - `on_request_body_decision` - This handler is called once the request body is available. The decision may be updated
+///   with any new evidence found in the request body.
+/// - `on_response_decision` - This handler is called once the interior service has received the request, processed it, and
+///   returned a response, but prior to that response being sent onwards to the original exterior client. Notably, a `restricted`
+///   outcome here does not cancel any actions or side-effects from the interior service that may have taken place already.
+///   This handler is often used to process response status codes.
+/// - `on_response_body_decision` - This handler is called once the response body is available. The decision may be updated
+///   with any new evidence found in the response body.
+/// - `on_decision_feedback` - This handler is called once a final verdict has been reached. The combined decision
+///   of all plugins is available here, not just the decision of the currently executing plugin. This handler may be
+///   used for any form of feedback loop, counter-based detections, or to train a model. Additionally, in the case of a
+///   `restricted` outcome, this handler may be used to perform logouts or otherwise cancel or attempt to roll back undesired
+///   side-effects that could have occurred prior to the verdict being rendered.
+///
+/// # Example
+///
+/// ```no_compile
+/// use bulwark_wasm_sdk::*;
+///
+/// struct ExamplePlugin;
+///
+/// #[bulwark_plugin]
+/// impl Handlers for ExamplePlugin {
+///     fn on_request_decision() -> Result {
+///         println!("hello world");
+///         // implement detection logic here
+///         Ok(())
+///     }
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
     // Parse the input token stream as an impl, or return an error.
@@ -47,8 +95,8 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
     let mut handlers = vec![
         "on_request",
         "on_request_decision",
-        "on_response_decision",
         "on_request_body_decision",
+        "on_response_decision",
         "on_response_body_decision",
         "on_decision_feedback",
     ];
@@ -189,8 +237,8 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
 /// - `on_init`
 /// - `on_request`
 /// - `on_request_decision`
-/// - `on_response_decision`
 /// - `on_request_body_decision`
+/// - `on_response_decision`
 /// - `on_response_body_decision`
 /// - `on_decision_feedback`
 #[doc(hidden)]
@@ -231,8 +279,8 @@ fn {}() -> Result {{
         "on_init"
         | "on_request"
         | "on_request_decision"
-        | "on_response_decision"
         | "on_request_body_decision"
+        | "on_response_decision"
         | "on_response_body_decision"
         | "on_decision_feedback" => {
             output = quote_spanned! {inner_fn.span() =>
@@ -267,8 +315,8 @@ fn {}() -> Result {{
 - `on_init`
 - `on_request`
 - `on_request_decision`
-- `on_response_decision`
 - `on_request_body_decision`
+- `on_response_decision`
 - `on_response_body_decision`
 - `on_decision_feedback`
 ",
