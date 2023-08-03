@@ -2,6 +2,8 @@
 pub enum CliArgumentError {
     #[error("invalid log format: {0}")]
     InvalidLogFormat(String),
+    #[error("missing subcommand")]
+    MissingSubcommand,
 }
 
 #[derive(thiserror::Error, Debug)]
