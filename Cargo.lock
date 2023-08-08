@@ -369,6 +369,7 @@ dependencies = [
  "prost-wkt-build",
  "r2d2",
  "redis",
+ "reqwest",
  "sfv",
  "thiserror",
  "tokio 1.29.1",

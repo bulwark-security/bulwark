@@ -329,6 +329,7 @@ impl RequestContext {
     pub fn new(
         plugin: Arc<Plugin>,
         redis_info: Option<Arc<RedisInfo>>,
+        http_client: Arc<reqwest::blocking::Client>,
         params: Arc<Mutex<bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value>>>,
         request: Arc<bulwark_wasm_sdk::Request>,
     ) -> Result<RequestContext, ContextInstantiationError> {
@@ -352,7 +353,7 @@ impl RequestContext {
                 permissions: plugin.permissions(),
                 client_ip,
                 redis_info,
-                http_client: reqwest::blocking::Client::new(),
+                http_client,
             },
             guest_mut_ctx: GuestMutableContext {
                 receive_request_body: Arc::new(Mutex::new(false)),
@@ -500,7 +501,7 @@ struct ReadOnlyContext {
     /// The Redis connection pool and its associated Lua scripts.
     redis_info: Option<Arc<RedisInfo>>,
     /// The HTTP client used to send outbound requests from plugins.
-    http_client: reqwest::blocking::Client,
+    http_client: Arc<reqwest::blocking::Client>,
 }
 
 /// A collection of values that the guest environment will mutate over the lifecycle of a request/response.
@@ -1546,7 +1547,13 @@ mod tests {
                 .body(bulwark_wasm_sdk::NO_BODY)?,
         );
         let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
-        let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
+        let request_context = RequestContext::new(
+            plugin.clone(),
+            None,
+            Arc::new(reqwest::blocking::Client::new()),
+            params,
+            request,
+        )?;
         let mut plugin_instance =
             tokio_test::block_on(PluginInstance::new(plugin, request_context))?;
         let decision_components = plugin_instance.decision();
@@ -1578,7 +1585,13 @@ mod tests {
                 .body(bulwark_wasm_sdk::UNAVAILABLE_BODY)?,
         );
         let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
-        let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
+        let request_context = RequestContext::new(
+            plugin.clone(),
+            None,
+            Arc::new(reqwest::blocking::Client::new()),
+            params,
+            request,
+        )?;
         let mut typical_plugin_instance =
             tokio_test::block_on(PluginInstance::new(plugin.clone(), request_context))?;
         tokio_test::block_on(typical_plugin_instance.handle_request_decision())?;
@@ -1598,7 +1611,13 @@ mod tests {
                 .body(bulwark_wasm_sdk::UNAVAILABLE_BODY)?,
         );
         let params = Arc::new(Mutex::new(bulwark_wasm_sdk::Map::new()));
-        let request_context = RequestContext::new(plugin.clone(), None, params, request)?;
+        let request_context = RequestContext::new(
+            plugin.clone(),
+            None,
+            Arc::new(reqwest::blocking::Client::new()),
+            params,
+            request,
+        )?;
         let mut evil_plugin_instance =
             tokio_test::block_on(PluginInstance::new(plugin, request_context))?;
         tokio_test::block_on(evil_plugin_instance.handle_request_decision())?;
