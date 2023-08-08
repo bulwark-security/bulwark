@@ -78,6 +78,7 @@ pub struct BulwarkProcessor {
     // TODO: may need to have a plugin registry at some point
     router: Arc<RwLock<Router<RouteTarget>>>,
     redis_info: Option<Arc<RedisInfo>>,
+    http_client: Arc<reqwest::blocking::Client>,
     request_semaphore: Arc<tokio::sync::Semaphore>,
     plugin_semaphore: Arc<tokio::sync::Semaphore>,
     thresholds: bulwark_config::Thresholds,
@@ -114,6 +115,7 @@ impl ExternalProcessor for BulwarkProcessor {
 
             let child_span = tracing::info_span!("route request");
             let (sender, receiver) = futures::channel::mpsc::unbounded();
+            let http_client = self.http_client.clone();
             let request_semaphore = self.request_semaphore.clone();
             let plugin_semaphore = self.plugin_semaphore.clone();
             let permit = request_semaphore
@@ -137,6 +139,7 @@ impl ExternalProcessor for BulwarkProcessor {
                             let plugin_instances = Self::instantiate_plugins(
                                 &route_target.plugins,
                                 redis_info.clone(),
+                                http_client,
                                 http_req.clone(),
                                 route_match.params,
                             )
@@ -265,6 +268,7 @@ impl BulwarkProcessor {
         Ok(Self {
             router: Arc::new(RwLock::new(router)),
             redis_info,
+            http_client: Arc::new(reqwest::blocking::Client::new()),
             request_semaphore: Arc::new(Semaphore::new(config.runtime.max_concurrent_requests)),
             plugin_semaphore: Arc::new(Semaphore::new(config.runtime.max_plugin_tasks)),
             thresholds: config.thresholds,
@@ -429,6 +433,7 @@ impl BulwarkProcessor {
     async fn instantiate_plugins(
         plugins: &PluginList,
         redis_info: Option<Arc<RedisInfo>>,
+        http_client: Arc<reqwest::blocking::Client>,
         http_req: Arc<bulwark_wasm_sdk::Request>,
         params: matchit::Params<'_, '_>,
     ) -> Result<Vec<Arc<Mutex<PluginInstance>>>, PluginGroupInstantiationError> {
@@ -444,6 +449,7 @@ impl BulwarkProcessor {
             let request_context = RequestContext::new(
                 plugin.clone(),
                 redis_info.clone(),
+                http_client.clone(),
                 shared_params.clone(),
                 http_req.clone(),
             )?;
