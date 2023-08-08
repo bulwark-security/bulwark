@@ -28,7 +28,7 @@ use {
     std::{
         collections::HashSet, net::IpAddr, pin::Pin, str, str::FromStr, sync::Arc, time::Duration,
     },
-    tokio::{sync::RwLock, task::JoinSet, time::timeout},
+    tokio::{sync::RwLock, sync::Semaphore, task::JoinSet, time::timeout},
     tonic::Streaming,
     tracing::{debug, error, info, instrument, warn, Instrument},
 };
@@ -78,6 +78,8 @@ pub struct BulwarkProcessor {
     // TODO: may need to have a plugin registry at some point
     router: Arc<RwLock<Router<RouteTarget>>>,
     redis_info: Option<Arc<RedisInfo>>,
+    request_semaphore: Arc<tokio::sync::Semaphore>,
+    plugin_semaphore: Arc<tokio::sync::Semaphore>,
     thresholds: bulwark_config::Thresholds,
     hops: usize,
     // TODO: redis circuit breaker for health monitoring
@@ -112,6 +114,12 @@ impl ExternalProcessor for BulwarkProcessor {
 
             let child_span = tracing::info_span!("route request");
             let (sender, receiver) = futures::channel::mpsc::unbounded();
+            let request_semaphore = self.request_semaphore.clone();
+            let plugin_semaphore = self.plugin_semaphore.clone();
+            let permit = request_semaphore
+                .acquire_owned()
+                .await
+                .expect("semaphore closed");
             tokio::task::spawn(
                 async move {
                     let http_req = http_req.clone();
@@ -138,12 +146,17 @@ impl ExternalProcessor for BulwarkProcessor {
                                 timeout_duration = Duration::from_millis(millis);
                             }
 
-                            Self::execute_init_phase(plugin_instances.clone(), timeout_duration)
-                                .await;
+                            Self::execute_init_phase(
+                                plugin_instances.clone(),
+                                timeout_duration,
+                                plugin_semaphore.clone(),
+                            )
+                            .await;
 
                             let combined = Self::execute_request_phase(
                                 plugin_instances.clone(),
                                 timeout_duration,
+                                plugin_semaphore.clone(),
                             )
                             .await;
 
@@ -155,6 +168,7 @@ impl ExternalProcessor for BulwarkProcessor {
                                 thresholds,
                                 plugin_instances,
                                 timeout_duration,
+                                plugin_semaphore,
                             )
                             .await;
                         }
@@ -165,6 +179,7 @@ impl ExternalProcessor for BulwarkProcessor {
                             panic!("match error");
                         }
                     };
+                    drop(permit);
                 }
                 .instrument(child_span.or_current()),
             );
@@ -250,6 +265,8 @@ impl BulwarkProcessor {
         Ok(Self {
             router: Arc::new(RwLock::new(router)),
             redis_info,
+            request_semaphore: Arc::new(Semaphore::new(config.runtime.max_concurrent_requests)),
+            plugin_semaphore: Arc::new(Semaphore::new(config.runtime.max_plugin_tasks)),
             thresholds: config.thresholds,
             hops: usize::from(config.service.proxy_hops),
         })
@@ -430,7 +447,6 @@ impl BulwarkProcessor {
                 shared_params.clone(),
                 http_req.clone(),
             )?;
-
             plugin_instances.push(Arc::new(Mutex::new(
                 PluginInstance::new(plugin.clone(), request_context).await?,
             )));
@@ -441,14 +457,21 @@ impl BulwarkProcessor {
     async fn execute_init_phase(
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
+        plugin_semaphore: Arc<Semaphore>,
     ) {
         let mut init_phase_tasks = JoinSet::new();
         for plugin_instance in plugin_instances.iter().cloned() {
             let init_phase_child_span = tracing::info_span!("execute on_init",);
+            let permit = plugin_semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .expect("semaphore closed");
             init_phase_tasks.spawn(
                 timeout(timeout_duration, async move {
                     // TODO: avoid unwraps
                     Self::execute_on_init(plugin_instance).await.unwrap();
+                    drop(permit);
                 })
                 .instrument(init_phase_child_span.or_current()),
             );
@@ -459,22 +482,36 @@ impl BulwarkProcessor {
     async fn execute_request_phase(
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
+        plugin_semaphore: Arc<Semaphore>,
     ) -> DecisionComponents {
-        Self::execute_request_enrichment_phase(plugin_instances.clone(), timeout_duration).await;
-        Self::execute_request_decision_phase(plugin_instances, timeout_duration).await
+        Self::execute_request_enrichment_phase(
+            plugin_instances.clone(),
+            timeout_duration,
+            plugin_semaphore.clone(),
+        )
+        .await;
+        Self::execute_request_decision_phase(plugin_instances, timeout_duration, plugin_semaphore)
+            .await
     }
 
     async fn execute_request_enrichment_phase(
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
+        plugin_semaphore: Arc<Semaphore>,
     ) {
         let mut enrichment_phase_tasks = JoinSet::new();
         for plugin_instance in plugin_instances.iter().cloned() {
             let enrichment_phase_child_span = tracing::info_span!("execute on_request",);
+            let permit = plugin_semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .expect("semaphore closed");
             enrichment_phase_tasks.spawn(
                 timeout(timeout_duration, async move {
                     // TODO: avoid unwraps
                     Self::execute_on_request(plugin_instance).await.unwrap();
+                    drop(permit);
                 })
                 .instrument(enrichment_phase_child_span.or_current()),
             );
@@ -485,11 +522,17 @@ impl BulwarkProcessor {
     async fn execute_request_decision_phase(
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
+        plugin_semaphore: Arc<Semaphore>,
     ) -> DecisionComponents {
         let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
         let mut decision_phase_tasks = JoinSet::new();
         for plugin_instance in plugin_instances {
             let decision_phase_child_span = tracing::info_span!("execute on_request_decision",);
+            let permit = plugin_semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .expect("semaphore closed");
             let decision_components = decision_components.clone();
             decision_phase_tasks.spawn(
                 timeout(timeout_duration, async move {
@@ -522,6 +565,7 @@ impl BulwarkProcessor {
                             tags: vec![String::from("error")],
                         });
                     }
+                    drop(permit);
                 })
                 .instrument(decision_phase_child_span.or_current()),
             );
@@ -550,12 +594,18 @@ impl BulwarkProcessor {
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         request: Arc<bulwark_wasm_sdk::Request>,
         timeout_duration: std::time::Duration,
+        plugin_semaphore: Arc<Semaphore>,
     ) -> DecisionComponents {
         let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
         let mut decision_phase_tasks = JoinSet::new();
         for plugin_instance in plugin_instances {
             let decision_phase_child_span =
                 tracing::info_span!("execute on_request_body_decision",);
+            let permit = plugin_semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .expect("semaphore closed");
             {
                 // Update plugin instances with the new request and its body
                 let mut plugin_instance = plugin_instance.lock().await;
@@ -594,6 +644,7 @@ impl BulwarkProcessor {
                             tags: vec![String::from("error")],
                         });
                     }
+                    drop(permit);
                 })
                 .instrument(decision_phase_child_span.or_current()),
             );
@@ -622,11 +673,17 @@ impl BulwarkProcessor {
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         response: Arc<http::Response<BodyChunk>>,
         timeout_duration: std::time::Duration,
+        plugin_semaphore: Arc<Semaphore>,
     ) -> DecisionComponents {
         let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
         let mut response_phase_tasks = JoinSet::new();
         for plugin_instance in plugin_instances {
             let response_phase_child_span = tracing::info_span!("execute on_response_decision",);
+            let permit = plugin_semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .expect("semaphore closed");
             {
                 // Make sure the plugin instance knows about the response
                 let mut plugin_instance = plugin_instance.lock().await;
@@ -665,6 +722,7 @@ impl BulwarkProcessor {
                             tags: vec![String::from("error")],
                         });
                     }
+                    drop(permit);
                 })
                 .instrument(response_phase_child_span.or_current()),
             );
@@ -693,12 +751,18 @@ impl BulwarkProcessor {
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         response: Arc<http::Response<BodyChunk>>,
         timeout_duration: std::time::Duration,
+        plugin_semaphore: Arc<Semaphore>,
     ) -> DecisionComponents {
         let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
         let mut response_phase_tasks = JoinSet::new();
         for plugin_instance in plugin_instances {
             let response_phase_child_span =
                 tracing::info_span!("execute on_response_body_decision",);
+            let permit = plugin_semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .expect("semaphore closed");
             {
                 // Make sure the plugin instance knows about the updated response
                 let mut plugin_instance = plugin_instance.lock().await;
@@ -737,6 +801,7 @@ impl BulwarkProcessor {
                             tags: vec![String::from("error")],
                         });
                     }
+                    drop(permit);
                 })
                 .instrument(response_phase_child_span.or_current()),
             );
@@ -891,6 +956,8 @@ impl BulwarkProcessor {
         result
     }
 
+    // TODO: refactor this (issue #112)
+    #[allow(clippy::too_many_arguments)]
     async fn handle_request_phase_decision(
         sender: UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
         mut stream: Streaming<ProcessingRequest>,
@@ -899,6 +966,7 @@ impl BulwarkProcessor {
         thresholds: Thresholds,
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
+        plugin_semaphore: Arc<Semaphore>,
     ) {
         let decision = decision_components.decision;
         let outcome = decision
@@ -975,6 +1043,7 @@ impl BulwarkProcessor {
                         outcome,
                         plugin_instances.clone(),
                         timeout_duration,
+                        plugin_semaphore.clone(),
                     ).await;
                     // Short-circuit if restricted, we can skip the response phase
                     return;
@@ -1001,11 +1070,13 @@ impl BulwarkProcessor {
                     plugin_instances.clone(),
                     http_req,
                     timeout_duration,
+                    plugin_semaphore.clone(),
                 )
                 .await,
                 thresholds,
                 plugin_instances,
                 timeout_duration,
+                plugin_semaphore,
             )
             .await;
         } else if let Ok(http_resp) = Self::prepare_response(&mut stream, http_req.version()).await
@@ -1016,16 +1087,24 @@ impl BulwarkProcessor {
                 sender,
                 stream,
                 http_resp.clone(),
-                Self::execute_response_phase(plugin_instances.clone(), http_resp, timeout_duration)
-                    .await,
+                Self::execute_response_phase(
+                    plugin_instances.clone(),
+                    http_resp,
+                    timeout_duration,
+                    plugin_semaphore.clone(),
+                )
+                .await,
                 thresholds,
                 plugin_instances,
                 timeout_duration,
+                plugin_semaphore,
             )
             .await;
         }
     }
 
+    // TODO: refactor this (issue #112)
+    #[allow(clippy::too_many_arguments)]
     async fn handle_request_body_phase_decision(
         sender: UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
         mut stream: Streaming<ProcessingRequest>,
@@ -1034,6 +1113,7 @@ impl BulwarkProcessor {
         thresholds: Thresholds,
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
+        plugin_semaphore: Arc<Semaphore>,
     ) {
         let decision = decision_components.decision;
         let outcome = decision
@@ -1090,6 +1170,7 @@ impl BulwarkProcessor {
                         outcome,
                         plugin_instances.clone(),
                         timeout_duration,
+                        plugin_semaphore.clone(),
                     ).await;
                     // Short-circuit if restricted, we can skip the response phase
                     return;
@@ -1110,16 +1191,24 @@ impl BulwarkProcessor {
                 sender,
                 stream,
                 http_resp.clone(),
-                Self::execute_response_phase(plugin_instances.clone(), http_resp, timeout_duration)
-                    .await,
+                Self::execute_response_phase(
+                    plugin_instances.clone(),
+                    http_resp,
+                    timeout_duration,
+                    plugin_semaphore.clone(),
+                )
+                .await,
                 thresholds,
                 plugin_instances,
                 timeout_duration,
+                plugin_semaphore,
             )
             .await;
         }
     }
 
+    // TODO: refactor this (issue #112)
+    #[allow(clippy::too_many_arguments)]
     async fn handle_response_phase_decision(
         sender: UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
         mut stream: Streaming<ProcessingRequest>,
@@ -1128,6 +1217,7 @@ impl BulwarkProcessor {
         thresholds: Thresholds,
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
+        plugin_semaphore: Arc<Semaphore>,
     ) {
         let decision = decision_components.decision;
         let outcome = decision
@@ -1219,11 +1309,13 @@ impl BulwarkProcessor {
                     plugin_instances.clone(),
                     http_resp,
                     timeout_duration,
+                    plugin_semaphore.clone(),
                 )
                 .await,
                 thresholds,
                 plugin_instances,
                 timeout_duration,
+                plugin_semaphore,
             )
             .await;
         } else {
@@ -1232,6 +1324,7 @@ impl BulwarkProcessor {
                 outcome,
                 plugin_instances.clone(),
                 timeout_duration,
+                plugin_semaphore,
             )
             .await;
         }
@@ -1244,6 +1337,7 @@ impl BulwarkProcessor {
         thresholds: Thresholds,
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
+        plugin_semaphore: Arc<Semaphore>,
     ) {
         let decision = decision_components.decision;
         let outcome = decision
@@ -1310,6 +1404,7 @@ impl BulwarkProcessor {
             outcome,
             plugin_instances.clone(),
             timeout_duration,
+            plugin_semaphore,
         )
         .await;
     }
@@ -1319,6 +1414,7 @@ impl BulwarkProcessor {
         outcome: bulwark_wasm_sdk::Outcome,
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         timeout_duration: std::time::Duration,
+        plugin_semaphore: Arc<Semaphore>,
     ) {
         metrics::increment_counter!(
             "combined_decision",
@@ -1332,6 +1428,11 @@ impl BulwarkProcessor {
         let mut feedback_phase_tasks = JoinSet::new();
         for plugin_instance in plugin_instances.iter().cloned() {
             let response_phase_child_span = tracing::info_span!("execute on_decision_feedback",);
+            let permit = plugin_semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .expect("semaphore closed");
             {
                 // Make sure the plugin instance knows about the final combined decision
                 let mut plugin_instance = plugin_instance.lock().await;
@@ -1347,6 +1448,7 @@ impl BulwarkProcessor {
                     Self::execute_on_decision_feedback(plugin_instance)
                         .await
                         .ok();
+                    drop(permit);
                 })
                 .instrument(response_phase_child_span.or_current()),
             );
