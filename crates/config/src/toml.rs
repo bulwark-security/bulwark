@@ -19,6 +19,8 @@ struct Config {
     #[serde(default)]
     service: Service,
     #[serde(default)]
+    runtime: Runtime,
+    #[serde(default)]
     metrics: Metrics,
     #[serde(default)]
     thresholds: Thresholds,
@@ -105,6 +107,47 @@ impl From<Service> for crate::Service {
             remote_state_uri: service.remote_state_uri.clone(),
             remote_state_pool_size: service.remote_state_pool_size,
             proxy_hops: service.proxy_hops,
+        }
+    }
+}
+
+/// The TOML serialization for a Runtime config structure.
+#[derive(Serialize, Deserialize)]
+struct Runtime {
+    #[serde(default = "default_max_concurrent_requests")]
+    max_concurrent_requests: usize,
+    #[serde(default = "default_max_plugin_tasks")]
+    max_plugin_tasks: usize,
+}
+
+/// The default maximum number of concurrent incoming requests that the runtime will process before blocking.
+///
+/// See [`DEFAULT_MAX_CONCURRENT_REQUESTS`].
+fn default_max_concurrent_requests() -> usize {
+    crate::DEFAULT_MAX_CONCURRENT_REQUESTS
+}
+
+/// The default maximum number of concurrent plugin tasks that the runtime will launch.
+///
+/// See [`DEFAULT_MAX_PLUGIN_TASKS`].
+fn default_max_plugin_tasks() -> usize {
+    crate::DEFAULT_MAX_PLUGIN_TASKS
+}
+
+impl Default for Runtime {
+    fn default() -> Self {
+        Self {
+            max_concurrent_requests: default_max_concurrent_requests(),
+            max_plugin_tasks: default_max_plugin_tasks(),
+        }
+    }
+}
+
+impl From<Runtime> for crate::Runtime {
+    fn from(service: Runtime) -> Self {
+        Self {
+            max_concurrent_requests: service.max_concurrent_requests,
+            max_plugin_tasks: service.max_plugin_tasks,
         }
     }
 }
@@ -475,6 +518,7 @@ where
     // Transfer to the public config type, checking reference enums
     let config = crate::Config {
         service: root.service.into(),
+        runtime: root.runtime.into(),
         metrics: root.metrics.into(),
         thresholds: root.thresholds.into(),
         plugins: root.plugins.iter().map(|plugin| plugin.into()).collect(),

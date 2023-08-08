@@ -18,6 +18,8 @@ lazy_static! {
 pub struct Config {
     /// Configuration for the services being launched.
     pub service: Service,
+    /// Configuration for the services being launched.
+    pub runtime: Runtime,
     /// Configuration for metrics collection.
     pub metrics: Metrics,
     /// Configuration for the decision thresholds.
@@ -100,6 +102,31 @@ impl Default for Service {
             remote_state_uri: None,
             remote_state_pool_size: DEFAULT_REMOTE_STATE_POOL_SIZE,
             proxy_hops: 0,
+        }
+    }
+}
+
+/// Configuration for the runtime environment.
+#[derive(Debug)]
+pub struct Runtime {
+    /// The maximum number of concurrent incoming requests that the runtime will process before blocking.
+    pub max_concurrent_requests: usize,
+    /// The maximum number of concurrent plugin tasks that the runtime will launch.
+    pub max_plugin_tasks: usize,
+}
+
+/// The default [`Runtime::max_concurrent_requests`] value.
+pub const DEFAULT_MAX_CONCURRENT_REQUESTS: usize = 8;
+
+/// The default [`Runtime::max_plugin_tasks`] value.
+pub const DEFAULT_MAX_PLUGIN_TASKS: usize = 16;
+
+impl Default for Runtime {
+    /// Default runtime config
+    fn default() -> Self {
+        Self {
+            max_concurrent_requests: DEFAULT_MAX_CONCURRENT_REQUESTS,
+            max_plugin_tasks: DEFAULT_MAX_PLUGIN_TASKS,
         }
     }
 }
