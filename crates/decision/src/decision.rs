@@ -295,9 +295,14 @@ impl Decision {
     ///
     /// * `left` - The first [`Decision`] of the pair.
     /// * `right` - The second [`Decision`] of the pair.
-    fn pairwise_combine(left: &Self, right: &Self) -> Self {
+    fn pairwise_combine(left: &Self, right: &Self, normalize: bool) -> Self {
         // The mass assigned to the null hypothesis due to non-intersection.
-        let nullh = left.accept * right.restrict + left.restrict * right.accept;
+        let nullh = if normalize {
+            left.accept * right.restrict + left.restrict * right.accept
+        } else {
+            // If normalization is disabled, just ignore the null hypothesis.
+            0.0
+        };
 
         Self {
             // These are essentially an unrolled loop over the power set.
@@ -336,7 +341,7 @@ impl Decision {
             unknown: 1.0,
         };
         for m in decisions {
-            d = Self::pairwise_combine(&d, m);
+            d = Self::pairwise_combine(&d, m, true);
         }
         d
     }
@@ -380,9 +385,35 @@ impl Decision {
             unknown: 1.0,
         };
         for _ in 0..length {
-            d = Self::pairwise_combine(&d, &avg_d);
+            d = Self::pairwise_combine(&d, &avg_d, true);
         }
         d
+    }
+
+    /// Calculates the degree of conflict between a set of Decisions.
+    ///
+    /// # Arguments
+    ///
+    /// * `decisions` - The `Decision`s to measure conflict for.
+    pub fn conflict<'a, I>(decisions: I) -> f64
+    where
+        Self: 'a,
+        I: IntoIterator<Item = &'a Self>,
+    {
+        let mut d = Self {
+            accept: 0.0,
+            restrict: 0.0,
+            unknown: 1.0,
+        };
+        for m in decisions {
+            d = Self::pairwise_combine(&d, m, false);
+        }
+        let diff = d.accept + d.restrict + d.unknown;
+        if diff > 0.0 {
+            -diff.ln()
+        } else {
+            f64::INFINITY
+        }
     }
 }
 
@@ -798,7 +829,8 @@ mod tests {
                 accept: 0.25,
                 restrict: 0.1,
                 unknown: 0.65,
-            }
+            },
+            true,
         ),
         true,
         accept = 0.338235294117647,
@@ -818,7 +850,8 @@ mod tests {
                 accept: 0.0,
                 restrict: 0.0,
                 unknown: 1.0,
-            }
+            },
+            true,
         ),
         true,
         accept = 0.25,
@@ -838,7 +871,8 @@ mod tests {
                 accept: 1.0,
                 restrict: 0.0,
                 unknown: 0.0,
-            }
+            },
+            true,
         ),
         true,
         accept = 1.0,
@@ -982,6 +1016,129 @@ mod tests {
         };
         let outcome = d.outcome(0.2, 0.4, 0.8)?;
         assert_eq!(outcome, Outcome::Restricted);
+
+        Ok(())
+    }
+
+    #[test]
+    fn decision_conflict() -> Result<(), Box<dyn std::error::Error>> {
+        // Maximum possible conflict
+        let decisions = &[
+            Decision {
+                accept: 1.0,
+                restrict: 0.0,
+                unknown: 0.0,
+            },
+            Decision {
+                accept: 0.0,
+                restrict: 1.0,
+                unknown: 0.0,
+            },
+        ];
+        let conflict = Decision::conflict(decisions);
+        assert_eq!(conflict, f64::INFINITY);
+
+        // Perfect agreement
+        let decisions = &[
+            Decision {
+                accept: 1.0,
+                restrict: 0.0,
+                unknown: 0.0,
+            },
+            Decision {
+                accept: 0.25,
+                restrict: 0.0,
+                unknown: 0.75,
+            },
+            Decision {
+                accept: 0.5,
+                restrict: 0.0,
+                unknown: 0.5,
+            },
+            Decision {
+                accept: 0.75,
+                restrict: 0.0,
+                unknown: 0.25,
+            },
+            Decision {
+                accept: 0.0,
+                restrict: 0.0,
+                unknown: 1.0,
+            },
+        ];
+        let conflict = Decision::conflict(decisions);
+        assert_relative_eq!(conflict, 0.0, epsilon = 2.0 * f64::EPSILON);
+
+        // Simple two-decision conflict
+        let decisions = &[
+            Decision {
+                accept: 0.25,
+                restrict: 0.0,
+                unknown: 0.75,
+            },
+            Decision {
+                accept: 0.0,
+                restrict: 0.5,
+                unknown: 0.5,
+            },
+        ];
+        let conflict = Decision::conflict(decisions);
+        // null hypothesis = 0.125, conflict = -ln(1.0 - nullh)
+        assert_relative_eq!(conflict, 0.13353139262452263, epsilon = 2.0 * f64::EPSILON);
+
+        // Complex multi-way conflict
+        let decisions = &[
+            Decision {
+                accept: 0.25,
+                restrict: 0.25,
+                unknown: 0.50,
+            },
+            Decision {
+                accept: 0.25,
+                restrict: 0.0,
+                unknown: 0.75,
+            },
+            Decision {
+                accept: 0.0,
+                restrict: 0.5,
+                unknown: 0.5,
+            },
+            Decision {
+                accept: 0.35,
+                restrict: 0.20,
+                unknown: 0.45,
+            },
+        ];
+        let conflict = Decision::conflict(decisions);
+        // null hypothesis = 0.41875, conflict = -ln(1.0 - nullh)
+        assert_relative_eq!(conflict, 0.5425743220805709, epsilon = 2.0 * f64::EPSILON);
+
+        // Internal conflict
+        let decisions = &[
+            Decision {
+                accept: 0.35,
+                restrict: 0.20,
+                unknown: 0.45,
+            },
+            Decision {
+                accept: 0.35,
+                restrict: 0.20,
+                unknown: 0.45,
+            },
+            Decision {
+                accept: 0.35,
+                restrict: 0.20,
+                unknown: 0.45,
+            },
+            Decision {
+                accept: 0.35,
+                restrict: 0.20,
+                unknown: 0.45,
+            },
+        ];
+        let conflict = Decision::conflict(decisions);
+        // null hypothesis = 0.4529, conflict = -ln(1.0 - nullh)
+        assert_relative_eq!(conflict, 0.6031236779123568, epsilon = 2.0 * f64::EPSILON);
 
         Ok(())
     }
