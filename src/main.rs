@@ -196,6 +196,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ],
                         )
                         .map_err(MetricsError::from)?
+                        .set_buckets_for_metric(
+                            Matcher::Suffix("decision_conflict".to_string()),
+                            &[0.01, 0.1, 0.25, 0.5, 0.75, 1.0, 5.0],
+                        )
+                        .map_err(MetricsError::from)?
+                        .set_buckets_for_metric(
+                            Matcher::Full("combined_conflict".to_string()),
+                            &[0.01, 0.1, 0.25, 0.5, 0.75, 1.0, 5.0],
+                        )
+                        .map_err(MetricsError::from)?
                         .install_recorder()
                         .map_err(MetricsError::from)?,
                 );

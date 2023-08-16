@@ -1407,6 +1407,7 @@ impl BulwarkProcessor {
             decision_components.decision.pignistic().restrict
         );
 
+        let mut decisions: Vec<Decision> = Vec::with_capacity(plugin_instances.len());
         let mut feedback_phase_tasks = JoinSet::new();
         for plugin_instance in plugin_instances.iter().cloned() {
             let response_phase_child_span = tracing::info_span!("execute on_decision_feedback",);
@@ -1420,11 +1421,19 @@ impl BulwarkProcessor {
                 // Make sure the plugin instance knows about the final combined decision
                 let mut plugin_instance = plugin_instance.lock().await;
                 plugin_instance.record_combined_decision(&decision_components, outcome);
+                let decision = plugin_instance.decision().decision;
                 metrics::histogram!(
                     "decision_score",
-                    plugin_instance.decision().decision.pignistic().restrict,
+                    decision.pignistic().restrict,
                     "ref" => plugin_instance.plugin_reference(),
                 );
+                // Measure the conflict between each individual decision and the combined decision
+                metrics::histogram!(
+                    "decision_conflict",
+                    Decision::conflict(&[decision, decision_components.decision]),
+                    "ref" => plugin_instance.plugin_reference(),
+                );
+                decisions.push(decision);
             }
             feedback_phase_tasks.spawn(
                 timeout(timeout_duration, async move {
@@ -1437,6 +1446,9 @@ impl BulwarkProcessor {
             );
         }
         join_all(feedback_phase_tasks).await;
+
+        // Measure total conflict in the combined decision
+        metrics::histogram!("combined_conflict", Decision::conflict(&decisions));
 
         // Capturing stdio is always the last thing that happens and feedback should always be the second-to-last.
         Self::capture_stdio(plugin_instances).await;
