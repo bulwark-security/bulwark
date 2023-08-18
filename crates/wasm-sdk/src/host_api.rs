@@ -9,6 +9,7 @@ use crate::bulwark_host::DecisionInterface;
 
 pub use crate::{Decision, Outcome};
 pub use http::{Extensions, Method, StatusCode, Uri, Version};
+pub use serde_json::json as value;
 pub use serde_json::{Map, Value};
 
 /// An HTTP request combines a head consisting of a [`Method`], [`Uri`], and headers with a [`BodyChunk`], which provides
