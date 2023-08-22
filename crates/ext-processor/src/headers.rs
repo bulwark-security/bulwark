@@ -18,12 +18,16 @@ pub(crate) fn serialize_decision_sfv(
     let unknown_value = Item::new(BareItem::Decimal(
         Decimal::from_f64(decision.unknown).unwrap(),
     ));
+    let score_value = Item::new(BareItem::Decimal(
+        Decimal::from_f64(decision.pignistic().restrict).unwrap(),
+    ));
     let outcome_value = Item::new(BareItem::String(outcome.to_string()));
 
     let mut dict = Dictionary::new();
     dict.insert("accept".into(), accept_value.into());
     dict.insert("restrict".into(), restrict_value.into());
     dict.insert("unknown".into(), unknown_value.into());
+    dict.insert("score".into(), score_value.into());
     dict.insert("outcome".into(), outcome_value.into());
 
     dict.serialize_value()
@@ -54,7 +58,7 @@ mod tests {
                 },
                 Outcome::Suspected
             )?,
-            "accept=0.0, restrict=0.0, unknown=1.0, outcome=\"suspected\""
+            "accept=0.0, restrict=0.0, unknown=1.0, score=0.5, outcome=\"suspected\""
         );
         assert_eq!(
             serialize_decision_sfv(
@@ -65,7 +69,7 @@ mod tests {
                 },
                 Outcome::Restricted
             )?,
-            "accept=0.0, restrict=1.0, unknown=0.0, outcome=\"restricted\""
+            "accept=0.0, restrict=1.0, unknown=0.0, score=1.0, outcome=\"restricted\""
         );
         assert_eq!(
             serialize_decision_sfv(
@@ -76,7 +80,7 @@ mod tests {
                 },
                 Outcome::Accepted
             )?,
-            "accept=1.0, restrict=0.0, unknown=0.0, outcome=\"accepted\""
+            "accept=1.0, restrict=0.0, unknown=0.0, score=0.0, outcome=\"accepted\""
         );
         assert_eq!(
             serialize_decision_sfv(
@@ -87,7 +91,7 @@ mod tests {
                 },
                 Outcome::Suspected
             )?,
-            "accept=0.333, restrict=0.333, unknown=0.333, outcome=\"suspected\""
+            "accept=0.333, restrict=0.333, unknown=0.333, score=0.500, outcome=\"suspected\""
         );
 
         Ok(())
