@@ -1994,9 +1994,9 @@ dependencies = [
 
 [[package]]
 name = "metrics-exporter-statsd"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff3e663a227629a870aaa1d599ba54adc03bb1bf8a449eed6816f2cfbe81575a"
+checksum = "e34a620eecf9e4321ebbef8f2f8e7cd22e098f11b65f2d987ce66faaa8918418"
 dependencies = [
  "cadence",
  "metrics",
