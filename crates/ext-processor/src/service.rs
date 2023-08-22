@@ -557,7 +557,7 @@ impl BulwarkProcessor {
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(decision_component);
                     } else if let Err(err) = decision_result {
-                        info!(message = "plugin error", error = err.to_string());
+                        error!(message = "plugin error", error = err.to_string());
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(DecisionComponents {
                             decision: bulwark_wasm_sdk::UNKNOWN,
@@ -637,7 +637,7 @@ impl BulwarkProcessor {
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(decision_component);
                     } else if let Err(err) = decision_result {
-                        info!(message = "plugin error", error = err.to_string());
+                        error!(message = "plugin error", error = err.to_string());
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(DecisionComponents {
                             decision: bulwark_wasm_sdk::UNKNOWN,
@@ -716,7 +716,7 @@ impl BulwarkProcessor {
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(decision_component);
                     } else if let Err(err) = decision_result {
-                        info!(message = "plugin error", error = err.to_string());
+                        error!(message = "plugin error", error = err.to_string());
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(DecisionComponents {
                             decision: bulwark_wasm_sdk::UNKNOWN,
@@ -796,7 +796,7 @@ impl BulwarkProcessor {
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(decision_component);
                     } else if let Err(err) = decision_result {
-                        info!(message = "plugin error", error = err.to_string());
+                        error!(message = "plugin error", error = err.to_string());
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(DecisionComponents {
                             decision: bulwark_wasm_sdk::UNKNOWN,
@@ -1473,7 +1473,7 @@ impl BulwarkProcessor {
             if !stderr.is_empty() {
                 let stderr = str::from_utf8(&stderr).unwrap();
                 for line in stderr.lines() {
-                    info!(
+                    error!(
                         message = "stderr",
                         plugin = plugin_instance.plugin_reference(),
                         content = line
