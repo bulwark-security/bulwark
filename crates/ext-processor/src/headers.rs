@@ -56,9 +56,9 @@ mod tests {
                     restrict: 0.0,
                     unknown: 1.0
                 },
-                Outcome::Suspected
+                Outcome::Accepted
             )?,
-            "accept=0.0, restrict=0.0, unknown=1.0, score=0.5, outcome=\"suspected\""
+            "accept=0.0, restrict=0.0, unknown=1.0, score=0.5, outcome=\"accepted\""
         );
         assert_eq!(
             serialize_decision_sfv(
@@ -78,9 +78,9 @@ mod tests {
                     restrict: 0.0,
                     unknown: 0.0
                 },
-                Outcome::Accepted
+                Outcome::Trusted
             )?,
-            "accept=1.0, restrict=0.0, unknown=0.0, score=0.0, outcome=\"accepted\""
+            "accept=1.0, restrict=0.0, unknown=0.0, score=0.0, outcome=\"trusted\""
         );
         assert_eq!(
             serialize_decision_sfv(
@@ -89,9 +89,9 @@ mod tests {
                     restrict: 0.333,
                     unknown: 0.333
                 },
-                Outcome::Suspected
+                Outcome::Accepted
             )?,
-            "accept=0.333, restrict=0.333, unknown=0.333, score=0.500, outcome=\"suspected\""
+            "accept=0.333, restrict=0.333, unknown=0.333, score=0.500, outcome=\"accepted\""
         );
 
         Ok(())
