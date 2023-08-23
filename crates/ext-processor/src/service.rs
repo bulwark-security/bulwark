@@ -10,7 +10,7 @@ use {
         DecisionComponents, ForwardedIP, Plugin, PluginExecutionError, PluginInstance,
         PluginLoadError, RedisInfo, RequestContext, ScriptRegistry,
     },
-    bulwark_wasm_sdk::{BodyChunk, Decision},
+    bulwark_wasm_sdk::{BodyChunk, Decision, Outcome},
     envoy_control_plane::envoy::{
         config::core::v3::{HeaderMap, HeaderValue, HeaderValueOption},
         extensions::filters::http::ext_proc::v3::{processing_mode, ProcessingMode},
@@ -557,7 +557,7 @@ impl BulwarkProcessor {
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(decision_component);
                     } else if let Err(err) = decision_result {
-                        info!(message = "plugin error", error = err.to_string());
+                        error!(message = "plugin error", error = err.to_string());
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(DecisionComponents {
                             decision: bulwark_wasm_sdk::UNKNOWN,
@@ -637,7 +637,7 @@ impl BulwarkProcessor {
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(decision_component);
                     } else if let Err(err) = decision_result {
-                        info!(message = "plugin error", error = err.to_string());
+                        error!(message = "plugin error", error = err.to_string());
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(DecisionComponents {
                             decision: bulwark_wasm_sdk::UNKNOWN,
@@ -716,7 +716,7 @@ impl BulwarkProcessor {
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(decision_component);
                     } else if let Err(err) = decision_result {
-                        info!(message = "plugin error", error = err.to_string());
+                        error!(message = "plugin error", error = err.to_string());
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(DecisionComponents {
                             decision: bulwark_wasm_sdk::UNKNOWN,
@@ -796,7 +796,7 @@ impl BulwarkProcessor {
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(decision_component);
                     } else if let Err(err) = decision_result {
-                        info!(message = "plugin error", error = err.to_string());
+                        error!(message = "plugin error", error = err.to_string());
                         let mut decision_components = decision_components.lock().await;
                         decision_components.push(DecisionComponents {
                             decision: bulwark_wasm_sdk::UNKNOWN,
@@ -1023,7 +1023,7 @@ impl BulwarkProcessor {
             | bulwark_wasm_sdk::Outcome::Accepted
             // suspected requests are monitored but not rejected
             | bulwark_wasm_sdk::Outcome::Suspected => {
-                let result = Self::allow_request(&sender, &decision_components, receive_request_body).await;
+                let result = Self::allow_request(&sender, &decision_components, &outcome, receive_request_body).await;
                 // TODO: must perform proper error handling on sender results, sending can fail
                 if let Err(err) = result {
                     debug!(message = format!("send error: {}", err));
@@ -1051,7 +1051,7 @@ impl BulwarkProcessor {
                     return;
                 } else {
                     // Don't receive a body when we would have otherwise blocked if we weren't in monitor-only mode
-                    let result = Self::allow_request(&sender, &decision_components, false).await;
+                    let result = Self::allow_request(&sender, &decision_components, &outcome,  false).await;
                     // TODO: must perform proper error handling on sender results, sending can fail
                     if let Err(err) = result {
                         debug!(message = format!("send error: {}", err));
@@ -1473,7 +1473,7 @@ impl BulwarkProcessor {
             if !stderr.is_empty() {
                 let stderr = str::from_utf8(&stderr).unwrap();
                 for line in stderr.lines() {
-                    info!(
+                    error!(
                         message = "stderr",
                         plugin = plugin_instance.plugin_reference(),
                         content = line
@@ -1486,6 +1486,7 @@ impl BulwarkProcessor {
     async fn allow_request(
         mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
         decision_components: &DecisionComponents,
+        decision_outcome: &Outcome,
         receive_request_body: bool,
     ) -> Result<(), ProcessingMessageError> {
         // Send back a response that changes the request header for the HTTP target.
@@ -1493,7 +1494,7 @@ impl BulwarkProcessor {
         Self::add_set_header(
             &mut req_headers_cr,
             "Bulwark-Decision",
-            &serialize_decision_sfv(decision_components.decision)
+            &serialize_decision_sfv(decision_components.decision, decision_outcome.to_owned())
                 .map_err(|err| SfvError::Serialization(err.to_string()))?,
         );
         if !decision_components.tags.is_empty() {
