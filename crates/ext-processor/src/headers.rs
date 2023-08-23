@@ -1,4 +1,4 @@
-use bulwark_wasm_sdk::Decision;
+use bulwark_wasm_sdk::{Decision, Outcome};
 use sfv::{BareItem, Decimal, Dictionary, FromPrimitive, Item, List, ListEntry, SerializeValue};
 
 // TODO: capture the entire outcome: accepted/suspicious/restricted + threshold values
@@ -7,6 +7,7 @@ use sfv::{BareItem, Decimal, Dictionary, FromPrimitive, Item, List, ListEntry, S
 /// Serialize a combined [`Decision`] into a [SFV](sfv) header value to be sent with the request to the interior service.
 pub(crate) fn serialize_decision_sfv(
     decision: Decision,
+    outcome: Outcome,
 ) -> std::result::Result<String, &'static str> {
     let accept_value = Item::new(BareItem::Decimal(
         Decimal::from_f64(decision.accept).unwrap(),
@@ -17,11 +18,17 @@ pub(crate) fn serialize_decision_sfv(
     let unknown_value = Item::new(BareItem::Decimal(
         Decimal::from_f64(decision.unknown).unwrap(),
     ));
+    let score_value = Item::new(BareItem::Decimal(
+        Decimal::from_f64(decision.pignistic().restrict).unwrap(),
+    ));
+    let outcome_value = Item::new(BareItem::String(outcome.to_string()));
 
     let mut dict = Dictionary::new();
     dict.insert("accept".into(), accept_value.into());
     dict.insert("restrict".into(), restrict_value.into());
     dict.insert("unknown".into(), unknown_value.into());
+    dict.insert("score".into(), score_value.into());
+    dict.insert("outcome".into(), outcome_value.into());
 
     dict.serialize_value()
 }
@@ -43,36 +50,48 @@ mod tests {
     #[test]
     fn test_serialize_decision_sfv() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(
-            serialize_decision_sfv(Decision {
-                accept: 0.0,
-                restrict: 0.0,
-                unknown: 1.0
-            })?,
-            "accept=0.0, restrict=0.0, unknown=1.0"
+            serialize_decision_sfv(
+                Decision {
+                    accept: 0.0,
+                    restrict: 0.0,
+                    unknown: 1.0
+                },
+                Outcome::Accepted
+            )?,
+            "accept=0.0, restrict=0.0, unknown=1.0, score=0.5, outcome=\"accepted\""
         );
         assert_eq!(
-            serialize_decision_sfv(Decision {
-                accept: 0.0,
-                restrict: 1.0,
-                unknown: 0.0
-            })?,
-            "accept=0.0, restrict=1.0, unknown=0.0"
+            serialize_decision_sfv(
+                Decision {
+                    accept: 0.0,
+                    restrict: 1.0,
+                    unknown: 0.0
+                },
+                Outcome::Restricted
+            )?,
+            "accept=0.0, restrict=1.0, unknown=0.0, score=1.0, outcome=\"restricted\""
         );
         assert_eq!(
-            serialize_decision_sfv(Decision {
-                accept: 1.0,
-                restrict: 0.0,
-                unknown: 0.0
-            })?,
-            "accept=1.0, restrict=0.0, unknown=0.0"
+            serialize_decision_sfv(
+                Decision {
+                    accept: 1.0,
+                    restrict: 0.0,
+                    unknown: 0.0
+                },
+                Outcome::Trusted
+            )?,
+            "accept=1.0, restrict=0.0, unknown=0.0, score=0.0, outcome=\"trusted\""
         );
         assert_eq!(
-            serialize_decision_sfv(Decision {
-                accept: 0.333,
-                restrict: 0.333,
-                unknown: 0.333
-            })?,
-            "accept=0.333, restrict=0.333, unknown=0.333"
+            serialize_decision_sfv(
+                Decision {
+                    accept: 0.333,
+                    restrict: 0.333,
+                    unknown: 0.333
+                },
+                Outcome::Accepted
+            )?,
+            "accept=0.333, restrict=0.333, unknown=0.333, score=0.500, outcome=\"accepted\""
         );
 
         Ok(())
