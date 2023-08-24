@@ -79,7 +79,7 @@ fn install_wasm32_wasi_target() -> Result<(), BuildError> {
 pub(crate) fn build_plugin(
     path: impl AsRef<Path>,
     output: impl AsRef<Path>,
-    additional_args: &Vec<String>,
+    additional_args: &[String],
 ) -> Result<(), BuildError> {
     // TODO: install wasm32-wasi target if missing
     let adapter_bytes = include_bytes!("../adapter/wasi_snapshot_preview1.reactor.wasm");

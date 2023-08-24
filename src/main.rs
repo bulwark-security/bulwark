@@ -79,8 +79,9 @@ enum Command {
         #[arg(short, long, value_name = "FILE")]
         output: Option<PathBuf>,
 
+        /// Additional arguments passed through to the compiler.
         #[arg(last = true)]
-        cargo_args: Vec<String>,
+        compiler_args: Vec<String>,
     },
 }
 
@@ -291,7 +292,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Build {
             path,
             output,
-            cargo_args,
+            compiler_args,
         } => {
             let current_dir = std::env::current_dir()?;
             let path = path.clone().unwrap_or(current_dir.clone());
@@ -303,7 +304,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if output.is_dir() {
                 output = output.join(wasm_filename);
             }
-            crate::build::build_plugin(&path, output, cargo_args)?;
+            crate::build::build_plugin(&path, output, compiler_args)?;
         }
     }
 
