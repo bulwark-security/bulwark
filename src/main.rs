@@ -78,6 +78,10 @@ enum Command {
         /// Default is `./dist/name_of_plugin.wasm`.
         #[arg(short, long, value_name = "FILE")]
         output: Option<PathBuf>,
+
+        /// Additional arguments passed through to the compiler.
+        #[arg(last = true)]
+        compiler_args: Vec<String>,
     },
 }
 
@@ -285,7 +289,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        Command::Build { path, output } => {
+        Command::Build {
+            path,
+            output,
+            compiler_args,
+        } => {
             let current_dir = std::env::current_dir()?;
             let path = path.clone().unwrap_or(current_dir.clone());
             let wasm_filename = crate::build::wasm_filename(&path)?;
@@ -296,7 +304,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if output.is_dir() {
                 output = output.join(wasm_filename);
             }
-            crate::build::build_plugin(&path, output)?;
+            crate::build::build_plugin(&path, output, compiler_args)?;
         }
     }
 
