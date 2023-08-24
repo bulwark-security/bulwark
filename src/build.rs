@@ -79,6 +79,7 @@ fn install_wasm32_wasi_target() -> Result<(), BuildError> {
 pub(crate) fn build_plugin(
     path: impl AsRef<Path>,
     output: impl AsRef<Path>,
+    additional_args: &Vec<String>,
 ) -> Result<(), BuildError> {
     // TODO: install wasm32-wasi target if missing
     let adapter_bytes = include_bytes!("../adapter/wasi_snapshot_preview1.reactor.wasm");
@@ -102,12 +103,9 @@ pub(crate) fn build_plugin(
         }
     }
 
-    let mut args = vec!["build", "--target=wasm32-wasi"];
-    // TODO: don't hard-code --release
-    let release = true;
-    if release {
-        args.push("--release");
-    }
+    let mut args = vec!["build", "--target=wasm32-wasi", "--release"];
+    let mut additional_args = additional_args.iter().map(|arg| arg.as_str()).collect();
+    args.append(&mut additional_args);
 
     let mut command = Command::new("cargo")
         .current_dir(path)
@@ -117,10 +115,7 @@ pub(crate) fn build_plugin(
     let exit_status = command.wait()?;
     if exit_status.success() {
         let wasm_filename = wasm_filename(path)?;
-        let wasm_path = path
-            .join("target/wasm32-wasi")
-            .join(if release { "release" } else { "debug" })
-            .join(wasm_filename);
+        let wasm_path = path.join("target/wasm32-wasi/release").join(wasm_filename);
         let wasm_bytes = std::fs::read(&wasm_path)
             .map_err(|err| BuildError::NotFound(wasm_path.to_string_lossy().to_string(), err))?;
 
