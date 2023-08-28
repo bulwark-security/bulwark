@@ -18,7 +18,7 @@ bulwark-ext-processor = { path = "crates/ext-processor", version = "0.3.0" }
 bulwark-config = { path = "crates/config", version = "0.3.0" }
 thiserror = "1.0.37"
 clap = { version = "4.3.2", features = ["derive"] }
-clap_complete = "4.3.1"
+clap_complete = "4.4.0"
 serde = { version = "1.0.149", features = ["std", "serde_derive"] }
 serde_json = "1.0.93"
 toml = { version = "0.7.4", features = ["preserve_order"] }
