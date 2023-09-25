@@ -304,7 +304,7 @@ dependencies = [
  "thiserror",
  "tokio 1.32.0",
  "toml 0.7.4",
- "tonic",
+ "tonic 0.10.1",
  "tower",
  "tower-http",
  "tower-layer",
@@ -355,7 +355,6 @@ dependencies = [
  "bulwark-wasm-host",
  "bulwark-wasm-sdk",
  "bytes 1.4.0",
- "clap",
  "envoy-control-plane",
  "forwarded-header-value",
  "futures 0.3.28",
@@ -372,7 +371,7 @@ dependencies = [
  "sfv",
  "thiserror",
  "tokio 1.32.0",
- "tonic",
+ "tonic 0.10.1",
  "tracing",
 ]
 
@@ -1097,7 +1096,7 @@ dependencies = [
  "prost-build",
  "prost-wkt-types",
  "serde",
- "tonic",
+ "tonic 0.6.2",
  "tonic-build",
  "typetag",
 ]
@@ -2515,6 +2514,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "prost"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4fdd22f3b9c31b53c060df4a0613a1c7f062d4115a2b984dd15b1858f7e340d"
+dependencies = [
+ "bytes 1.4.0",
+]
+
+[[package]]
 name = "prost-build"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3838,6 +3846,33 @@ dependencies = [
  "tower-service",
  "tracing",
  "tracing-futures",
+]
+
+[[package]]
+name = "tonic"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14c00bc15e49625f3d2f20b17082601e5e17cf27ead69e805174026c194b6664"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "axum",
+ "base64 0.21.2",
+ "bytes 1.4.0",
+ "h2",
+ "http",
+ "http-body",
+ "hyper",
+ "hyper-timeout",
+ "percent-encoding",
+ "pin-project",
+ "prost 0.12.1",
+ "tokio 1.32.0",
+ "tokio-stream",
+ "tower",
+ "tower-layer",
+ "tower-service",
+ "tracing",
 ]
 
 [[package]]
