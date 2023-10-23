@@ -21,6 +21,6 @@ regex = "1.9.1"
 serde = { version = "1.0.149", features = ["std", "serde_derive"] }
 serde_json = "1.0.93"
 thiserror = "1.0.37"
-toml = { version = "0.7.4", features = ["preserve_order"] }
+toml = { version = "0.8.4", features = ["preserve_order"] }
 validator = { version = "0.16", features = ["derive"] }
 itertools = "0.11.0"
