@@ -47,7 +47,7 @@ tower-layer = "0.3.2"
 chrono = { version = "0.4.26", features = ["serde"] }
 quoted-string = "0.6.1"
 tracing-core = "0.1.31"
-cargo_metadata = "0.17.0"
+cargo_metadata = "0.18.1"
 wit-component = "0.12.0"
 metrics-exporter-prometheus = "0.12.1"
 metrics-exporter-statsd = "0.6.0"
