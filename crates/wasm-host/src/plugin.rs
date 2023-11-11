@@ -128,8 +128,8 @@ impl From<IpAddr> for bulwark_host::IpInterface {
 impl From<DecisionInterface> for Decision {
     fn from(decision: DecisionInterface) -> Self {
         Decision {
-            accept: decision.accept,
-            restrict: decision.restrict,
+            accept: decision.accepted,
+            restrict: decision.restricted,
             unknown: decision.unknown,
         }
     }
@@ -138,8 +138,8 @@ impl From<DecisionInterface> for Decision {
 impl From<Decision> for DecisionInterface {
     fn from(decision: Decision) -> Self {
         DecisionInterface {
-            accept: decision.accept,
-            restrict: decision.restrict,
+            accepted: decision.accept,
+            restricted: decision.restrict,
             unknown: decision.unknown,
         }
     }

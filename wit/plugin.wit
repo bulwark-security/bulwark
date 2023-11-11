@@ -31,8 +31,8 @@ world host-api {
     v6(tuple<u16, u16, u16, u16, u16, u16, u16, u16>),
   }
   record decision-interface {
-    accept: float64,
-    restrict: float64,
+    accepted: float64,
+    restricted: float64,
     unknown: float64,
   }
   enum outcome-interface {

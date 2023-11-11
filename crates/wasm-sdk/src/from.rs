@@ -60,8 +60,8 @@ impl From<crate::bulwark_host::IpInterface> for IpAddr {
 impl From<crate::bulwark_host::DecisionInterface> for Decision {
     fn from(decision: crate::bulwark_host::DecisionInterface) -> Self {
         Decision {
-            accept: decision.accept,
-            restrict: decision.restrict,
+            accept: decision.accepted,
+            restrict: decision.restricted,
             unknown: decision.unknown,
         }
     }
@@ -70,8 +70,8 @@ impl From<crate::bulwark_host::DecisionInterface> for Decision {
 impl From<Decision> for crate::bulwark_host::DecisionInterface {
     fn from(decision: Decision) -> Self {
         crate::bulwark_host::DecisionInterface {
-            accept: decision.accept,
-            restrict: decision.restrict,
+            accepted: decision.accept,
+            restricted: decision.restrict,
             unknown: decision.unknown,
         }
     }
