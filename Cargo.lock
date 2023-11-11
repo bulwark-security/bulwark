@@ -355,7 +355,6 @@ dependencies = [
  "bulwark-wasm-host",
  "bulwark-wasm-sdk",
  "bytes 1.4.0",
- "clap",
  "envoy-control-plane",
  "forwarded-header-value",
  "futures 0.3.28",
