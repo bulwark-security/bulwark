@@ -253,8 +253,8 @@ pub fn set_decision(decision: Decision) -> Result<(), crate::Error> {
     // Validate here because it should provide a better error than the one that the host will give.
     decision.validate()?;
     crate::bulwark_host::set_decision(DecisionInterface {
-        accept: decision.accept,
-        restrict: decision.restrict,
+        accepted: decision.accept,
+        restricted: decision.restrict,
         unknown: decision.unknown,
     })
     .expect("should not be able to produce an invalid result");
