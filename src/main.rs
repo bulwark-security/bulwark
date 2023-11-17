@@ -169,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let Some(statsd_host) = &config_root.metrics.statsd_host {
                 prometheus_handle = None;
-                let prefix = if config_root.metrics.statsd_prefix.as_str().is_empty() {
+                let prefix = if config_root.metrics.statsd_prefix.is_empty() {
                     None
                 } else {
                     Some(config_root.metrics.statsd_prefix.as_str())
