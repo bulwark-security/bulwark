@@ -27,7 +27,7 @@ envoy-control-plane = { version = "0.4.0", features = ["grpc"] }
 tonic = "0.6.2"
 tracing = "0.1.37"
 tracing-log = "0.2.0"
-tracing-opentelemetry = "0.21.0"
+tracing-opentelemetry = "0.22.0"
 tracing-forest = { version = "0.1.5", features = ["tokio", "chrono", "uuid"] }
 tracing-appender = "0.2.2"
 tracing-futures = { version = "0.2.5", features = ["tokio"] }
