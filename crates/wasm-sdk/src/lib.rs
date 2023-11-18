@@ -31,7 +31,3 @@ pub use from::*;
 /// attribute for additional details on how to use this trait.
 pub use handlers::Handlers;
 pub use host_api::*;
-
-#[allow(unused_imports)]
-#[macro_use]
-extern crate approx;

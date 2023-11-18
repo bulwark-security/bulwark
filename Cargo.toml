@@ -1,8 +1,8 @@
 [package]
 name = "bulwark-cli"
 description = "Bulwark is a fast, modern, open-source web application security engine."
-version = "0.3.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 license = "Apache-2.0 WITH LLVM-exception"
 homepage = "https://bulwark.security/"
 repository = "https://github.com/bulwark-security/bulwark"
@@ -14,29 +14,31 @@ categories = ["wasm"]
 maintenance = { status = "experimental" }
 
 [dependencies]
-bulwark-ext-processor = { path = "crates/ext-processor", version = "0.3.0" }
-bulwark-config = { path = "crates/config", version = "0.3.0" }
-thiserror = "1.0.37"
+bulwark-config = { workspace = true }
+bulwark-ext-processor = { workspace = true }
+chrono = { workspace = true }
+envoy-control-plane = { workspace = true }
+http = { workspace = true }
+metrics = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+toml = { workspace = true }
+tonic = { workspace = true }
+tracing = { workspace = true }
+wit-component = { workspace = true }
+
+axum = { version = "0.6.18", features = ["http2"] }
+cargo_metadata = "0.18.1"
 clap = { version = "4.4.3", features = ["derive"] }
 clap_complete = "4.4.1"
-serde = { version = "1.0.149", features = ["std", "serde_derive"] }
-serde_json = "1.0.93"
-toml = { version = "0.8.6", features = ["preserve_order"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "tracing"] }
-envoy-control-plane = { version = "0.4.0", features = ["grpc"] }
-tonic = "0.6.2"
-tracing = "0.1.37"
-tracing-log = "0.2.0"
-tracing-opentelemetry = "0.22.0"
-tracing-forest = { version = "0.1.5", features = ["tokio", "chrono", "uuid"] }
-tracing-appender = "0.2.2"
-tracing-futures = { version = "0.2.5", features = ["tokio"] }
-tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 color-eyre = "0.6.2"
-http = "0.2"
 hyper = { version = "0.14.25", features = ["server"] }
+metrics-exporter-prometheus = "0.12.1"
+metrics-exporter-statsd = "0.6.0"
+quoted-string = "0.6.1"
 tower = { version = "0.4.13", features = ["tokio", "tracing"] }
-axum = { version = "0.6.18", features = ["http2"] }
 tower-http = { version = "0.4.0", features = [
     "tokio",
     "trace",
@@ -44,18 +46,18 @@ tower-http = { version = "0.4.0", features = [
     "normalize-path",
 ] }
 tower-layer = "0.3.2"
-chrono = { version = "0.4.26", features = ["serde"] }
-quoted-string = "0.6.1"
+tracing-appender = "0.2.2"
 tracing-core = "0.1.31"
-cargo_metadata = "0.18.1"
-wit-component = "0.12.0"
-metrics-exporter-prometheus = "0.12.1"
-metrics-exporter-statsd = "0.6.0"
-metrics = "0.21.1"
+tracing-forest = { version = "0.1.5", features = ["tokio", "chrono", "uuid"] }
+tracing-futures = { version = "0.2.5", features = ["tokio"] }
+tracing-log = "0.2.0"
+tracing-opentelemetry = "0.22.0"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 
 [build-dependencies]
+reqwest = { workspace = true }
+
 clap_mangen = "0.2.5"
-reqwest = { version = "0.11.14", features = ["rustls-tls", "blocking"] }
 
 [workspace]
 members = [
@@ -66,6 +68,56 @@ members = [
     "crates/wasm-sdk-macros",
     "crates/decision",
 ]
+
+[workspace.package]
+version = "0.3.0"
+edition = "2021"
+# This should be no larger than the current stable release of Rust minus 2.
+rust-version = "1.72.0"
+
+[workspace.dependencies]
+# Internal dependencies
+bulwark-config = { path = "crates/config", version = "=0.3.0" }
+bulwark-decision = { path = "crates/decision", version = "=0.3.0" }
+bulwark-ext-processor = { path = "crates/ext-processor", version = "=0.3.0" }
+bulwark-wasm-host = { path = "crates/wasm-host", version = "=0.3.0" }
+bulwark-wasm-sdk = { path = "crates/wasm-sdk", version = "=0.3.0" }
+bulwark-wasm-sdk-macros = { path = "crates/wasm-sdk-macros", version = "=0.3.0" }
+
+# WASM dependencies
+wasi-cap-std-sync = { version = "11" }
+wasi-common = { version = "11" }
+wasmtime = { version = "11", features = ["component-model"] }
+wasmtime-types = { version = "11" }
+wasmtime-wasi = { version = "11" }
+wat = "1.0.57"
+wit-bindgen = "0.7.0"
+wit-component = "0.12.0"
+
+# Other shared external dependencies
+anyhow = "1"
+approx = "0.5"
+chrono = { version = "0.4.26", features = ["serde"] }
+envoy-control-plane = { version = "0.4.0", features = ["grpc"] }
+futures = "0.3"
+http = "0.2"
+metrics = "0.21.1"
+r2d2 = "0.8.10"
+redis = { version = "0.23.0", features = [
+    "tokio-comp",
+    "tokio-native-tls-comp",
+    "cluster",
+    "r2d2",
+] }
+reqwest = { version = "0.11.14", features = ["rustls-tls", "blocking"] }
+serde = { version = "1.0.149", features = ["std", "serde_derive"] }
+serde_json = "1.0.93"
+thiserror = "1.0.37"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "tracing"] }
+toml = { version = "0.8.6", features = ["preserve_order"] }
+tonic = "0.6.2"
+tracing = "0.1.37"
+validator = { version = "0.16", features = ["derive"] }
 
 [profile.test]
 opt-level = 2

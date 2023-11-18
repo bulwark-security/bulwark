@@ -14,13 +14,15 @@ categories = ["wasm"]
 maintenance = { status = "experimental" }
 
 [dependencies]
-bulwark-decision = { path = "../decision", version = "0.3.0" }
-chrono = { version = "0.4.26", features = ["serde"] }
+bulwark-decision = { workspace = true }
+
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }
+validator = { workspace = true }
+
+itertools = "0.11.0"
 lazy_static = "1.4.0"
 regex = "1.9.1"
-serde = { version = "1.0.149", features = ["std", "serde_derive"] }
-serde_json = "1.0.93"
-thiserror = "1.0.37"
-toml = { version = "0.8.6", features = ["preserve_order"] }
-validator = { version = "0.16", features = ["derive"] }
-itertools = "0.11.0"
