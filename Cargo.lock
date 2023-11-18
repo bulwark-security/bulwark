@@ -420,12 +420,10 @@ name = "bulwark-wasm-sdk"
 version = "0.3.0"
 dependencies = [
  "anyhow",
- "approx",
  "bulwark-decision",
  "bulwark-wasm-sdk-macros",
  "cfg-if 1.0.0",
  "http",
- "proc-macro2",
  "serde_json",
  "thiserror",
  "validator",

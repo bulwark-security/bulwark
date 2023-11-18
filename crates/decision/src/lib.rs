@@ -6,6 +6,7 @@ mod errors;
 pub use decision::*;
 pub use errors::*;
 
+#[cfg(test)]
 #[allow(unused_imports)]
 #[macro_use]
 extern crate approx;

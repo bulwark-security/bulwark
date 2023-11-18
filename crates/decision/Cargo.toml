@@ -14,11 +14,13 @@ categories = ["wasm"]
 maintenance = { status = "experimental" }
 
 [dependencies]
-thiserror = "1.0.37"
-validator = { version = "0.16", features = ["derive"] }
-approx = "0.5"
+thiserror = { workspace = true }
+validator = { workspace = true }
+
 strum = "0.25"
 strum_macros = "0.25"
 
 [dev-dependencies]
+approx = { workspace = true }
+
 cfg-if = "1.0"

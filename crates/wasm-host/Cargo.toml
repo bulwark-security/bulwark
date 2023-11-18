@@ -1,8 +1,8 @@
 [package]
 name = "bulwark-wasm-host"
 description = "The WebAssembly host environment for the Bulwark security engine."
-version = "0.3.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 license = "Apache-2.0 WITH LLVM-exception"
 homepage = "https://bulwark.security/"
 repository = "https://github.com/bulwark-security/bulwark"
@@ -14,37 +14,36 @@ categories = ["wasm"]
 maintenance = { status = "experimental" }
 
 [dependencies]
-bulwark-wasm-sdk = { path = "../wasm-sdk", version = "0.3.0" }
-bulwark-config = { path = "../config", version = "0.3.0" }
-thiserror = "1.0.37"
-anyhow = "1"
-wasi-common = { version = "11" }
-wasmtime = { version = "11", features = ["component-model"] }
-wasmtime-wasi = { version = "11" }
-wasmtime-types = { version = "11" }
-http = "0.2"
-redis = { version = "0.23.0", features = [
-    "tokio-comp",
-    "tokio-native-tls-comp",
-    "cluster",
-    "r2d2",
-] }
-r2d2 = "0.8.10"
-chrono = "0.4.23"
-serde = { version = "1.0.149", features = ["std", "serde_derive"] }
-serde_json = "1.0.93"
-reqwest = { version = "0.11.14", features = ["rustls-tls", "blocking"] }
-url = "2.3.1"
-futures = "0.3"
+bulwark-config = { workspace = true }
+bulwark-wasm-sdk = { workspace = true }
+
+wasi-common = { workspace = true }
+wasmtime = { workspace = true }
+wasmtime-types = { workspace = true }
+wasmtime-wasi = { workspace = true }
+
+anyhow = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+metrics = { workspace = true }
+r2d2 = { workspace = true }
+redis = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+validator = { workspace = true }
+
 async-trait = "0.1.68"
-validator = { version = "0.16" }
-metrics = "0.21.1"
+url = "2.3.1"
 
 [dev-dependencies]
-wasi-cap-std-sync = { version = "11" }
-wit-component = "0.12.0"
-wat = "1.0.57"
+wasi-cap-std-sync = { workspace = true }
+wat = { workspace = true }
+wit-component = { workspace = true }
+
 tokio-test = "0.4.2"
 
 [build-dependencies]
-reqwest = { version = "0.11.14", features = ["rustls-tls", "blocking"] }
+reqwest = { workspace = true }
