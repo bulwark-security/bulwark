@@ -174,10 +174,12 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
 
     let output = quote! {
         mod handlers {
+            use super::#struct_type;
+
             wit_bindgen::generate!({
                 world: "bulwark:plugin/handlers",
                 exports: {
-                    world: crate::#struct_type
+                    world: #struct_type
                 }
             });
         }

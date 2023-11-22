@@ -530,10 +530,10 @@ pub fn check_rate_limit(key: &str) -> Result<Rate, crate::RemoteStateError> {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// use bulwark_wasm_sdk::*;
 ///
-/// pub struct CircuitBreaker;
+/// struct CircuitBreaker;
 ///
 /// #[bulwark_plugin]
 /// impl Handlers for CircuitBreaker {
