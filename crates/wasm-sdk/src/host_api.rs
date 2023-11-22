@@ -327,7 +327,6 @@ pub fn set_restricted(value: f64) {
 #[inline]
 pub fn set_tags<I: IntoIterator<Item = V>, V: Into<String>>(tags: I) {
     let tags: Vec<String> = tags.into_iter().map(|s| s.into()).collect();
-    let tags: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
     crate::bulwark_host::set_tags(tags.as_slice())
 }
 
@@ -352,7 +351,6 @@ pub fn set_tags<I: IntoIterator<Item = V>, V: Into<String>>(tags: I) {
 #[inline]
 pub fn append_tags<I: IntoIterator<Item = V>, V: Into<String>>(tags: I) -> Vec<String> {
     let tags: Vec<String> = tags.into_iter().map(|s| s.into()).collect();
-    let tags: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
     crate::bulwark_host::append_tags(tags.as_slice())
 }
 
@@ -532,10 +530,10 @@ pub fn check_rate_limit(key: &str) -> Result<Rate, crate::RemoteStateError> {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// use bulwark_wasm_sdk::*;
 ///
-/// pub struct CircuitBreaker;
+/// struct CircuitBreaker;
 ///
 /// #[bulwark_plugin]
 /// impl Handlers for CircuitBreaker {

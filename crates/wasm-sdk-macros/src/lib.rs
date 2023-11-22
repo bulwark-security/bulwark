@@ -81,7 +81,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
     } else {
         return syn::Error::new(
             raw_impl.self_ty.span(),
-            "`bulwark_plugin` requires an impl for the `Handlers` trait",
+            "`bulwark_plugin` requires an impl for the `Guest` trait",
         )
         .to_compile_error()
         .into();
@@ -173,55 +173,23 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     let output = quote! {
-        impl bulwark_wasm_sdk::handlers::Handlers for #struct_type {
+        mod handlers {
+            use super::#struct_type;
+
+            wit_bindgen::generate!({
+                world: "bulwark:plugin/handlers",
+                exports: {
+                    world: #struct_type
+                }
+            });
+        }
+
+        use handlers::Guest as Handlers;
+        impl Handlers for #struct_type {
             #init_handler
             #(#new_items)*
             #(#noop_handlers)*
         }
-        const _: () = {
-            #[doc(hidden)]
-            #[export_name = "on-init"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_init() -> i32 {
-                handlers::call_on_init::<#struct_type>()
-            }
-            #[doc(hidden)]
-            #[export_name = "on-request"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_request() -> i32 {
-                handlers::call_on_request::<#struct_type>()
-            }
-            #[doc(hidden)]
-            #[export_name = "on-request-decision"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_request_decision() -> i32 {
-                handlers::call_on_request_decision::<#struct_type>()
-            }
-            #[doc(hidden)]
-            #[export_name = "on-response-decision"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_response_decision() -> i32 {
-                handlers::call_on_response_decision::<#struct_type>()
-            }
-            #[doc(hidden)]
-            #[export_name = "on-request-body-decision"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_request_body_decision() -> i32 {
-                handlers::call_on_request_body_decision::<#struct_type>()
-            }
-            #[doc(hidden)]
-            #[export_name = "on-response-body-decision"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_response_body_decision() -> i32 {
-                handlers::call_on_response_body_decision::<#struct_type>()
-            }
-            #[doc(hidden)]
-            #[export_name = "on-decision-feedback"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_decision_feedback() -> i32 {
-                handlers::call_on_decision_feedback::<#struct_type>()
-            }
-        };
     };
 
     output.into()

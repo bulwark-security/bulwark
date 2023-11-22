@@ -31,15 +31,15 @@ use {
         net::IpAddr,
         ops::DerefMut,
         path::Path,
-        sync::{Arc, Mutex, MutexGuard, RwLock},
+        sync::{Arc, Mutex, MutexGuard},
     },
     url::Url,
     validator::Validate,
     wasmtime::component::{Component, Linker},
     wasmtime::{AsContextMut, Config, Engine, Store},
     wasmtime_wasi::preview2::{
-        pipe::{ReadPipe, WritePipe},
-        Table, WasiCtx, WasiCtxBuilder, WasiView,
+        pipe::MemoryOutputPipe, HostOutputStream, StdoutStream, Table, WasiCtx, WasiCtxBuilder,
+        WasiView,
     },
 };
 
@@ -334,12 +334,10 @@ impl RequestContext {
         request: Arc<bulwark_wasm_sdk::Request>,
     ) -> Result<RequestContext, ContextInstantiationError> {
         let stdio = PluginStdio::default();
-        let mut wasi_table = Table::new();
         let wasi_ctx = WasiCtxBuilder::new()
-            .set_stdin(ReadPipe::from_shared(stdio.stdin.clone()))
-            .set_stdout(WritePipe::from_shared(stdio.stdout.clone()))
-            .set_stderr(WritePipe::from_shared(stdio.stderr.clone()))
-            .build(&mut wasi_table)?;
+            .stdout(stdio.stdout.clone())
+            .stderr(stdio.stderr.clone())
+            .build();
         let client_ip = request
             .extensions()
             .get::<ForwardedIP>()
@@ -347,7 +345,7 @@ impl RequestContext {
 
         Ok(RequestContext {
             wasi_ctx,
-            wasi_table,
+            wasi_table: Table::new(),
             read_only_ctx: ReadOnlyContext {
                 config: Arc::new(plugin.guest_config()?),
                 permissions: plugin.permissions(),
@@ -546,33 +544,50 @@ impl HostMutableContext {
     }
 }
 
+/// Allows the host to capture plugin standard IO and record it to the log.
+#[derive(Clone)]
+struct BufStdoutStream(MemoryOutputPipe);
+
+impl BufStdoutStream {
+    pub fn contents(&self) -> bytes::Bytes {
+        self.0.contents()
+    }
+
+    pub(crate) fn writer(&self) -> impl HostOutputStream {
+        self.0.clone()
+    }
+}
+
+impl Default for BufStdoutStream {
+    fn default() -> Self {
+        Self(MemoryOutputPipe::new(usize::MAX))
+    }
+}
+
+impl StdoutStream for BufStdoutStream {
+    fn stream(&self) -> Box<dyn HostOutputStream> {
+        Box::new(self.writer())
+    }
+
+    fn isatty(&self) -> bool {
+        false
+    }
+}
+
 /// Wraps buffers to capture plugin stdio.
 #[derive(Clone, Default)]
 pub struct PluginStdio {
-    stdin: Arc<RwLock<std::io::Cursor<Vec<u8>>>>,
-    stdout: Arc<RwLock<std::io::Cursor<Vec<u8>>>>,
-    stderr: Arc<RwLock<std::io::Cursor<Vec<u8>>>>,
+    stdout: BufStdoutStream,
+    stderr: BufStdoutStream,
 }
 
 impl PluginStdio {
-    pub fn into_inner(&self) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
-        (
-            self.stdin
-                .read()
-                .expect("poisoned mutex")
-                .clone()
-                .into_inner(),
-            self.stdout
-                .read()
-                .expect("poisoned mutex")
-                .clone()
-                .into_inner(),
-            self.stderr
-                .read()
-                .expect("poisoned mutex")
-                .clone()
-                .into_inner(),
-        )
+    pub fn stdout_buffer(&self) -> Vec<u8> {
+        self.stdout.contents().to_vec()
+    }
+
+    pub fn stderr_buffer(&self) -> Vec<u8> {
+        self.stderr.contents().to_vec()
     }
 }
 
@@ -616,7 +631,7 @@ impl PluginInstance {
         // convert from normal request struct to wasm request interface
         let mut linker: Linker<RequestContext> = Linker::new(&plugin.engine);
 
-        wasmtime_wasi::preview2::wasi::command::add_to_linker(&mut linker)?;
+        wasmtime_wasi::preview2::command::add_to_linker(&mut linker)?;
 
         let mut store = Store::new(&plugin.engine, request_context);
         bulwark_host::HostApi::add_to_linker(&mut linker, |ctx: &mut RequestContext| ctx)?;

@@ -16,6 +16,9 @@ maintenance = { status = "experimental" }
 [dependencies]
 bulwark-config = { workspace = true }
 bulwark-ext-processor = { workspace = true }
+
+wit-component = { workspace = true }
+
 chrono = { workspace = true }
 envoy-control-plane = { workspace = true }
 http = { workspace = true }
@@ -27,7 +30,6 @@ tokio = { workspace = true }
 toml = { workspace = true }
 tonic = { workspace = true }
 tracing = { workspace = true }
-wit-component = { workspace = true }
 
 axum = { version = "0.6.18", features = ["http2"] }
 cargo_metadata = "0.18.1"
@@ -85,14 +87,14 @@ bulwark-wasm-sdk = { path = "crates/wasm-sdk", version = "=0.3.0" }
 bulwark-wasm-sdk-macros = { path = "crates/wasm-sdk-macros", version = "=0.3.0" }
 
 # WASM dependencies
-wasi-cap-std-sync = { version = "11" }
-wasi-common = { version = "11" }
-wasmtime = { version = "11", features = ["component-model"] }
-wasmtime-types = { version = "11" }
-wasmtime-wasi = { version = "11" }
-wat = "1.0.57"
-wit-bindgen = "0.7.0"
-wit-component = "0.12.0"
+wasi-cap-std-sync = { version = "15" }
+wasi-common = { version = "15" }
+wasmtime = { version = "15", features = ["component-model"] }
+wasmtime-types = { version = "15" }
+wasmtime-wasi = { version = "15" }
+wat = "1.0.81"
+wit-bindgen = "0.14.0"
+wit-component = "0.18.2"
 
 # Other shared external dependencies
 anyhow = "1"

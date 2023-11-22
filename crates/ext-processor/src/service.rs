@@ -1459,7 +1459,8 @@ impl BulwarkProcessor {
         // TODO: refactor to process one plugin at a time and try to avoid having handle_decision_feedback join_all
         for plugin_instance in plugin_instances {
             let plugin_instance = plugin_instance.lock().await;
-            let (_, stdout, stderr) = plugin_instance.stdio().into_inner();
+            let stdout = plugin_instance.stdio().stdout_buffer();
+            let stderr = plugin_instance.stdio().stderr_buffer();
             if !stdout.is_empty() {
                 let stdout = str::from_utf8(&stdout).unwrap();
                 for line in stdout.lines() {
