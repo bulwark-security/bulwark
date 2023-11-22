@@ -172,17 +172,6 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
 
-    // This output section is produced by manually expanding the
-    // `wit_bindgen::generate!` macro with the "bulwark:plugin/handlers"
-    // world and copying it here. The default expansion has `use` statements
-    // that would create an unnecessary dependency on the `wit_bindgen` crate
-    // and these `use` lines are manually stripped out because they're not needed.
-    // The `bulwark_wasm_sdk::Guest` trait is copied to the SDK to facilitate
-    // auto-completion in the IDE and to avoid having a mysterious macro-defined
-    // reference that a developer can't easily tell where it comes from.
-    // Finally, the `Guest` identifier is renamed to `Handlers` to maintain the
-    // historical trait name used by the SDK.
-
     let output = quote! {
         mod handlers {
             wit_bindgen::generate!({
