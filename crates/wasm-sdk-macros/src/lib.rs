@@ -182,8 +182,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
             });
         }
 
-        // type Handlers = crate::handlers::Guest;
-        use crate::handlers::Guest as Handlers;
+        use handlers::Guest as Handlers;
         impl Handlers for #struct_type {
             #init_handler
             #(#new_items)*
