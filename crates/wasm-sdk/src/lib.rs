@@ -10,13 +10,9 @@ pub mod bulwark_host {
         world: "bulwark:plugin/host-api"
     });
 }
-#[allow(unused_macros)]
-#[doc(hidden)]
-pub mod handlers {
-    wit_bindgen::generate!({
-        world: "bulwark:plugin/handlers"
-    });
-}
+
+// Due to https://github.com/bytecodealliance/wit-bindgen/issues/674 we don't call `generate!` for
+// the handlers and instead define the trait manually and do the bindings through our own macro.
 
 mod errors;
 mod from;
@@ -25,9 +21,4 @@ mod host_api;
 pub use bulwark_decision::*;
 pub use errors::*;
 pub use from::*;
-/// The handler functions a plugin needs to expose to process requests and generate decisions.
-///
-/// See the [`bulwark_plugin`](https://docs.rs/bulwark-wasm-sdk/latest/bulwark_wasm_sdk/attr.bulwark_plugin.html)
-/// attribute for additional details on how to use this trait.
-pub use handlers::Handlers;
 pub use host_api::*;

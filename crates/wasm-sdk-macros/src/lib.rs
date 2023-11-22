@@ -81,7 +81,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
     } else {
         return syn::Error::new(
             raw_impl.self_ty.span(),
-            "`bulwark_plugin` requires an impl for the `Handlers` trait",
+            "`bulwark_plugin` requires an impl for the `Guest` trait",
         )
         .to_compile_error()
         .into();
@@ -172,56 +172,34 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
 
+    // This output section is produced by manually expanding the
+    // `wit_bindgen::generate!` macro with the "bulwark:plugin/handlers"
+    // world and copying it here. The default expansion has `use` statements
+    // that would create an unnecessary dependency on the `wit_bindgen` crate
+    // and these `use` lines are manually stripped out because they're not needed.
+    // The `bulwark_wasm_sdk::Guest` trait is copied to the SDK to facilitate
+    // auto-completion in the IDE and to avoid having a mysterious macro-defined
+    // reference that a developer can't easily tell where it comes from.
+    // Finally, the `Guest` identifier is renamed to `Handlers` to maintain the
+    // historical trait name used by the SDK.
+
     let output = quote! {
-        impl bulwark_wasm_sdk::handlers::Handlers for #struct_type {
+        mod handlers {
+            wit_bindgen::generate!({
+                world: "bulwark:plugin/handlers",
+                exports: {
+                    world: crate::#struct_type
+                }
+            });
+        }
+
+        // type Handlers = crate::handlers::Guest;
+        use crate::handlers::Guest as Handlers;
+        impl Handlers for #struct_type {
             #init_handler
             #(#new_items)*
             #(#noop_handlers)*
         }
-        const _: () = {
-            #[doc(hidden)]
-            #[export_name = "on-init"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_init() -> i32 {
-                handlers::call_on_init::<#struct_type>()
-            }
-            #[doc(hidden)]
-            #[export_name = "on-request"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_request() -> i32 {
-                handlers::call_on_request::<#struct_type>()
-            }
-            #[doc(hidden)]
-            #[export_name = "on-request-decision"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_request_decision() -> i32 {
-                handlers::call_on_request_decision::<#struct_type>()
-            }
-            #[doc(hidden)]
-            #[export_name = "on-response-decision"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_response_decision() -> i32 {
-                handlers::call_on_response_decision::<#struct_type>()
-            }
-            #[doc(hidden)]
-            #[export_name = "on-request-body-decision"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_request_body_decision() -> i32 {
-                handlers::call_on_request_body_decision::<#struct_type>()
-            }
-            #[doc(hidden)]
-            #[export_name = "on-response-body-decision"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_response_body_decision() -> i32 {
-                handlers::call_on_response_body_decision::<#struct_type>()
-            }
-            #[doc(hidden)]
-            #[export_name = "on-decision-feedback"]
-            #[allow(non_snake_case)]
-            unsafe extern "C" fn __export_handlers_on_decision_feedback() -> i32 {
-                handlers::call_on_decision_feedback::<#struct_type>()
-            }
-        };
     };
 
     output.into()

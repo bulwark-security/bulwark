@@ -1,11 +1,11 @@
-package bulwark:plugin
+package bulwark:plugin;
 
-// TODO: See https://github.com/WebAssembly/wasi-http for a more complete canonical http component interface
-// TODO: request/response bodies might be better handled as resource types?
-// see: https://github.com/WebAssembly/component-model/blob/main/design/mvp/WIT.md#item-resource
+/* TODO: See https://github.com/WebAssembly/wasi-http for a more complete canonical http component interface */
+/* TODO: request/response bodies might be better handled as resource types?
+   see: https://github.com/WebAssembly/component-model/blob/main/design/mvp/WIT.md#item-resource */
 
 world host-api {
-  // TODO: should these strings all be list<u8>?
+  /* TODO: should these strings all be list<u8>? */
   record request-interface {
     method: string,
     uri: string,
@@ -78,45 +78,45 @@ world host-api {
     content-too-large(string),
   }
 
-  // TODO: many of these should return the result type; historically this wasn't supported but this should be fixed?
+  /* TODO: many of these should return the result type; historically this wasn't supported but this should be fixed? */
 
-  import get-config: func() -> list<u8>
-  import get-param-value: func(key: string) -> result<list<u8>, param-error>
-  import set-param-value: func(key: string, value: list<u8>) -> result<_, param-error>
-  import get-env-bytes: func(key: string) -> result<list<u8>, env-error>
+  import get-config: func() -> list<u8>;
+  import get-param-value: func(key: string) -> result<list<u8>, param-error>;
+  import set-param-value: func(key: string, value: list<u8>) -> result<_, param-error>;
+  import get-env-bytes: func(key: string) -> result<list<u8>, env-error>;
 
-  import get-request: func() -> request-interface
-  import get-response: func() -> option<response-interface>
-  import receive-request-body: func(body: bool)
-  import receive-response-body: func(body: bool)
-  import get-client-ip: func() -> option<ip-interface>
+  import get-request: func() -> request-interface;
+  import get-response: func() -> option<response-interface>;
+  import receive-request-body: func(body: bool);
+  import receive-response-body: func(body: bool);
+  import get-client-ip: func() -> option<ip-interface>;
 
-  import set-decision: func(decision: decision-interface) -> result<_, decision-error>
-  import set-tags: func(tags: list<string>)
-  import append-tags: func(tags: list<string>) -> list<string>
-  import get-combined-decision: func() -> option<decision-interface>
-  import get-combined-tags: func() -> option<list<string>>
-  import get-outcome: func() -> option<outcome-interface>
+  import set-decision: func(decision: decision-interface) -> result<_, decision-error>;
+  import set-tags: func(tags: list<string>);
+  import append-tags: func(tags: list<string>) -> list<string>;
+  import get-combined-decision: func() -> option<decision-interface>;
+  import get-combined-tags: func() -> option<list<string>>;
+  import get-outcome: func() -> option<outcome-interface>;
 
-  import get-remote-state: func(key: string) -> result<list<u8>, state-error>
-  import set-remote-state: func(key: string, value: list<u8>) -> result<_, state-error>
-  import increment-remote-state: func(key: string) -> result<s64, state-error>
-  import increment-remote-state-by: func(key: string, delta: s64) -> result<s64, state-error>
-  import set-remote-ttl: func(key: string, ttl: s64) -> result<_, state-error>
+  import get-remote-state: func(key: string) -> result<list<u8>, state-error>;
+  import set-remote-state: func(key: string, value: list<u8>) -> result<_, state-error>;
+  import increment-remote-state: func(key: string) -> result<s64, state-error>;
+  import increment-remote-state-by: func(key: string, delta: s64) -> result<s64, state-error>;
+  import set-remote-ttl: func(key: string, ttl: s64) -> result<_, state-error>;
 
-  import send-request: func(request: request-interface) -> result<response-interface, http-error>
+  import send-request: func(request: request-interface) -> result<response-interface, http-error>;
 
-  import increment-rate-limit: func(key: string, delta: s64, window: s64) -> result<rate-interface, state-error>
-  import check-rate-limit: func(key: string) -> result<rate-interface, state-error>
-  import increment-breaker: func(key: string, success-delta: s64, failure-delta: s64, window: s64) -> result<breaker-interface, state-error>
-  import check-breaker: func(key: string) -> result<breaker-interface, state-error>
+  import increment-rate-limit: func(key: string, delta: s64, window: s64) -> result<rate-interface, state-error>;
+  import check-rate-limit: func(key: string) -> result<rate-interface, state-error>;
+  import increment-breaker: func(key: string, success-delta: s64, failure-delta: s64, window: s64) -> result<breaker-interface, state-error>;
+  import check-breaker: func(key: string) -> result<breaker-interface, state-error>;
 }
 world handlers {
-  export on-init: func() -> result
-  export on-request: func() -> result
-  export on-request-decision: func() -> result
-  export on-response-decision: func() -> result
-  export on-request-body-decision: func() -> result
-  export on-response-body-decision: func() -> result
-  export on-decision-feedback: func() -> result
+  export on-init: func() -> result;
+  export on-request: func() -> result;
+  export on-request-decision: func() -> result;
+  export on-response-decision: func() -> result;
+  export on-request-body-decision: func() -> result;
+  export on-response-body-decision: func() -> result;
+  export on-decision-feedback: func() -> result;
 }

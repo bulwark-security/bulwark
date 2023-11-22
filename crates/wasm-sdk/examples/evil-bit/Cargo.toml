@@ -14,6 +14,7 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 bulwark-wasm-sdk = { path = "../..", version = "0.3.0" }
+wit-bindgen = "0.14.0"
 
 [lib]
 crate-type = ["cdylib"]
