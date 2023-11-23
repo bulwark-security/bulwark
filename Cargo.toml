@@ -72,19 +72,19 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 # This should be no larger than the current stable release of Rust minus 2.
 rust-version = "1.72.0"
 
 [workspace.dependencies]
 # Internal dependencies
-bulwark-config = { path = "crates/config", version = "=0.3.0" }
-bulwark-decision = { path = "crates/decision", version = "=0.3.0" }
-bulwark-ext-processor = { path = "crates/ext-processor", version = "=0.3.0" }
-bulwark-wasm-host = { path = "crates/wasm-host", version = "=0.3.0" }
-bulwark-wasm-sdk = { path = "crates/wasm-sdk", version = "=0.3.0" }
-bulwark-wasm-sdk-macros = { path = "crates/wasm-sdk-macros", version = "=0.3.0" }
+bulwark-config = { path = "crates/config", version = "=0.4.0" }
+bulwark-decision = { path = "crates/decision", version = "=0.4.0" }
+bulwark-ext-processor = { path = "crates/ext-processor", version = "=0.4.0" }
+bulwark-wasm-host = { path = "crates/wasm-host", version = "=0.4.0" }
+bulwark-wasm-sdk = { path = "crates/wasm-sdk", version = "=0.4.0" }
+bulwark-wasm-sdk-macros = { path = "crates/wasm-sdk-macros", version = "=0.4.0" }
 
 # WASM dependencies
 wasi-cap-std-sync = { version = "15" }
