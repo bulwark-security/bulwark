@@ -37,7 +37,7 @@ validator = { workspace = true }
 
 async-trait = "0.1.68"
 bytes = "1.5.0"
-url = "2.3.1"
+url = "2.5.0"
 
 [dev-dependencies]
 wasi-cap-std-sync = { workspace = true }
