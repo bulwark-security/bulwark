@@ -36,7 +36,7 @@ cargo_metadata = "0.18.1"
 clap = { version = "4.4.3", features = ["derive"] }
 clap_complete = "4.4.1"
 color-eyre = "0.6.2"
-hyper = { version = "0.14.25", features = ["server"] }
+hyper = { version = "1.0.1", features = ["server"] }
 metrics-exporter-prometheus = "0.12.1"
 metrics-exporter-statsd = "0.6.0"
 quoted-string = "0.6.1"
