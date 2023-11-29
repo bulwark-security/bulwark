@@ -364,7 +364,7 @@ dependencies = [
  "matchit",
  "metrics",
  "prost 0.12.2",
- "prost-wkt",
+ "prost-wkt 0.5.0",
  "prost-wkt-build",
  "r2d2",
  "redis",
@@ -1107,7 +1107,7 @@ dependencies = [
  "serde",
  "tonic",
  "tonic-build",
- "typetag",
+ "typetag 0.1.8",
 ]
 
 [[package]]
@@ -1677,6 +1677,12 @@ dependencies = [
  "ctor",
  "ghost",
 ]
+
+[[package]]
+name = "inventory"
+version = "0.3.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0508c56cfe9bfd5dfeb0c22ab9a6abfda2f27bdca422132e494266351ed8d83c"
 
 [[package]]
 name = "io-extras"
@@ -2316,9 +2322,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "298ed30ac93ff3d10cd41012bf6e56d9db43dd2a085bc386058cdeed2ffccac1"
 dependencies = [
  "base64 0.13.1",
- "prost-wkt",
+ "prost-wkt 0.3.5",
  "serde",
- "typetag",
+ "typetag 0.1.8",
 ]
 
 [[package]]
@@ -2345,9 +2351,9 @@ dependencies = [
  "pbjson-build-any",
  "prost 0.9.0",
  "prost-build",
- "prost-wkt",
+ "prost-wkt 0.3.5",
  "serde",
- "typetag",
+ "typetag 0.1.8",
 ]
 
 [[package]]
@@ -2467,6 +2473,16 @@ dependencies = [
 
 [[package]]
 name = "prost"
+version = "0.11.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b82eaa1d779e9a4bc1c3217db8ffbeabaae1dca241bf70183242128d48681cd"
+dependencies = [
+ "bytes 1.5.0",
+ "prost-derive 0.11.9",
+]
+
+[[package]]
+name = "prost"
 version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a5a410fc7882af66deb8d01d01737353cf3ad6204c408177ba494291a626312"
@@ -2510,6 +2526,19 @@ dependencies = [
 
 [[package]]
 name = "prost-derive"
+version = "0.11.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5d2d8d10f3c6ded6da8b05b5fb3b8a5082514344d56c9f871412d29b4e075b4"
+dependencies = [
+ "anyhow",
+ "itertools 0.10.5",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "prost-derive"
 version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "065717a5dfaca4a83d2fe57db3487b311365200000551d7a364e715dbf4346bc"
@@ -2533,17 +2562,33 @@ dependencies = [
 
 [[package]]
 name = "prost-wkt"
-version = "0.3.0"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af0db93cfc52e106818ad1954ccf6acaac4410ceb71bf9cfddfd1083a7e71c65"
+checksum = "57b2a07c91cae8092afdde7ab888af5611e90e5cbf2fa911dae3d2658737651a"
 dependencies = [
  "chrono",
+ "inventory 0.3.13",
  "mopa",
- "prost 0.9.0",
+ "prost 0.11.9",
  "serde",
  "serde_derive",
  "serde_json",
- "typetag",
+ "typetag 0.2.13",
+]
+
+[[package]]
+name = "prost-wkt"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d8ef9c3f0f1dab910d2b7e2c24a8e4322e122eba6d7a1921eeebcebbc046c40"
+dependencies = [
+ "chrono",
+ "inventory 0.3.13",
+ "prost 0.12.2",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "typetag 0.2.13",
 ]
 
 [[package]]
@@ -2569,7 +2614,7 @@ dependencies = [
  "prost 0.9.0",
  "prost-build",
  "prost-types",
- "prost-wkt",
+ "prost-wkt 0.3.5",
  "prost-wkt-build",
  "reqwest",
  "serde",
@@ -3982,10 +4027,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4080564c5b2241b5bff53ab610082234e0c57b0417f4bd10596f183001505b8a"
 dependencies = [
  "erased-serde",
- "inventory",
+ "inventory 0.2.3",
  "once_cell",
  "serde",
- "typetag-impl",
+ "typetag-impl 0.1.8",
+]
+
+[[package]]
+name = "typetag"
+version = "0.2.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80960fd143d4c96275c0e60b08f14b81fbb468e79bc0ef8fbda69fb0afafae43"
+dependencies = [
+ "erased-serde",
+ "inventory 0.3.13",
+ "once_cell",
+ "serde",
+ "typetag-impl 0.2.13",
 ]
 
 [[package]]
@@ -3997,6 +4055,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "typetag-impl"
+version = "0.2.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfc13d450dc4a695200da3074dacf43d449b968baee95e341920e47f61a3b40f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.39",
 ]
 
 [[package]]
