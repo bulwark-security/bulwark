@@ -1,0 +1,90 @@
+interface redis {
+    record rate {
+        /// The number of operations that have been attempted with the corresponding key.
+        attempts: s64,
+        /// The unix timestamp corresponding to when this key will no longer be active.
+        ///
+        /// This value is managed by Bulwark rather than Redis for precision.
+        expiration: s64,
+    }
+    record breaker {
+        /// The number of breaker increments that have been attempted with the corresponding key.
+        ///
+        /// This value will always increment by one, regardless of whether successes or failures
+        /// are being incremented by a delta larger than one.
+        generation: s64,
+        /// The number of successes that have occurred with the corresponding key.
+        successes: s64,
+        /// The number of failures that have occurred with the corresponding key.
+        failures: s64,
+        /// The number of consecutive successes that have occurred with the corresponding key.
+        consecutive-successes: s64,
+        /// The number of consecutive failures that have occurred with the corresponding key.
+        consecutive-failures: s64,
+        /// The unix timestamp corresponding to when this key will no longer be active.
+        ///
+        /// This value is managed by Bulwark rather than Redis for precision.
+        expiration: s64,
+    }
+    resource connection {
+        /// Acquires a connection to the Redis server from the connection pool.
+        acquire: static func() -> result<connection, error>;
+
+        /// Retrieves the value associated with the given key.
+        get: func(key: string) -> result<option<value>, error>;
+        /// Sets the given key to the given value.
+        ///
+        /// Overwrites any previously existing value.
+        set: func(key: string, value: value) -> result<_, error>;
+        /// Removes the given keys.
+        /// 
+        /// Non-existant keys are ignored. Returns the number of keys that were removed.
+        del: func(keys: list<string>) -> result<u32, error>;
+        /// Increments the value associated with the given key by one.
+        ///
+        /// If the key does not exist, it is set to zero before being incremented.
+        /// If the key already has a value that cannot be incremented, a `error::type-error` is returned.
+        incr: func(key: string) -> result<s64, error>;
+        /// Increments the value associated with the given key by the given delta.
+        ///
+        /// If the key does not exist, it is set to zero before being incremented.
+        /// If the key already has a value that cannot be incremented, a `error::type-error` is returned.
+        incr-by: func(key: string, delta: s64) -> result<s64, error>;
+        /// Adds the given values to the named set.
+        ///
+        /// Returns the number of elements that were added to the set,
+        /// not including all the elements already present in the set.
+        sadd: func(key: string, values: list<string>) -> result<u32, error>;
+        /// Returns the contents of the given set.
+        smembers: func(key: string) -> result<list<string>, error>;
+        /// Removes the given values from the named set.
+        ///
+        /// Returns the number of members that were removed from the set,
+        /// not including non existing members.
+        srem: func(key: string, values: list<string>) -> result<u32, error>;
+        /// Sets the time to live for the given key.
+        expire: func(key: string, ttl: s64) -> result<_, error>;
+        /// Sets the expiration for the given key to the given unix time.
+        expire-at: func(key: string, unix-time: s64) -> result<_, error>;
+
+        incr-rate-limit: func(key: string, delta: s64, window: s64) -> result<rate, error>;
+        check-rate-limit: func(key: string) -> result<rate, error>;
+        incr-breaker: func(key: string, success-delta: s64, failure-delta: s64, window: s64) -> result<breaker, error>;
+        check-breaker: func(key: string) -> result<breaker, error>;
+    }
+
+    /// The value being stored or retrieved.
+    type value = list<u8>;
+
+    /// Errors related to interacting with Redis
+    variant error {
+        /// The plugin did not have permission to access this key prefix.
+        permission(string),
+        /// There was an error communicating with Redis.
+        remote(string),
+        /// There was a type mismatch.
+        type-error,
+        /// Some other error occurred.
+        other(string),
+    }
+}

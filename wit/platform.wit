@@ -1,0 +1,13 @@
+package bulwark:plugin@0.5.0;
+
+world http-detection {
+    include platform;
+    export http-handlers;
+}
+
+world platform {
+    import environment;
+    import http;
+    import wasi:http/outgoing-handler@0.2.0-rc-2023-11-10;
+    import redis;
+}

@@ -1,15 +1,7 @@
 #[doc(hidden)]
-mod bulwark_host {
+mod bindings {
     wasmtime::component::bindgen!({
-        world: "bulwark:plugin/host-api",
-        async: true,
-    });
-}
-
-#[doc(hidden)]
-mod handlers {
-    wasmtime::component::bindgen!({
-        world: "bulwark:plugin/handlers",
+        world: "bulwark:plugin/http-detection",
         async: true,
     });
 }
@@ -20,7 +12,6 @@ use {
     },
     async_trait::async_trait,
     bulwark_config::ConfigSerializationError,
-    bulwark_host::{DecisionInterface, OutcomeInterface},
     bulwark_wasm_sdk::{Decision, Outcome},
     chrono::Utc,
     redis::Commands,
@@ -125,8 +116,8 @@ impl From<IpAddr> for bulwark_host::IpInterface {
     }
 }
 
-impl From<DecisionInterface> for Decision {
-    fn from(decision: DecisionInterface) -> Self {
+impl From<bindings::Decision> for Decision {
+    fn from(decision: bindings::Decision) -> Self {
         Decision {
             accept: decision.accepted,
             restrict: decision.restricted,
@@ -135,9 +126,9 @@ impl From<DecisionInterface> for Decision {
     }
 }
 
-impl From<Decision> for DecisionInterface {
+impl From<Decision> for bindings::Decision {
     fn from(decision: Decision) -> Self {
-        DecisionInterface {
+        bindings::Decision {
             accepted: decision.accept,
             restricted: decision.restrict,
             unknown: decision.unknown,
@@ -525,7 +516,7 @@ struct HostMutableContext {
     /// The combined decision of all plugins at the end of the request phase.
     ///
     /// Accessible to plugins in the response and feedback phases.
-    combined_decision: Arc<Mutex<Option<bulwark_host::DecisionInterface>>>,
+    combined_decision: Arc<Mutex<Option<bindings::Decision>>>,
     /// The combined union set of all tags attached by plugins across all phases.
     combined_tags: Arc<Mutex<Option<Vec<String>>>>,
     /// The decision outcome after the decision has been checked against configured thresholds.
@@ -1052,7 +1043,7 @@ impl bulwark_host::HostApiImports for RequestContext {
     /// * `decision` - The [`Decision`] output of the plugin.
     async fn set_decision(
         &mut self,
-        decision: bulwark_host::DecisionInterface,
+        decision: bindings::Decision,
     ) -> Result<Result<(), bulwark_host::DecisionError>, wasmtime::Error> {
         let decision = Decision::from(decision);
         // Validate on both the guest and the host because we can't guarantee usage of the SDK.
@@ -1093,8 +1084,8 @@ impl bulwark_host::HostApiImports for RequestContext {
     /// Typically used in the feedback phase.
     async fn get_combined_decision(
         &mut self,
-    ) -> Result<Option<bulwark_host::DecisionInterface>, wasmtime::Error> {
-        let combined_decision: MutexGuard<Option<bulwark_host::DecisionInterface>> = self
+    ) -> Result<Option<bindings::Decision>, wasmtime::Error> {
+        let combined_decision: MutexGuard<Option<bindings::Decision>> = self
             .host_mut_ctx
             .combined_decision
             .lock()

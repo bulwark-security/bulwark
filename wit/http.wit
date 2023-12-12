@@ -1,0 +1,18 @@
+interface http {
+    variant ip {
+        v4(tuple<u8, u8, u8, u8>),
+        v6(tuple<u16, u16, u16, u16, u16, u16, u16, u16>),
+    }
+
+    /// Gets the real IP address of the client.
+    ///
+    /// Plugins should not attempt to determine IP addresses from `Forwarded`
+    /// or `X-Forwarded-For` headers since these headers may be spoofed. The
+    /// host environment has additional configuration to determine the portion
+    /// of these headers that is resistant to spoofing, and therefore this
+    /// function is preferred.
+    ///
+    /// Plugins may still inspect these headers to attempt to determine if
+    /// spoofing has happened.
+    client-ip: func() -> option<ip>;
+}

@@ -1,0 +1,50 @@
+
+use wasi:http/types@0.2.0-rc-2023-11-10 as http-types;
+
+interface http-handlers {
+    use http-types.{incoming-request, incoming-response};
+    use types.{handler-output, decision, outcome, param};
+
+    /// Called once when the plugin is first instantiated.
+    handle-init: func() -> result<_, error>;
+    /// Called on every request.
+    ///
+    /// Plugins should use this handler to perform request enrichment
+    /// by adding new parameters to the handler output. Plugins should not
+    /// copy input params into output params as the host will automatically
+    /// merge these. Copying may create conflict resolution issues.
+    /// 
+    /// This is the first handler to execute in response to a request and
+    /// any params it emits are guaranteed to be available to all other
+    /// plugins prior to their decision handlers being called.
+    handle-request: func(request: incoming-request, params: list<param>) -> result<handler-output, error>;
+    /// Generates the initial verdict by the plugin, prior to sending the request to the interior service.
+    ///
+    /// Most plugin decision logic should take place in this handler.
+    handle-request-decision: func(request: incoming-request, params: list<param>) -> result<handler-output, error>;
+    /// Generates a secondary verdict after the interior service has sent back its response.
+    ///
+    /// Plugins that need to inspect responses, particularly response
+    /// status codes, will need to implement this handler. Notably,
+    /// any side effects from the request on the interior service will
+    /// have already taken place, so any blocking logic that results from
+    /// a decision by the plugin in this handler is no longer preventative.
+    handle-response-decision: func(request: incoming-request, response: incoming-response, params: list<param>) -> result<handler-output, error>;
+    /// Called after all plugins have rendered their decisions and the results combined.
+    ///
+    /// This handler may be used to create feedback loops, train models, or to make API calls
+    /// to internal services (e.g. session termination). Notably, session termination or other
+    /// mitigation steps may be particularly relevant if a blocking operation happened in the
+    /// response handler rather than the request handler.
+    handle-decision-feedback: func(request: incoming-request, response: incoming-response, params: list<param>, decision: decision, outcome: outcome, tags: list<string>) -> result<_, error>;
+
+    // TODO: the handler error should be easy to use with the ? operator.
+
+    /// The set of errors which may be raised by functions in this interface.
+    variant error {
+        // TODO: add other errors that make sense
+
+        /// Some implementation-specific error has occurred.
+        other(string),
+    }
+}

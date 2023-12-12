@@ -5,8 +5,6 @@ use {
 
 // For some reason, doc-tests in this module trigger a linker error, so they're set to no_run
 
-use crate::bulwark_host::DecisionInterface;
-
 pub use crate::{Decision, Outcome};
 pub use http::{Extensions, Method, StatusCode, Uri, Version};
 pub use serde_json::json as value;
@@ -252,7 +250,7 @@ pub fn get_env_bytes(key: &str) -> Result<Vec<u8>, crate::EnvVarError> {
 pub fn set_decision(decision: Decision) -> Result<(), crate::Error> {
     // Validate here because it should provide a better error than the one that the host will give.
     decision.validate()?;
-    crate::bulwark_host::set_decision(DecisionInterface {
+    crate::bulwark_host::set_decision(crate::bindings::Decision {
         accepted: decision.accept,
         restricted: decision.restrict,
         unknown: decision.unknown,

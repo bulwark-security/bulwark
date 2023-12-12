@@ -57,8 +57,8 @@ impl From<crate::bulwark_host::IpInterface> for IpAddr {
 
 // TODO: can we avoid conversions, perhaps by moving bindgen into lib.rs?
 
-impl From<crate::bulwark_host::DecisionInterface> for Decision {
-    fn from(decision: crate::bulwark_host::DecisionInterface) -> Self {
+impl From<crate::bindings::Decision> for Decision {
+    fn from(decision: crate::bindings::Decision) -> Self {
         Decision {
             accept: decision.accepted,
             restrict: decision.restricted,
@@ -67,9 +67,9 @@ impl From<crate::bulwark_host::DecisionInterface> for Decision {
     }
 }
 
-impl From<Decision> for crate::bulwark_host::DecisionInterface {
+impl From<Decision> for crate::bindings::Decision {
     fn from(decision: Decision) -> Self {
-        crate::bulwark_host::DecisionInterface {
+        crate::bindings::Decision {
             accepted: decision.accept,
             restricted: decision.restrict,
             unknown: decision.unknown,

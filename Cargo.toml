@@ -92,8 +92,9 @@ wasi-common = { version = "15" }
 wasmtime = { version = "15", features = ["component-model"] }
 wasmtime-types = { version = "15" }
 wasmtime-wasi = { version = "15" }
+wasmtime-wasi-http = { version = "15", features = ["sync"] }
 wat = "1.0.81"
-wit-bindgen = "0.14.0"
+wit-bindgen = "0.16.0"
 wit-component = "0.18.2"
 
 # Other shared external dependencies

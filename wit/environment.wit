@@ -1,0 +1,39 @@
+interface environment {
+    variant value {
+        null,
+        boolean(bool),
+        num(number),
+        str(string),
+        arr(list<primitive-value>),
+        /// There's no native map type in WIT, so we use a list of tuples.
+        obj(list<tuple<string, primitive-value>>),
+    }
+
+    variant primitive-value {
+        null,
+        boolean(bool),
+        num(number),
+        str(string),
+    }
+
+    variant number {
+        posint(u64),
+        /// Always less than zero.
+        negint(s64),
+        /// Always finite.
+        float(float64),
+    }
+
+    /// Returns the plugin's entire config.
+    config: func() -> result<value, error>;
+    /// Returns the named config value.
+    config-var: func(key: string) -> result<value, error>;
+    /// Returns the named environment variable as bytes.
+    env-var-bytes: func(key: string) -> result<list<u8>, error>;
+
+    variant error {
+        missing(string),
+        not-unicode(string),
+        permission(string),
+    }
+}
