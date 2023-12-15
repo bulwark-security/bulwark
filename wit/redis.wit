@@ -26,9 +26,9 @@ interface redis {
         /// This value is managed by Bulwark rather than Redis for precision.
         expiration: s64,
     }
-    resource connection {
-        /// Acquires a connection to the Redis server from the connection pool.
-        acquire: static func() -> result<connection, error>;
+    resource pool {
+        /// Acquires a reference to the Redis connection pool that Bulwark has been configured to use.
+        acquire: static func() -> result<pool, error>;
 
         /// Retrieves the value associated with the given key.
         get: func(key: string) -> result<option<value>, error>;

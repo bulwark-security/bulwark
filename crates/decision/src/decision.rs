@@ -89,6 +89,54 @@ fn validate_sum(decision: &Decision) -> Result<(), ValidationError> {
 }
 
 impl Decision {
+    /// Converts a simple scalar value into a `Decision` using the value as the `accept` component.
+    ///
+    /// This function is sugar for `Decision { accept, 0.0, 0.0 }.scale())`.
+    ///
+    /// # Arguments
+    ///
+    /// * `accept` - The `accept` value to set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// assert!(Decision::accepted(1.0), Decision { accept: 1.0, restrict: 0.0, unknown: 0.0 });
+    /// assert!(Decision::accepted(0.5), Decision { accept: 0.5, restrict: 0.0, unknown: 0.5 });
+    /// assert!(Decision::accepted(0.0), Decision { accept: 0.0, restrict: 0.0, unknown: 1.0 });
+    /// ```
+    pub fn accepted(accept: f64) -> Self {
+        Self {
+            accept,
+            restrict: 0.0,
+            unknown: 0.0,
+        }
+        .scale()
+    }
+
+    /// Converts a simple scalar value into a `Decision` using the value as the `restrict` component.
+    ///
+    /// This function is sugar for `Decision { 0.0, restrict, 0.0 }.scale())`.
+    ///
+    /// # Arguments
+    ///
+    /// * `restrict` - The `restrict` value to set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// assert!(Decision::restricted(1.0), Decision { accept: 0.0, restrict: 1.0, unknown: 0.0 });
+    /// assert!(Decision::restricted(0.5), Decision { accept: 0.0, restrict: 0.5, unknown: 0.5 });
+    /// assert!(Decision::restricted(0.0), Decision { accept: 0.0, restrict: 0.0, unknown: 1.0 });
+    /// ```
+    pub fn restricted(restrict: f64) -> Self {
+        Self {
+            accept: 0.0,
+            restrict,
+            unknown: 0.0,
+        }
+        .scale()
+    }
+
     /// Reassigns unknown mass evenly to accept and restrict.
     ///
     /// This function is used to convert to a form that is useful in producing a final outcome.
@@ -106,7 +154,7 @@ impl Decision {
     /// # Arguments
     ///
     /// * `threshold` - The minimum value required to accept a [`Decision`].
-    pub fn accepted(&self, threshold: f64) -> bool {
+    pub fn is_accepted(&self, threshold: f64) -> bool {
         let p = self.pignistic();
         p.accept >= threshold
     }
@@ -960,27 +1008,27 @@ mod tests {
     );
 
     #[test]
-    fn decision_accepted() {
+    fn decision_is_accepted() {
         let d = Decision {
             accept: 0.25,
             restrict: 0.2,
             unknown: 0.55,
         };
-        assert!(d.accepted(0.5));
+        assert!(d.is_accepted(0.5));
 
         let d = Decision {
             accept: 0.25,
             restrict: 0.25,
             unknown: 0.50,
         };
-        assert!(d.accepted(0.5));
+        assert!(d.is_accepted(0.5));
 
         let d = Decision {
             accept: 0.2,
             restrict: 0.25,
             unknown: 0.55,
         };
-        assert!(!d.accepted(0.5));
+        assert!(!d.is_accepted(0.5));
     }
 
     #[test]
