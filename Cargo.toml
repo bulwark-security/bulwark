@@ -31,7 +31,7 @@ toml = { workspace = true }
 tonic = { workspace = true }
 tracing = { workspace = true }
 
-axum = { version = "0.6.18", features = ["http2"] }
+axum = { version = "0.7.3", features = ["http2"] }
 cargo_metadata = "0.18.1"
 clap = { version = "4.4.3", features = ["derive"] }
 clap_complete = "4.4.1"
