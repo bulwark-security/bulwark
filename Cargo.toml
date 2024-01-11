@@ -31,17 +31,17 @@ toml = { workspace = true }
 tonic = { workspace = true }
 tracing = { workspace = true }
 
-axum = { version = "0.6.18", features = ["http2"] }
+axum = { version = "0.7.0", features = ["http2"] }
 cargo_metadata = "0.18.1"
 clap = { version = "4.4.3", features = ["derive"] }
 clap_complete = "4.4.1"
 color-eyre = "0.6.2"
-hyper = { version = "0.14.25", features = ["server"] }
+hyper = { version = "1.0.1", features = ["server"] }
 metrics-exporter-prometheus = "0.12.1"
 metrics-exporter-statsd = "0.6.0"
 quoted-string = "0.6.1"
 tower = { version = "0.4.13", features = ["tokio", "tracing"] }
-tower-http = { version = "0.4.0", features = [
+tower-http = { version = "0.5.0", features = [
     "tokio",
     "trace",
     "tracing",
@@ -87,14 +87,14 @@ bulwark-wasm-sdk = { path = "crates/wasm-sdk", version = "=0.4.0" }
 bulwark-wasm-sdk-macros = { path = "crates/wasm-sdk-macros", version = "=0.4.0" }
 
 # WASM dependencies
-wasi-cap-std-sync = { version = "15" }
-wasi-common = { version = "15" }
-wasmtime = { version = "15", features = ["component-model"] }
-wasmtime-types = { version = "15" }
-wasmtime-wasi = { version = "15" }
-wat = "1.0.81"
-wit-bindgen = "0.14.0"
-wit-component = "0.18.2"
+wasi-cap-std-sync = { version = "16" }
+wasi-common = { version = "16" }
+wasmtime = { version = "16", features = ["component-model"] }
+wasmtime-types = { version = "16" }
+wasmtime-wasi = { version = "16" }
+wat = "1.0.83"
+wit-bindgen = "0.16.0"
+wit-component = "0.19.1"
 
 # Other shared external dependencies
 anyhow = "1"
@@ -102,7 +102,7 @@ approx = "0.5"
 chrono = { version = "0.4.26", features = ["serde"] }
 envoy-control-plane = { version = "0.4.0", features = ["grpc"] }
 futures = "0.3"
-http = "0.2"
+http = "1.0"
 metrics = "0.21.1"
 r2d2 = "0.8.10"
 redis = { version = "0.23.0", features = [
