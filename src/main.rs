@@ -24,7 +24,6 @@ use {
     },
     tokio::task::JoinSet,
     tonic::transport::Server,
-    tower::ServiceBuilder,
     tower_http::normalize_path::NormalizePathLayer,
     tower_layer::Layer,
     tracing::error,
