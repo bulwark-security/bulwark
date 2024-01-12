@@ -603,29 +603,29 @@ mod tests {
         assert_eq!(root.thresholds.trust, crate::DEFAULT_TRUST_THRESHOLD);
 
         assert_eq!(root.includes.len(), 1);
-        assert_eq!(root.includes.get(0).unwrap().path, "default.toml");
+        assert_eq!(root.includes.first().unwrap().path, "default.toml");
 
         assert_eq!(root.plugins.len(), 1);
-        assert_eq!(root.plugins.get(0).unwrap().reference, "evil_bit");
+        assert_eq!(root.plugins.first().unwrap().reference, "evil_bit");
         assert!(root
             .plugins
-            .get(0)
+            .first()
             .unwrap()
             .path
             .ends_with("bulwark_evil_bit.wasm"));
         assert_eq!(
-            root.plugins.get(0).unwrap().config,
+            root.plugins.first().unwrap().config,
             toml::map::Map::default()
         );
 
         assert_eq!(root.presets.len(), 1);
-        assert_eq!(root.presets.get(0).unwrap().reference, "custom");
-        assert_eq!(root.presets.get(0).unwrap().plugins, vec!["evil-bit"]);
+        assert_eq!(root.presets.first().unwrap().reference, "custom");
+        assert_eq!(root.presets.first().unwrap().plugins, vec!["evil-bit"]);
 
         assert_eq!(root.resources.len(), 1);
-        assert_eq!(root.resources.get(0).unwrap().route, "/");
-        assert_eq!(root.resources.get(0).unwrap().plugins, vec!["custom"]);
-        assert_eq!(root.resources.get(0).unwrap().timeout, Some(25));
+        assert_eq!(root.resources.first().unwrap().route, "/");
+        assert_eq!(root.resources.first().unwrap().plugins, vec!["custom"]);
+        assert_eq!(root.resources.first().unwrap().timeout, Some(25));
 
         Ok(())
     }
@@ -649,23 +649,23 @@ mod tests {
         assert_eq!(root.thresholds.trust, crate::DEFAULT_TRUST_THRESHOLD);
 
         assert_eq!(root.plugins.len(), 2);
-        assert_eq!(root.plugins.get(0).unwrap().reference, "evil_bit");
+        assert_eq!(root.plugins.first().unwrap().reference, "evil_bit");
         assert!(root
             .plugins
-            .get(0)
+            .first()
             .unwrap()
             .path
             .ends_with("bulwark_evil_bit.wasm"));
         assert_eq!(
-            root.plugins.get(0).unwrap().config,
+            root.plugins.first().unwrap().config,
             serde_json::map::Map::default()
         );
 
         assert_eq!(root.presets.len(), 2);
-        assert_eq!(root.presets.get(0).unwrap().reference, "default");
-        assert_eq!(root.presets.get(1).unwrap().reference, "starter_preset");
+        assert_eq!(root.presets.first().unwrap().reference, "default");
+        assert_eq!(root.presets.last().unwrap().reference, "starter_preset");
         assert_eq!(
-            root.presets.get(0).unwrap().plugins,
+            root.presets.first().unwrap().plugins,
             vec![
                 crate::config::Reference::Plugin("evil_bit".to_string()),
                 crate::config::Reference::Preset("starter_preset".to_string())
@@ -677,13 +677,13 @@ mod tests {
         );
 
         assert_eq!(root.resources.len(), 2);
-        assert_eq!(root.resources.get(0).unwrap().route, "/");
-        assert_eq!(root.resources.get(1).unwrap().route, "/*params");
+        assert_eq!(root.resources.first().unwrap().route, "/");
+        assert_eq!(root.resources.last().unwrap().route, "/*params");
         assert_eq!(
-            root.resources.get(0).unwrap().plugins,
+            root.resources.first().unwrap().plugins,
             vec![crate::config::Reference::Preset("default".to_string())]
         );
-        assert_eq!(root.resources.get(0).unwrap().timeout, Some(25));
+        assert_eq!(root.resources.first().unwrap().timeout, Some(25));
 
         Ok(())
     }
@@ -692,15 +692,15 @@ mod tests {
     fn test_load_config_overlapping_preset() -> Result<(), Box<dyn std::error::Error>> {
         let root: crate::config::Config = load_config("tests/overlapping_preset.toml")?;
 
-        let resource = root.resources.get(0).unwrap();
+        let resource = root.resources.first().unwrap();
         let plugins = resource.resolve_plugins(&root)?;
         assert_eq!(plugins.len(), 2);
         assert_eq!(
-            plugins.get(0).unwrap().reference,
+            plugins.first().unwrap().reference,
             root.plugin("blank_slate").unwrap().reference
         );
         assert_eq!(
-            plugins.get(1).unwrap().reference,
+            plugins.last().unwrap().reference,
             root.plugin("evil_bit").unwrap().reference
         );
 
