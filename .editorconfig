@@ -1,0 +1,16 @@
+# See https://editorconfig.org for details.
+
+root = true
+
+[*]
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.rs]
+charset = utf-8
+indent_style = space
+indent_size = 4
+
+[*.wit]
+indent_style = space
+indent_size = 4
