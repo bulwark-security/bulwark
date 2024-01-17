@@ -159,6 +159,16 @@ impl Decision {
         p.accept >= threshold
     }
 
+    /// Checks that the [`unknown`](Decision::unknown) value is non-zero while
+    /// [`accept`](Decision::accept) and [`restrict`](Decision::restrict) are both zero.
+    pub fn is_unknown(&self) -> bool {
+        self.unknown >= f64::EPSILON
+            && self.accept >= 0.0
+            && self.accept <= f64::EPSILON
+            && self.restrict >= 0.0
+            && self.restrict <= f64::EPSILON
+    }
+
     /// Checks the [`restrict`](Decision::restrict) value after [`pignistic`](Decision::pignistic)
     /// transformation against several threshold values.
     ///
@@ -1029,6 +1039,37 @@ mod tests {
             unknown: 0.55,
         };
         assert!(!d.is_accepted(0.5));
+    }
+
+    #[test]
+    fn decision_is_unknown() {
+        let d = Decision {
+            accept: 0.0,
+            restrict: 0.2,
+            unknown: 0.8,
+        };
+        assert!(!d.is_unknown());
+
+        let d = Decision {
+            accept: 0.2,
+            restrict: 0.0,
+            unknown: 0.8,
+        };
+        assert!(!d.is_unknown());
+
+        let d = Decision {
+            accept: 0.0,
+            restrict: 0.0,
+            unknown: 1.0,
+        };
+        assert!(d.is_unknown());
+
+        let d = Decision {
+            accept: 0.0,
+            restrict: 0.0,
+            unknown: 0.1,
+        };
+        assert!(d.is_unknown());
     }
 
     #[test]

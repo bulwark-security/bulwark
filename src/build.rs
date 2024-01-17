@@ -74,10 +74,11 @@ fn install_wasm32_wasi_target() -> Result<(), BuildError> {
 ///
 /// Needed to make wit-bindgen work.
 fn replace_plugin_wit_files(root_path: impl AsRef<Path>) -> Result<(), BuildError> {
-    let plugin_wit = include_bytes!("../wit/plugin.wit");
-    let plugin_wit_dest_path = root_path.as_ref().join(Path::new("wit/plugin.wit"));
-    std::fs::create_dir_all(root_path.as_ref().join(Path::new("wit/")))?;
-    std::fs::write(plugin_wit_dest_path, plugin_wit)?;
+    // TODO: figure out how to do this now that it's an entire directory -- archive file?
+    // let plugin_wit = include_bytes!("../wit/plugin.wit");
+    // let plugin_wit_dest_path = root_path.as_ref().join(Path::new("wit/plugin.wit"));
+    // std::fs::create_dir_all(root_path.as_ref().join(Path::new("wit/")))?;
+    // std::fs::write(plugin_wit_dest_path, plugin_wit)?;
     Ok(())
 }
 

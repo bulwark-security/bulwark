@@ -100,6 +100,7 @@ wit-component = "0.19.1"
 # Other shared external dependencies
 anyhow = "=1.0.72"
 approx = "0.5"
+bytes = "1.5"
 chrono = { version = "0.4.26", features = ["serde"] }
 envoy-control-plane = { version = "0.4.0", features = ["grpc"] }
 futures = "0.3"

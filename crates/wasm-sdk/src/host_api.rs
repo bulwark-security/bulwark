@@ -10,29 +10,33 @@ pub use http::{Extensions, Method, StatusCode, Uri, Version};
 pub use serde_json::json as value;
 pub use serde_json::{Map, Value};
 
-// /// An HTTP request combines a head consisting of a [`Method`], [`Uri`], and headers with a [`BodyChunk`], which provides
-// /// access to the first chunk of a request body.
-// pub type Request = http::Request<BodyChunk>;
-// /// An HTTP response combines a head consisting of a [`StatusCode`] and headers with a [`BodyChunk`], which provides
-// /// access to the first chunk of a response body.
-// pub type Response = http::Response<BodyChunk>;
+/// An HTTP request combines a head consisting of a [`Method`], [`Uri`], and headers with a [`BodyChunk`], which provides
+/// access to the first chunk of a request body.
+pub type Request = http::Request<bytes::Bytes>;
+/// An HTTP response combines a head consisting of a [`StatusCode`] and headers with a [`BodyChunk`], which provides
+/// access to the first chunk of a response body.
+pub type Response = http::Response<bytes::Bytes>;
+
+// TODO: perhaps something more like http::Request<Box<dyn AsyncRead + Sync + Send + Unpin>>?
+// TODO: or hyper::Request<HyperIncomingBody> to match WasiHttpView's new_incoming_request?
 
 // /// The first chunk of an HTTP body.
 // ///
 // /// Bulwark does not send the entire body to the guest plugin environment. This limitation limits the impact of
-// /// copying a large number of bytes from the host into guest VMs. A full body copy would be required for each
-// /// plugin for every request or response otherwise.
+// /// copying a large number of bytes from the host into guest VMs. Copying the full body for each plugin for every
+// /// request or response would otherwise make detection times too unpredictable.
 // ///
 // /// This has consequences for any plugin that wants to parse the body it receives. Some data formats like JSON
 // /// may be significantly more difficult to work with if only partially received, and streaming parsers which may be
 // /// more tolerant to trunctation are recommended in such cases. There will be some situations where this limitation
 // /// prevents useful parsing entirely and plugins may need to make use of the `unknown` result value to express this.
+// #[derive(Clone)]
 // pub struct BodyChunk {
 //     pub received: bool,
 //     pub end_of_stream: bool,
 //     pub size: u64,
 //     pub start: u64,
-//     // TODO: use bytes crate to avoid copies
+//     // TODO: use bytes crate to minimize copies
 //     pub content: Vec<u8>,
 // }
 
@@ -53,6 +57,17 @@ pub use serde_json::{Map, Value};
 //     start: 0,
 //     content: vec![],
 // };
+
+/// A `Verdict` represents a combined decision across multiple detections.
+#[derive(Clone)]
+pub struct Verdict {
+    /// The `decision` value represents the combined numerical decision from multiple detections.
+    pub decision: Decision,
+    /// The `outcome` value represents a comparison of the numerical decision against a set of thresholds.
+    pub outcome: Outcome,
+    /// The `tags` value represents the merged tags used to annotate the request.
+    pub tags: Vec<String>,
+}
 
 // TODO: might need either get_remote_addr or an extension on the request for non-forwarded IP address
 
@@ -139,11 +154,6 @@ pub use serde_json::{Map, Value};
 //     crate::bulwark_host::receive_response_body(body)
 // }
 
-/// Returns the originating client's IP address, if available.
-pub fn get_client_ip() -> Option<IpAddr> {
-    crate::wit::bulwark::plugin::http::client_ip().map(|ip| ip.into())
-}
-
 // /// Returns a named value from the request context's params.
 // ///
 // /// # Arguments
@@ -195,7 +205,7 @@ pub fn get_config_value(key: &str) -> Result<Option<Value>, Error> {
 /// * `key` - The environment variable name. Case-sensitive.
 pub fn get_env(key: &str) -> Result<String, crate::EnvVarError> {
     Ok(String::from_utf8(
-        crate::wit::bulwark::plugin::environment::env_var_bytes(key)?,
+        crate::wit::bulwark::plugin::environment::env_var(key)?,
     )?)
 }
 
@@ -208,9 +218,7 @@ pub fn get_env(key: &str) -> Result<String, crate::EnvVarError> {
 ///
 /// * `key` - The environment variable name. Case-sensitive.
 pub fn get_env_bytes(key: &str) -> Result<Vec<u8>, crate::EnvVarError> {
-    Ok(crate::wit::bulwark::plugin::environment::env_var_bytes(
-        key,
-    )?)
+    Ok(crate::wit::bulwark::plugin::environment::env_var(key)?)
 }
 
 // /// Records the decision value the plugin wants to return.

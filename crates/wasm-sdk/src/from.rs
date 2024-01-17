@@ -1,7 +1,4 @@
-use {
-    crate::{Decision, Outcome, Value},
-    std::net::{IpAddr, Ipv4Addr, Ipv6Addr},
-};
+use crate::{Decision, Outcome, Value, Verdict};
 
 // impl From<Request> for crate::bulwark_host::RequestInterface {
 //     fn from(request: Request) -> Self {
@@ -42,19 +39,6 @@ use {
 //     }
 // }
 
-impl From<crate::wit::bulwark::plugin::http::Ip> for IpAddr {
-    fn from(ip: crate::wit::bulwark::plugin::http::Ip) -> Self {
-        match ip {
-            crate::wit::bulwark::plugin::http::Ip::V4(v4) => {
-                Self::V4(Ipv4Addr::new(v4.0, v4.1, v4.2, v4.3))
-            }
-            crate::wit::bulwark::plugin::http::Ip::V6(v6) => Self::V6(Ipv6Addr::new(
-                v6.0, v6.1, v6.2, v6.3, v6.4, v6.5, v6.6, v6.7,
-            )),
-        }
-    }
-}
-
 // TODO: can we avoid conversions, perhaps by moving bindgen into lib.rs?
 
 impl From<crate::wit::bulwark::plugin::types::Decision> for Decision {
@@ -73,6 +57,27 @@ impl From<Decision> for crate::wit::bulwark::plugin::types::Decision {
             accepted: decision.accept,
             restricted: decision.restrict,
             unknown: decision.unknown,
+        }
+    }
+}
+
+impl From<Verdict> for crate::wit::bulwark::plugin::types::Verdict {
+    fn from(verdict: Verdict) -> Self {
+        crate::wit::bulwark::plugin::types::Verdict {
+            outcome: verdict.outcome.into(),
+            decision: verdict.decision.into(),
+            tags: verdict.tags.clone(),
+        }
+    }
+}
+
+impl From<Outcome> for crate::wit::bulwark::plugin::types::Outcome {
+    fn from(outcome: Outcome) -> Self {
+        match outcome {
+            Outcome::Trusted => crate::wit::bulwark::plugin::types::Outcome::Trusted,
+            Outcome::Accepted => crate::wit::bulwark::plugin::types::Outcome::Accepted,
+            Outcome::Suspected => crate::wit::bulwark::plugin::types::Outcome::Suspected,
+            Outcome::Restricted => crate::wit::bulwark::plugin::types::Outcome::Restricted,
         }
     }
 }

@@ -31,11 +31,11 @@ interface redis {
         acquire: static func() -> result<pool, error>;
 
         /// Retrieves the value associated with the given key.
-        get: func(key: string) -> result<option<value>, error>;
+        get: func(key: string) -> result<option<list<u8>>, error>;
         /// Sets the given key to the given value.
         ///
         /// Overwrites any previously existing value.
-        set: func(key: string, value: value) -> result<_, error>;
+        set: func(key: string, value: list<u8>) -> result<_, error>;
         /// Removes the given keys.
         /// 
         /// Non-existant keys are ignored. Returns the number of keys that were removed.

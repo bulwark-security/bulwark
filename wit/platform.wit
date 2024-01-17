@@ -8,7 +8,6 @@ world http-detection {
 world platform {
     import types;
     import environment;
-    import http;
     import wasi:http/outgoing-handler@0.2.0-rc-2023-11-10;
     import redis;
 }

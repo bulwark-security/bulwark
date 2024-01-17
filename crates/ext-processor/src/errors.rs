@@ -32,6 +32,8 @@ pub enum RequestError {
     InvalidMethod(#[from] http::method::InvalidMethod),
     #[error(transparent)]
     Http(#[from] http::Error),
+    #[error(transparent)]
+    Send(#[from] futures::channel::mpsc::SendError),
     #[error("missing http method pseudo-header")]
     MissingMethod,
     #[error("missing http scheme pseudo-header")]
@@ -50,6 +52,8 @@ pub enum RequestError {
 pub enum ResponseError {
     #[error(transparent)]
     Http(#[from] http::Error),
+    #[error(transparent)]
+    Send(#[from] futures::channel::mpsc::SendError),
     #[error("missing http status pseudo-header")]
     MissingStatus,
     #[error("missing envoy headers")]
@@ -72,4 +76,6 @@ pub enum ProcessingMessageError {
     Send(#[from] futures::channel::mpsc::SendError),
     #[error(transparent)]
     Sfv(#[from] SfvError),
+    #[error(transparent)]
+    Http(#[from] http::Error),
 }

@@ -24,6 +24,8 @@ pub enum EnvVarError {
     Missing { var: String },
     #[error("{message}")]
     InvalidUnicode { message: String },
+    #[error("an unexpected error occurred accessing environment variable '{var}'")]
+    Other { var: String },
 }
 
 impl From<crate::wit::bulwark::plugin::environment::Error> for EnvVarError {
@@ -37,8 +39,12 @@ impl From<crate::wit::bulwark::plugin::environment::Error> for EnvVarError {
             }
             crate::wit::bulwark::plugin::environment::Error::InvalidUnicode(var) => {
                 EnvVarError::InvalidUnicode {
-                    message: format!("environment variable '{var}' was not unicode"),
+                    message: format!("environment variable '{var}' contained invalid unicode"),
                 }
+            }
+            crate::wit::bulwark::plugin::environment::Error::InvalidNesting(var) => {
+                // This shouldn't happen because environment variables are always returned as bytes or strings
+                EnvVarError::Other { var }
             }
         }
     }
@@ -47,6 +53,49 @@ impl From<crate::wit::bulwark::plugin::environment::Error> for EnvVarError {
 impl From<std::string::FromUtf8Error> for EnvVarError {
     fn from(error: std::string::FromUtf8Error) -> Self {
         EnvVarError::InvalidUnicode {
+            message: error.to_string(),
+        }
+    }
+}
+
+/// Returned when there is an issue with the environment variable requested by the plugin.
+#[derive(thiserror::Error, Debug)]
+pub enum ConfigError {
+    #[error("environment variable '{var}' missing")]
+    Missing { var: String },
+    #[error("{message}")]
+    InvalidUnicode { message: String },
+    #[error("config value '{var}' contained nested data that could not be parsed")]
+    InvalidNesting { var: String },
+    #[error("an unexpected error occurred accessing config variable '{var}'")]
+    Other { var: String },
+}
+
+impl From<crate::wit::bulwark::plugin::environment::Error> for ConfigError {
+    fn from(error: crate::wit::bulwark::plugin::environment::Error) -> Self {
+        match error {
+            crate::wit::bulwark::plugin::environment::Error::Permission(var) => {
+                // This shouldn't happen because config is not gated by a permissions check
+                ConfigError::Other { var }
+            }
+            crate::wit::bulwark::plugin::environment::Error::Missing(var) => {
+                ConfigError::Missing { var }
+            }
+            crate::wit::bulwark::plugin::environment::Error::InvalidUnicode(var) => {
+                ConfigError::InvalidUnicode {
+                    message: format!("config variable '{var}' contained invalid unicode"),
+                }
+            }
+            crate::wit::bulwark::plugin::environment::Error::InvalidNesting(var) => {
+                ConfigError::InvalidNesting { var }
+            }
+        }
+    }
+}
+
+impl From<std::string::FromUtf8Error> for ConfigError {
+    fn from(error: std::string::FromUtf8Error) -> Self {
+        ConfigError::InvalidUnicode {
             message: error.to_string(),
         }
     }

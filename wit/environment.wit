@@ -9,6 +9,8 @@ interface environment {
         obj(list<tuple<string, primitive-value>>),
     }
 
+    /// Types cannot be recursive in WIT, so we need to create a
+    /// second type for the top-level type to reference.
     variant primitive-value {
         null,
         boolean(bool),
@@ -29,11 +31,12 @@ interface environment {
     /// Returns the named config value.
     config-var: func(key: string) -> result<option<value>, error>;
     /// Returns the named environment variable as bytes.
-    env-var-bytes: func(key: string) -> result<list<u8>, error>;
+    env-var: func(key: string) -> result<list<u8>, error>;
 
     variant error {
         missing(string),
         invalid-unicode(string),
+        invalid-nesting(string),
         permission(string),
     }
 }
