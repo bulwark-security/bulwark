@@ -84,8 +84,7 @@ impl From<Arc<bulwark_wasm_sdk::Request>> for bulwark_host::RequestInterface {
 impl From<Arc<bulwark_wasm_sdk::Response>> for bulwark_host::ResponseInterface {
     fn from(response: Arc<bulwark_wasm_sdk::Response>) -> Self {
         bulwark_host::ResponseInterface {
-            // this unwrap should be okay since a non-zero u16 should always be coercible to u32
-            status: response.status().as_u16().try_into().unwrap(),
+            status: response.status().as_u16().into(),
             headers: response
                 .headers()
                 .iter()
