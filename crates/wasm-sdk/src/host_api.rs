@@ -1,5 +1,5 @@
 use {
-    std::{net::IpAddr, str, str::FromStr},
+    std::{collections::HashMap, net::IpAddr, str, str::FromStr},
     validator::Validate,
 };
 
@@ -10,12 +10,18 @@ pub use http::{Extensions, Method, StatusCode, Uri, Version};
 pub use serde_json::json as value;
 pub use serde_json::{Map, Value};
 
+/// A type alias. See [`bytes::Bytes`] for details.
+pub type Bytes = bytes::Bytes;
 /// An HTTP request combines a head consisting of a [`Method`], [`Uri`], and headers with a [`BodyChunk`], which provides
 /// access to the first chunk of a request body.
-pub type Request = http::Request<bytes::Bytes>;
+pub type Request = http::Request<Bytes>;
+/// An HTTP request builder type alias. See [`http::request::Builder`] for details.
+pub type RequestBuilder = http::request::Builder;
 /// An HTTP response combines a head consisting of a [`StatusCode`] and headers with a [`BodyChunk`], which provides
 /// access to the first chunk of a response body.
-pub type Response = http::Response<bytes::Bytes>;
+pub type Response = http::Response<Bytes>;
+/// An HTTP response builder type alias. See [`http::response::Builder`] for details.
+pub type ResponseBuilder = http::response::Builder;
 
 // TODO: perhaps something more like http::Request<Box<dyn AsyncRead + Sync + Send + Unpin>>?
 // TODO: or hyper::Request<HyperIncomingBody> to match WasiHttpView's new_incoming_request?
@@ -57,6 +63,17 @@ pub type Response = http::Response<bytes::Bytes>;
 //     start: 0,
 //     content: vec![],
 // };
+
+/// A `HandlerOutput` represents a decision and associated output for a single handler within a single detection.
+#[derive(Clone, Default)]
+pub struct HandlerOutput {
+    /// The `params` value represents the new params to enrich the request with.
+    pub params: HashMap<String, String>,
+    /// The `decision` value represents the combined numerical decision from multiple detections.
+    pub decision: Decision,
+    /// The `tags` value represents the new tags to annotate the request with.
+    pub tags: Vec<String>,
+}
 
 /// A `Verdict` represents a combined decision across multiple detections.
 #[derive(Clone)]
@@ -195,31 +212,31 @@ pub fn get_config_value(key: &str) -> Result<Option<Value>, Error> {
     Ok(crate::wit::bulwark::plugin::environment::config_var(key)?.map(|v| v.into()))
 }
 
-/// Returns a named environment variable value as a [`String`].
-///
-/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
-/// the environment variable being requested. This function will panic if permission has not been granted.
-///
-/// # Arguments
-///
-/// * `key` - The environment variable name. Case-sensitive.
-pub fn get_env(key: &str) -> Result<String, crate::EnvVarError> {
-    Ok(String::from_utf8(
-        crate::wit::bulwark::plugin::environment::env_var(key)?,
-    )?)
-}
+// /// Returns a named environment variable value as a [`String`].
+// ///
+// /// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+// /// the environment variable being requested. This function will panic if permission has not been granted.
+// ///
+// /// # Arguments
+// ///
+// /// * `key` - The environment variable name. Case-sensitive.
+// pub fn get_env(key: &str) -> Result<String, crate::EnvVarError> {
+//     Ok(String::from_utf8(
+//         crate::wit::bulwark::plugin::environment::env_var(key)?,
+//     )?)
+// }
 
-/// Returns a named environment variable value as bytes.
-///
-/// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
-/// the environment variable being requested. This function will panic if permission has not been granted.
-///
-/// # Arguments
-///
-/// * `key` - The environment variable name. Case-sensitive.
-pub fn get_env_bytes(key: &str) -> Result<Vec<u8>, crate::EnvVarError> {
-    Ok(crate::wit::bulwark::plugin::environment::env_var(key)?)
-}
+// /// Returns a named environment variable value as bytes.
+// ///
+// /// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
+// /// the environment variable being requested. This function will panic if permission has not been granted.
+// ///
+// /// # Arguments
+// ///
+// /// * `key` - The environment variable name. Case-sensitive.
+// pub fn get_env_bytes(key: &str) -> Result<Vec<u8>, crate::EnvVarError> {
+//     Ok(crate::wit::bulwark::plugin::environment::env_var(key)?)
+// }
 
 // /// Records the decision value the plugin wants to return.
 // ///

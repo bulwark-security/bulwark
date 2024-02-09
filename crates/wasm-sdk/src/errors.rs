@@ -1,8 +1,3 @@
-/// Generic result
-pub type Result = ::std::result::Result<(), Error>;
-
-// TODO: error is way too big, replace w/ aliased anyhow or Box<dyn std::error::Error>
-
 /// Generic error
 pub type Error = ::anyhow::Error;
 

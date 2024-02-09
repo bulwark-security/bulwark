@@ -15,9 +15,9 @@ interface types {
     /// mass function, with the power set represented by the `unknown` value. This enables the use of combination rules
     /// to aggregate decisions from multiple sources. However, knowledge of Dempster-Shafer theory should not be necessary.
     record decision {
-        /// The `accept` value represents evidence in favor of accepting the operation.
+        /// The `accepted` value represents evidence in favor of accepting the operation.
         accepted: float64,
-        /// The `restrict` value represents evidence in favor of restricting the operation.
+        /// The `restricted` value represents evidence in favor of restricting the operation.
         restricted: float64,
         /// The `unknown` value represents uncertainty about whether to accept or restrict the operation.
         unknown: float64,

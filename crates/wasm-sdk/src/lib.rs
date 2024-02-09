@@ -22,3 +22,7 @@ pub use bulwark_decision::*;
 pub use errors::*;
 pub use from::*;
 pub use host_api::*;
+
+/// Make wit_bindgen accessible to the macro crate, ensuring that the correct version is used.
+#[doc(hidden)]
+pub use wit_bindgen;

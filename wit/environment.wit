@@ -30,8 +30,6 @@ interface environment {
     config: func() -> result<value, error>;
     /// Returns the named config value.
     config-var: func(key: string) -> result<option<value>, error>;
-    /// Returns the named environment variable as bytes.
-    env-var: func(key: string) -> result<list<u8>, error>;
 
     variant error {
         missing(string),

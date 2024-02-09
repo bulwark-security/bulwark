@@ -162,6 +162,7 @@ impl ExternalProcessor for BulwarkProcessor {
                             }
 
                             let route_target = route_match.value;
+                            println!("plugin count: {}", route_target.plugins.len());
                             // TODO: figure out how to bubble the error out of the task and up to the parent
                             // TODO: figure out if tonic-error or some other option is the best way to convert to a tonic Status error
                             // TODO: we probably want to be initializing only when necessary now rather than on every request
@@ -444,8 +445,20 @@ impl BulwarkProcessor {
     ) -> Result<Vec<Arc<Mutex<PluginInstance>>>, PluginGroupInstantiationError> {
         let mut plugin_instances = Vec::with_capacity(plugins.len());
         for plugin in plugins {
+            let mut environment = HashMap::new();
+            for key in plugin.permissions().env {
+                match std::env::var(&key) {
+                    Ok(value) => {
+                        environment.insert(key, value);
+                    }
+                    Err(err) => {
+                        warn!("plugin requested environment variable '{}' but it could not be provided: {}", key, err);
+                    }
+                }
+            }
             let request_context = PluginContext::new(
                 plugin.clone(),
+                environment,
                 self.redis_info.clone(),
                 self.http_client.clone(),
             )?;

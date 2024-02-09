@@ -196,7 +196,7 @@ impl Plugin {
     }
 
     /// Makes the permissions the plugin has been granted available to the guest environment.
-    pub(crate) fn permissions(&self) -> bulwark_config::Permissions {
+    pub fn permissions(&self) -> bulwark_config::Permissions {
         self.config.permissions.clone()
     }
 }

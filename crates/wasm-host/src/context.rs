@@ -1,6 +1,7 @@
 use {
     crate::ContextInstantiationError,
     crate::{Plugin, PluginStdio},
+    std::collections::HashMap,
     std::sync::Arc,
     wasmtime::component::Resource,
     wasmtime_wasi::preview2::{Table, WasiCtx, WasiCtxBuilder, WasiView},
@@ -174,6 +175,7 @@ impl PluginContext {
     /// * `http_client` - The HTTP client used for outbound requests.
     pub fn new(
         plugin: Arc<Plugin>,
+        environment: HashMap<String, String>,
         redis_info: Option<Arc<RedisInfo>>,
         http_client: Arc<reqwest::blocking::Client>,
     ) -> Result<PluginContext, ContextInstantiationError> {
@@ -181,6 +183,13 @@ impl PluginContext {
         let wasi_ctx = WasiCtxBuilder::new()
             .stdout(stdio.stdout.clone())
             .stderr(stdio.stderr.clone())
+            .envs(
+                environment
+                    .iter()
+                    .map(|(k, v)| (k.as_str(), v.as_str()))
+                    .collect::<Vec<(&str, &str)>>()
+                    .as_slice(),
+            )
             .build();
 
         Ok(PluginContext {
@@ -280,27 +289,6 @@ impl crate::bindings::bulwark::plugin::environment::Host for PluginContext {
                             Option<crate::bindings::bulwark::plugin::environment::Value>,
                             crate::bindings::bulwark::plugin::environment::Error,
                         >,
-                    >,
-                > + ::core::marker::Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'life0: 'async_trait,
-        Self: 'async_trait,
-    {
-        todo!()
-    }
-
-    /// Returns the named environment variable as bytes.
-    fn env_var<'life0, 'async_trait>(
-        &'life0 mut self,
-        key: String,
-    ) -> ::core::pin::Pin<
-        Box<
-            dyn ::core::future::Future<
-                    Output = wasmtime::Result<
-                        Result<Vec<u8>, crate::bindings::bulwark::plugin::environment::Error>,
                     >,
                 > + ::core::marker::Send
                 + 'async_trait,
