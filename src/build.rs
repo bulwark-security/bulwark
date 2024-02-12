@@ -68,20 +68,6 @@ fn install_wasm32_wasi_target() -> Result<(), BuildError> {
     Ok(())
 }
 
-/// Replace the plugin's vendored plugin.wit file with the one embedded in this binary.
-/// This ensures that the plugin.wit file is always in sync with the version of the CLI that's
-/// performing the build.
-///
-/// Needed to make wit-bindgen work.
-fn replace_plugin_wit_files(root_path: impl AsRef<Path>) -> Result<(), BuildError> {
-    // TODO: figure out how to do this now that it's an entire directory -- archive file?
-    // let plugin_wit = include_bytes!("../wit/plugin.wit");
-    // let plugin_wit_dest_path = root_path.as_ref().join(Path::new("wit/plugin.wit"));
-    // std::fs::create_dir_all(root_path.as_ref().join(Path::new("wit/")))?;
-    // std::fs::write(plugin_wit_dest_path, plugin_wit)?;
-    Ok(())
-}
-
 /// Builds a plugin.
 ///
 /// Compiles the plugin with the `wasm32-wasi` target, and installs it if it is missing.
@@ -100,8 +86,6 @@ pub(crate) fn build_plugin(
     let path = path.as_ref();
     let output = output.as_ref();
     let output_dir = output.parent().ok_or(BuildError::MissingParent)?;
-
-    replace_plugin_wit_files(path)?;
 
     let installed_targets = installed_targets()?;
     let wasi_installed = installed_targets.get("wasm32-wasi");
