@@ -198,7 +198,7 @@ pub struct Verdict {
 ///
 /// By convention this will return a [`Value::Object`].
 pub fn get_config() -> Result<Value, Error> {
-    Ok(crate::wit::bulwark::plugin::environment::config()?.into())
+    Ok(crate::wit::bulwark::plugin::config::config()?.into())
 }
 
 /// Returns a named guest environment configuration value as a [`Value`].
@@ -209,7 +209,7 @@ pub fn get_config() -> Result<Value, Error> {
 ///
 /// * `key` - A key indexing into a configuration [`Map`]
 pub fn get_config_value(key: &str) -> Result<Option<Value>, Error> {
-    Ok(crate::wit::bulwark::plugin::environment::config_var(key)?.map(|v| v.into()))
+    Ok(crate::wit::bulwark::plugin::config::config_var(key)?.map(|v| v.into()))
 }
 
 // /// Returns a named environment variable value as a [`String`].
@@ -222,7 +222,7 @@ pub fn get_config_value(key: &str) -> Result<Option<Value>, Error> {
 // /// * `key` - The environment variable name. Case-sensitive.
 // pub fn get_env(key: &str) -> Result<String, crate::EnvVarError> {
 //     Ok(String::from_utf8(
-//         crate::wit::bulwark::plugin::environment::env_var(key)?,
+//         crate::wit::bulwark::plugin::config::env_var(key)?,
 //     )?)
 // }
 
@@ -235,7 +235,7 @@ pub fn get_config_value(key: &str) -> Result<Option<Value>, Error> {
 // ///
 // /// * `key` - The environment variable name. Case-sensitive.
 // pub fn get_env_bytes(key: &str) -> Result<Vec<u8>, crate::EnvVarError> {
-//     Ok(crate::wit::bulwark::plugin::environment::env_var(key)?)
+//     Ok(crate::wit::bulwark::plugin::config::env_var(key)?)
 // }
 
 // /// Records the decision value the plugin wants to return.

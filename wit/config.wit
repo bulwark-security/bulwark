@@ -1,4 +1,4 @@
-interface environment {
+interface config {
     variant value {
         null,
         boolean(bool),

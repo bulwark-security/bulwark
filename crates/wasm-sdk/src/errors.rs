@@ -23,21 +23,21 @@ pub enum EnvVarError {
     Other { var: String },
 }
 
-impl From<crate::wit::bulwark::plugin::environment::Error> for EnvVarError {
-    fn from(error: crate::wit::bulwark::plugin::environment::Error) -> Self {
+impl From<crate::wit::bulwark::plugin::config::Error> for EnvVarError {
+    fn from(error: crate::wit::bulwark::plugin::config::Error) -> Self {
         match error {
-            crate::wit::bulwark::plugin::environment::Error::Permission(var) => {
+            crate::wit::bulwark::plugin::config::Error::Permission(var) => {
                 EnvVarError::Permission { var }
             }
-            crate::wit::bulwark::plugin::environment::Error::Missing(var) => {
+            crate::wit::bulwark::plugin::config::Error::Missing(var) => {
                 EnvVarError::Missing { var }
             }
-            crate::wit::bulwark::plugin::environment::Error::InvalidUnicode(var) => {
+            crate::wit::bulwark::plugin::config::Error::InvalidUnicode(var) => {
                 EnvVarError::InvalidUnicode {
                     message: format!("environment variable '{var}' contained invalid unicode"),
                 }
             }
-            crate::wit::bulwark::plugin::environment::Error::InvalidNesting(var) => {
+            crate::wit::bulwark::plugin::config::Error::InvalidNesting(var) => {
                 // This shouldn't happen because environment variables are always returned as bytes or strings
                 EnvVarError::Other { var }
             }
@@ -66,22 +66,22 @@ pub enum ConfigError {
     Other { var: String },
 }
 
-impl From<crate::wit::bulwark::plugin::environment::Error> for ConfigError {
-    fn from(error: crate::wit::bulwark::plugin::environment::Error) -> Self {
+impl From<crate::wit::bulwark::plugin::config::Error> for ConfigError {
+    fn from(error: crate::wit::bulwark::plugin::config::Error) -> Self {
         match error {
-            crate::wit::bulwark::plugin::environment::Error::Permission(var) => {
+            crate::wit::bulwark::plugin::config::Error::Permission(var) => {
                 // This shouldn't happen because config is not gated by a permissions check
                 ConfigError::Other { var }
             }
-            crate::wit::bulwark::plugin::environment::Error::Missing(var) => {
+            crate::wit::bulwark::plugin::config::Error::Missing(var) => {
                 ConfigError::Missing { var }
             }
-            crate::wit::bulwark::plugin::environment::Error::InvalidUnicode(var) => {
+            crate::wit::bulwark::plugin::config::Error::InvalidUnicode(var) => {
                 ConfigError::InvalidUnicode {
                     message: format!("config variable '{var}' contained invalid unicode"),
                 }
             }
-            crate::wit::bulwark::plugin::environment::Error::InvalidNesting(var) => {
+            crate::wit::bulwark::plugin::config::Error::InvalidNesting(var) => {
                 ConfigError::InvalidNesting { var }
             }
         }

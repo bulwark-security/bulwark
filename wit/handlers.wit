@@ -1,5 +1,5 @@
 
-use wasi:http/types@0.2.0-rc-2023-11-10 as http-types;
+use wasi:http/types@0.2.0 as http-types;
 
 interface http-handlers {
     use http-types.{incoming-request, outgoing-response};

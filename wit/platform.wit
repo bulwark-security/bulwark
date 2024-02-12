@@ -6,9 +6,10 @@ world http-detection {
 }
 
 world platform {
+    import wasi:cli/environment@0.2.0;
+    import wasi:http/outgoing-handler@0.2.0;
+
     import types;
-    import environment;
-    import wasi:cli/environment@0.2.0-rc-2023-11-10;
-    import wasi:http/outgoing-handler@0.2.0-rc-2023-11-10;
+    import config;
     import redis;
 }

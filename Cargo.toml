@@ -75,7 +75,7 @@ members = [
 version = "0.4.0"
 edition = "2021"
 # This should be no larger than the current stable release of Rust minus 2.
-rust-version = "1.72.0"
+rust-version = "1.73.0"
 
 [workspace.dependencies]
 # Internal dependencies
@@ -87,15 +87,15 @@ bulwark-wasm-sdk = { path = "crates/wasm-sdk", version = "=0.4.0" }
 bulwark-wasm-sdk-macros = { path = "crates/wasm-sdk-macros", version = "=0.4.0" }
 
 # WASM dependencies
-wasi-cap-std-sync = { version = "16" }
-wasi-common = { version = "16" }
-wasmtime = { version = "16", features = ["component-model"] }
-wasmtime-types = { version = "16" }
-wasmtime-wasi = { version = "16" }
-wasmtime-wasi-http = { version = "16", features = ["sync"] }
-wat = "1.0.83"
-wit-bindgen = "0.16.0"
-wit-component = "0.19.1"
+wasi-cap-std-sync = { version = "17" }
+wasi-common = { version = "17" }
+wasmtime = { version = "17.0.1", features = ["component-model"] }
+wasmtime-types = { version = "17" }
+wasmtime-wasi = { version = "17" }
+wasmtime-wasi-http = { version = "17", features = ["sync"] }
+wat = "1.0.86"
+wit-bindgen = "0.17.0"
+wit-component = "0.20.2"
 
 # Other shared external dependencies
 anyhow = "=1.0.72"

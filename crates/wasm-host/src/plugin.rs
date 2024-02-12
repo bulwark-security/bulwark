@@ -53,8 +53,8 @@ use {
     wasmtime::component::{Component, Linker},
     wasmtime::{AsContextMut, Config, Engine, Store},
     wasmtime_wasi::preview2::{
-        pipe::MemoryOutputPipe, HostOutputStream, StdoutStream, Table, WasiCtx, WasiCtxBuilder,
-        WasiView,
+        pipe::MemoryOutputPipe, HostOutputStream, ResourceTable, StdoutStream, WasiCtx,
+        WasiCtxBuilder, WasiView,
     },
     wasmtime_wasi_http::{proxy::Proxy, WasiHttpCtx, WasiHttpView},
 };
@@ -280,7 +280,7 @@ impl PluginInstance {
         let mut store = Store::new(&plugin.engine, plugin_context);
 
         wasmtime_wasi::preview2::command::add_to_linker(&mut linker)?;
-        bindings::bulwark::plugin::environment::add_to_linker(&mut linker, |t| t)?;
+        bindings::bulwark::plugin::config::add_to_linker(&mut linker, |t| t)?;
         bindings::bulwark::plugin::redis::add_to_linker(&mut linker, |t| t)?;
         bindings::bulwark::plugin::types::add_to_linker(&mut linker, |t| t)?;
 

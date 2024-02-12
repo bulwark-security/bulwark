@@ -162,7 +162,6 @@ impl ExternalProcessor for BulwarkProcessor {
                             }
 
                             let route_target = route_match.value;
-                            println!("plugin count: {}", route_target.plugins.len());
                             // TODO: figure out how to bubble the error out of the task and up to the parent
                             // TODO: figure out if tonic-error or some other option is the best way to convert to a tonic Status error
                             // TODO: we probably want to be initializing only when necessary now rather than on every request

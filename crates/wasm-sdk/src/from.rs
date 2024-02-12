@@ -93,19 +93,19 @@ impl From<crate::wit::bulwark::plugin::types::Outcome> for Outcome {
     }
 }
 
-impl From<crate::wit::bulwark::plugin::environment::PrimitiveValue> for Value {
-    fn from(value: crate::wit::bulwark::plugin::environment::PrimitiveValue) -> Self {
+impl From<crate::wit::bulwark::plugin::config::PrimitiveValue> for Value {
+    fn from(value: crate::wit::bulwark::plugin::config::PrimitiveValue) -> Self {
         match value {
-            crate::wit::bulwark::plugin::environment::PrimitiveValue::Null => Value::Null,
-            crate::wit::bulwark::plugin::environment::PrimitiveValue::Boolean(b) => Value::Bool(b),
-            crate::wit::bulwark::plugin::environment::PrimitiveValue::Num(n) => match n {
-                crate::wit::bulwark::plugin::environment::Number::Posint(n) => {
+            crate::wit::bulwark::plugin::config::PrimitiveValue::Null => Value::Null,
+            crate::wit::bulwark::plugin::config::PrimitiveValue::Boolean(b) => Value::Bool(b),
+            crate::wit::bulwark::plugin::config::PrimitiveValue::Num(n) => match n {
+                crate::wit::bulwark::plugin::config::Number::Posint(n) => {
                     Value::Number(serde_json::Number::from(n))
                 }
-                crate::wit::bulwark::plugin::environment::Number::Negint(n) => {
+                crate::wit::bulwark::plugin::config::Number::Negint(n) => {
                     Value::Number(serde_json::Number::from(n))
                 }
-                crate::wit::bulwark::plugin::environment::Number::Float(n) => {
+                crate::wit::bulwark::plugin::config::Number::Float(n) => {
                     let n = serde_json::Number::from_f64(n);
                     if let Some(n) = n {
                         Value::Number(n)
@@ -116,24 +116,24 @@ impl From<crate::wit::bulwark::plugin::environment::PrimitiveValue> for Value {
                     }
                 }
             },
-            crate::wit::bulwark::plugin::environment::PrimitiveValue::Str(s) => Value::String(s),
+            crate::wit::bulwark::plugin::config::PrimitiveValue::Str(s) => Value::String(s),
         }
     }
 }
 
-impl From<crate::wit::bulwark::plugin::environment::Value> for Value {
-    fn from(value: crate::wit::bulwark::plugin::environment::Value) -> Self {
+impl From<crate::wit::bulwark::plugin::config::Value> for Value {
+    fn from(value: crate::wit::bulwark::plugin::config::Value) -> Self {
         match value {
-            crate::wit::bulwark::plugin::environment::Value::Null => Value::Null,
-            crate::wit::bulwark::plugin::environment::Value::Boolean(b) => Value::Bool(b),
-            crate::wit::bulwark::plugin::environment::Value::Num(n) => match n {
-                crate::wit::bulwark::plugin::environment::Number::Posint(n) => {
+            crate::wit::bulwark::plugin::config::Value::Null => Value::Null,
+            crate::wit::bulwark::plugin::config::Value::Boolean(b) => Value::Bool(b),
+            crate::wit::bulwark::plugin::config::Value::Num(n) => match n {
+                crate::wit::bulwark::plugin::config::Number::Posint(n) => {
                     Value::Number(serde_json::Number::from(n))
                 }
-                crate::wit::bulwark::plugin::environment::Number::Negint(n) => {
+                crate::wit::bulwark::plugin::config::Number::Negint(n) => {
                     Value::Number(serde_json::Number::from(n))
                 }
-                crate::wit::bulwark::plugin::environment::Number::Float(n) => {
+                crate::wit::bulwark::plugin::config::Number::Float(n) => {
                     let n = serde_json::Number::from_f64(n);
                     if let Some(n) = n {
                         Value::Number(n)
@@ -144,15 +144,15 @@ impl From<crate::wit::bulwark::plugin::environment::Value> for Value {
                     }
                 }
             },
-            crate::wit::bulwark::plugin::environment::Value::Str(s) => Value::String(s),
-            crate::wit::bulwark::plugin::environment::Value::Arr(a) => {
+            crate::wit::bulwark::plugin::config::Value::Str(s) => Value::String(s),
+            crate::wit::bulwark::plugin::config::Value::Arr(a) => {
                 let mut arr: Vec<Value> = Vec::with_capacity(a.len());
                 for v in a {
                     arr.push(v.into());
                 }
                 Value::Array(arr)
             }
-            crate::wit::bulwark::plugin::environment::Value::Obj(o) => {
+            crate::wit::bulwark::plugin::config::Value::Obj(o) => {
                 let mut obj = serde_json::Map::with_capacity(o.len());
                 for (k, v) in o {
                     obj.insert(k, v.into());

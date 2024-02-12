@@ -4,7 +4,7 @@ use {
     std::collections::HashMap,
     std::sync::Arc,
     wasmtime::component::Resource,
-    wasmtime_wasi::preview2::{Table, WasiCtx, WasiCtxBuilder, WasiView},
+    wasmtime_wasi::preview2::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView},
     wasmtime_wasi_http::types::{
         HostFutureIncomingResponse, HostOutgoingResponse, OutgoingRequest,
     },
@@ -18,7 +18,7 @@ pub struct PluginContext {
     /// The WASI HTTP context that allows us to manage HTTP resources.
     wasi_http: WasiHttpCtx,
     /// The WASI table that maps handles to resources.
-    wasi_table: Table,
+    wasi_table: ResourceTable,
     /// The standard I/O buffers used by WASI and captured for logging.
     pub(crate) stdio: PluginStdio,
     /// Plugin-specific configuration. Stored as bytes and deserialized as JSON values by the SDK.
@@ -195,7 +195,7 @@ impl PluginContext {
         Ok(PluginContext {
             wasi_ctx,
             wasi_http: WasiHttpCtx,
-            wasi_table: Table::new(),
+            wasi_table: ResourceTable::new(),
             stdio,
             config: Arc::new(plugin.guest_config()?),
             permissions: plugin.permissions(),
@@ -214,11 +214,11 @@ impl PluginContext {
 }
 
 impl WasiView for PluginContext {
-    fn table(&self) -> &Table {
+    fn table(&self) -> &ResourceTable {
         &self.wasi_table
     }
 
-    fn table_mut(&mut self) -> &mut Table {
+    fn table_mut(&mut self) -> &mut ResourceTable {
         &mut self.wasi_table
     }
 
@@ -236,7 +236,7 @@ impl WasiHttpView for PluginContext {
         &mut self.wasi_http
     }
 
-    fn table(&mut self) -> &mut Table {
+    fn table(&mut self) -> &mut ResourceTable {
         &mut self.wasi_table
     }
 
@@ -253,7 +253,7 @@ impl WasiHttpView for PluginContext {
 
 impl crate::bindings::bulwark::plugin::types::Host for PluginContext {}
 
-impl crate::bindings::bulwark::plugin::environment::Host for PluginContext {
+impl crate::bindings::bulwark::plugin::config::Host for PluginContext {
     /// Returns the plugin\\'s entire config.
     fn config<'life0, 'async_trait>(
         &'life0 mut self,
@@ -262,8 +262,8 @@ impl crate::bindings::bulwark::plugin::environment::Host for PluginContext {
             dyn ::core::future::Future<
                     Output = wasmtime::Result<
                         Result<
-                            crate::bindings::bulwark::plugin::environment::Value,
-                            crate::bindings::bulwark::plugin::environment::Error,
+                            crate::bindings::bulwark::plugin::config::Value,
+                            crate::bindings::bulwark::plugin::config::Error,
                         >,
                     >,
                 > + ::core::marker::Send
@@ -286,8 +286,8 @@ impl crate::bindings::bulwark::plugin::environment::Host for PluginContext {
             dyn ::core::future::Future<
                     Output = wasmtime::Result<
                         Result<
-                            Option<crate::bindings::bulwark::plugin::environment::Value>,
-                            crate::bindings::bulwark::plugin::environment::Error,
+                            Option<crate::bindings::bulwark::plugin::config::Value>,
+                            crate::bindings::bulwark::plugin::config::Error,
                         >,
                     >,
                 > + ::core::marker::Send
