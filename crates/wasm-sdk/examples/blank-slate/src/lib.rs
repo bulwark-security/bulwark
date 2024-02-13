@@ -39,7 +39,7 @@ impl HttpHandlers for BlankSlate {
         _request: Request,
         _response: Response,
         _params: HashMap<String, String>,
-        _verict: Verdict,
+        _verdict: Verdict,
     ) -> Result<(), Error> {
         // Feedback loop implementations go here, or leave as a no-op.
         Ok(())
