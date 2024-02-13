@@ -1,3 +1,4 @@
+use anyhow::Context as _;
 use wasmtime_wasi_http::body::{HyperIncomingBody, HyperOutgoingBody};
 
 mod latest {
@@ -280,9 +281,19 @@ impl PluginInstance {
         let mut store = Store::new(&plugin.engine, plugin_context);
 
         wasmtime_wasi::preview2::command::add_to_linker(&mut linker)?;
-        bindings::bulwark::plugin::config::add_to_linker(&mut linker, |t| t)?;
-        bindings::bulwark::plugin::redis::add_to_linker(&mut linker, |t| t)?;
-        bindings::bulwark::plugin::types::add_to_linker(&mut linker, |t| t)?;
+        wasmtime_wasi_http::bindings::wasi::http::types::add_to_linker(&mut linker, |ctx| ctx)
+            .context("failed to link `wasi:http/types` interface")?;
+        wasmtime_wasi_http::bindings::wasi::http::outgoing_handler::add_to_linker(
+            &mut linker,
+            |ctx| ctx,
+        )
+        .context("failed to link `wasi:http/outgoing-handler` interface")?;
+        bindings::bulwark::plugin::config::add_to_linker(&mut linker, |t| t)
+            .context("failed to link `bulwark:plugin/config` interface")?;
+        bindings::bulwark::plugin::redis::add_to_linker(&mut linker, |t| t)
+            .context("failed to link `bulwark:plugin/redis` interface")?;
+        bindings::bulwark::plugin::types::add_to_linker(&mut linker, |t| t)
+            .context("failed to link `bulwark:plugin/types` interface")?;
 
         // We discard the instance for this because we only use the generated interface to make calls
 
