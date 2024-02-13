@@ -70,6 +70,7 @@ members = [
     "crates/wasm-sdk-macros",
     "crates/decision",
 ]
+exclude = ["crates/wasm-sdk/examples"]
 
 [workspace.package]
 version = "0.4.0"

@@ -1,29 +1,28 @@
 use bulwark_wasm_sdk::*;
+use std::collections::HashMap;
 
 pub struct EvilBit;
 
 #[bulwark_plugin]
-impl Handlers for EvilBit {
+impl HttpHandlers for EvilBit {
     /// Check to see if the request has confessed malicious intent by setting an `Evil` header.
-    fn on_request_decision() -> Result {
-        let request = get_request();
+    fn handle_request_decision(
+        request: Request,
+        params: HashMap<String, String>,
+    ) -> Result<HandlerOutput, Error> {
+        let mut output = HandlerOutput::default();
         let evil_header = request.headers().get("Evil");
         if let Some(value) = evil_header {
             if value == "true" {
-                set_decision(Decision {
+                output.decision = Decision {
                     accept: 0.0,
                     restrict: 1.0,
                     unknown: 0.0,
-                })?;
-                set_tags(["evil"]);
-                return Ok(());
+                };
+                output.tags = vec!["evil".to_string()];
+                return Ok(output);
             }
         }
-        set_decision(Decision {
-            accept: 0.0,
-            restrict: 0.0,
-            unknown: 1.0,
-        })?;
-        Ok(())
+        Ok(output)
     }
 }
