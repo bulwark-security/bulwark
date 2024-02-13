@@ -14,6 +14,7 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 bulwark-wasm-sdk = { path = "../.." }
+wit-bindgen = "0.17.0"
 
 [workspace]
 

@@ -38,6 +38,7 @@ name = "bulwark-evil-bit"
 version = "0.1.0"
 dependencies = [
  "bulwark-wasm-sdk",
+ "wit-bindgen",
 ]
 
 [[package]]

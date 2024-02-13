@@ -28,6 +28,7 @@ name = "bulwark-blank-slate"
 version = "0.1.0"
 dependencies = [
  "bulwark-wasm-sdk",
+ "wit-bindgen",
 ]
 
 [[package]]
