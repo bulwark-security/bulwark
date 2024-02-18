@@ -285,9 +285,29 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
-        impl From<crate::handlers::wasi::http::types::IncomingRequest> for ::bulwark_wasm_sdk::Request {
-            fn from(request: crate::handlers::wasi::http::types::IncomingRequest) -> Self {
+        impl TryFrom<crate::handlers::wasi::http::types::IncomingRequest> for ::bulwark_wasm_sdk::Request {
+            type Error = crate::handlers::exports::bulwark::plugin::http_handlers::Error;
+
+            fn try_from(request: crate::handlers::wasi::http::types::IncomingRequest) -> Result<Self, Self::Error> {
+                const MAX_SIZE: u64 = 1048576;
                 let mut builder = ::bulwark_wasm_sdk::RequestBuilder::new();
+                // Builder doesn't support scheme or authority as separate functions,
+                // so we need to manually construct the URI.
+                let mut uri = ::bulwark_wasm_sdk::UriBuilder::new();
+                if let Some(scheme) = request.scheme() {
+                    let other;
+                    uri = uri.scheme(match scheme {
+                        crate::handlers::wasi::http::types::Scheme::Http => "http",
+                        crate::handlers::wasi::http::types::Scheme::Https => "https",
+                        crate::handlers::wasi::http::types::Scheme::Other(o) => {
+                            other = o;
+                            other.as_str()
+                        },
+                    });
+                }
+                if let Some(authority) = request.authority() {
+                    uri = uri.authority(authority);
+                }
                 let other;
                 let method = match request.method() {
                     crate::handlers::wasi::http::types::Method::Get => "GET",
@@ -299,30 +319,103 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                     crate::handlers::wasi::http::types::Method::Options => "OPTIONS",
                     crate::handlers::wasi::http::types::Method::Trace => "TRACE",
                     crate::handlers::wasi::http::types::Method::Patch => "PATCH",
-                    crate::handlers::wasi::http::types::Method::Other(e) => {
-                        other = e.clone();
+                    crate::handlers::wasi::http::types::Method::Other(o) => {
+                        other = o;
                         other.as_str()
                     },
                 };
                 builder = builder.method(method);
                 if let Some(request_uri) = request.path_with_query() {
-                    builder = builder.uri(request_uri);
+                    uri = uri.path_and_query(request_uri);
                 }
-                // let headers = request.headers().entries();
-                // for (name, value) in headers {
-                //     builder = builder.header(name, value);
-                // }
-                let body = request.consume();
-                // How do we deal w/ this error?
-                builder.body(bulwark_wasm_sdk::Bytes::new()).unwrap()
+                // This should always be a valid URI, panics if it's not.
+                builder = builder.uri(uri.build().expect("invalid uri"));
+                let mut end_of_stream = true;
+                let headers = request.headers().entries();
+                for (name, value) in headers {
+                    if name.to_ascii_lowercase().trim() == "content-length" {
+                        if let Ok(value) = std::str::from_utf8(&value) {
+                            if let Ok(value) = value.parse::<u64>() {
+                                if value > 0 {
+                                    end_of_stream = false;
+                                }
+                            }
+                        }
+                    }
+                    if name.to_ascii_lowercase().trim() == "transfer-encoding" {
+                        end_of_stream = false;
+                    }
+                    builder = builder.header(name, value);
+                }
+
+                let mut buffer = Vec::new();
+                if !end_of_stream {
+                    // A body should be available, extract it.
+                    let body = request.consume().map_err(|_| {
+                        crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other("body already consumed".to_string())
+                    })?;
+                    let mut stream = body.stream().map_err(|_| {
+                        crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other("could not get body stream".to_string())
+                    })?;
+                    buffer.extend(stream.read(MAX_SIZE).map_err(|e| {
+                        crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
+                    })?);
+                }
+
+                // TODO: Add support for trailers.
+
+                Ok(builder.body(bulwark_wasm_sdk::Bytes::from(buffer)).map_err(|e| {
+                    crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
+                })?)
             }
         }
 
-        impl From<crate::handlers::wasi::http::types::OutgoingResponse> for ::bulwark_wasm_sdk::Response {
-            fn from(response: crate::handlers::wasi::http::types::OutgoingResponse) -> Self {
+        impl TryFrom<crate::handlers::wasi::http::types::IncomingResponse> for ::bulwark_wasm_sdk::Response {
+            type Error = crate::handlers::exports::bulwark::plugin::http_handlers::Error;
+
+            fn try_from(response: crate::handlers::wasi::http::types::IncomingResponse) -> Result<Self, Self::Error> {
+                const MAX_SIZE: u64 = 1048576;
                 let mut builder = ::bulwark_wasm_sdk::ResponseBuilder::new();
+                // We have no way to know the HTTP version here, so leave it as default.
                 builder = builder.status(response.status_code());
-                builder.body(bulwark_wasm_sdk::Bytes::new()).unwrap()
+
+                let mut end_of_stream = true;
+                let headers = response.headers().entries();
+                for (name, value) in headers {
+                    if name.to_ascii_lowercase().trim() == "content-length" {
+                        if let Ok(value) = std::str::from_utf8(&value) {
+                            if let Ok(value) = value.parse::<u64>() {
+                                if value > 0 {
+                                    end_of_stream = false;
+                                }
+                            }
+                        }
+                    }
+                    if name.to_ascii_lowercase().trim() == "transfer-encoding" {
+                        end_of_stream = false;
+                    }
+                    builder = builder.header(name, value);
+                }
+
+                let mut buffer = Vec::new();
+                if !end_of_stream {
+                    // A body should be available, extract it.
+                    let body = response.consume().map_err(|_| {
+                        crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other("body already consumed".to_string())
+                    })?;
+                    let mut stream = body.stream().map_err(|_| {
+                        crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other("could not get body stream".to_string())
+                    })?;
+                    buffer.extend(stream.read(MAX_SIZE).map_err(|e| {
+                        crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
+                    })?);
+                }
+
+                // TODO: Add support for trailers.
+
+                Ok(builder.body(bulwark_wasm_sdk::Bytes::from(buffer)).map_err(|e| {
+                    crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
+                })?)
             }
         }
 
@@ -400,7 +493,7 @@ pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
                     // basic error handling on the result
                     #[inline(always)]
                     #inner_fn
-                    let result = #name(request.into(), params.iter().cloned().collect()).map(|t| {
+                    let result = #name(request.try_into()?, params.iter().cloned().collect()).map(|t| {
                         t.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
                     }).map_err(|e| {
                         handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
@@ -430,7 +523,7 @@ pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
                     // Declares the inlined inner function, calls it, then translates the result
                     #[inline(always)]
                     #inner_fn
-                    let result = #name(request.into(), params.iter().cloned().collect()).map(|t| {
+                    let result = #name(request.try_into()?, params.iter().cloned().collect()).map(|t| {
                         t.into()
                     }).map_err(|e| {
                         handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
@@ -462,7 +555,7 @@ pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
                     // basic error handling on the result
                     #[inline(always)]
                     #inner_fn
-                    let result = #name(request.into(), response.into(), params.iter().cloned().collect()).map(|t| {
+                    let result = #name(request.try_into()?, response.try_into()?, params.iter().cloned().collect()).map(|t| {
                         t.into()
                     }).map_err(|e| {
                         handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
@@ -492,7 +585,7 @@ pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
                     // basic error handling on the result
                     #[inline(always)]
                     #inner_fn
-                    let result = #name(request.into(), response.into(), params.iter().cloned().collect(), verdict.into()).map_err(|e| {
+                    let result = #name(request.try_into()?, response.try_into()?, params.iter().cloned().collect(), verdict.into()).map_err(|e| {
                         handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
                     });
                     #[allow(unused_must_use)]

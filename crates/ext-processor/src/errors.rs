@@ -33,6 +33,8 @@ pub enum RequestError {
     #[error(transparent)]
     Http(#[from] http::Error),
     #[error(transparent)]
+    Tonic(#[from] tonic::Status),
+    #[error(transparent)]
     Send(#[from] futures::channel::mpsc::SendError),
     #[error("missing http method pseudo-header")]
     MissingMethod,
@@ -52,6 +54,8 @@ pub enum RequestError {
 pub enum ResponseError {
     #[error(transparent)]
     Http(#[from] http::Error),
+    #[error(transparent)]
+    Tonic(#[from] tonic::Status),
     #[error(transparent)]
     Send(#[from] futures::channel::mpsc::SendError),
     #[error("missing http status pseudo-header")]

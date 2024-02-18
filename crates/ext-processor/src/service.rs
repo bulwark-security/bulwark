@@ -38,7 +38,7 @@ use {
     },
     tokio::{sync::RwLock, sync::Semaphore, task::JoinSet, time::timeout},
     tonic::Streaming,
-    tracing::{debug, error, info, instrument, warn, Instrument},
+    tracing::{debug, error, info, instrument, trace, warn, Instrument},
 };
 
 extern crate redis;
@@ -125,29 +125,32 @@ impl ExternalProcessor for BulwarkProcessor {
 
         let mut stream = tonic_request.into_inner();
         let (mut sender, receiver) = futures::channel::mpsc::unbounded();
-        if let Ok(http_req) = self.prepare_request(&mut stream, &mut sender).await {
-            let http_req = Arc::new(http_req);
 
-            info!(
-                message = "process request",
-                method = http_req.method().to_string(),
-                uri = http_req.uri().to_string(),
-                user_agent = http_req
-                    .headers()
-                    .get("User-Agent")
-                    .map(|ua: &http::HeaderValue| ua.to_str().unwrap_or_default())
-            );
+        let child_span = tracing::info_span!("route request");
+        let permit = self
+            .request_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("semaphore closed");
+        tokio::task::spawn(
+            async move {
+                if let Ok(incoming_request) = bulwark_processor
+                    .prepare_request(&mut sender, &mut stream)
+                    .await
+                {
+                    let incoming_request = Arc::new(incoming_request);
 
-            let child_span = tracing::info_span!("route request");
-            let permit = self
-                .request_semaphore
-                .clone()
-                .acquire_owned()
-                .await
-                .expect("semaphore closed");
-            tokio::task::spawn(
-                async move {
-                    let incoming_request = http_req.clone();
+                    info!(
+                        message = "process request",
+                        method = incoming_request.method().to_string(),
+                        uri = incoming_request.uri().to_string(),
+                        user_agent = incoming_request
+                            .headers()
+                            .get("User-Agent")
+                            .map(|ua: &http::HeaderValue| ua.to_str().unwrap_or_default())
+                    );
+
                     let router = bulwark_processor.router.read().await;
                     let route_result = router.at(incoming_request.uri().path());
                     // TODO: router needs to point to a struct that bundles the plugin set and associated config like timeout duration
@@ -208,14 +211,15 @@ impl ExternalProcessor for BulwarkProcessor {
                             panic!("match error");
                         }
                     };
-                    drop(permit);
                 }
-                .instrument(child_span.or_current()),
-            );
-            return Ok(tonic::Response::new(Box::pin(receiver)));
-        }
-        // By default, just close the stream.
-        Ok(tonic::Response::new(Box::pin(futures::stream::empty())))
+                drop(permit);
+            }
+            .instrument(child_span.or_current()),
+        );
+        return Ok(tonic::Response::new(Box::pin(receiver)));
+
+        // // By default, just close the stream.
+        // Ok(tonic::Response::new(Box::pin(futures::stream::empty())))
     }
 }
 
@@ -304,16 +308,21 @@ impl BulwarkProcessor {
 
     async fn prepare_request(
         &self,
-        stream: &mut Streaming<ProcessingRequest>,
         sender: &mut UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
+        stream: &mut Streaming<ProcessingRequest>,
     ) -> Result<bulwark_wasm_sdk::Request, RequestError> {
-        if let Some(header_msg) = Self::get_request_header_message(stream).await {
-            // We have to send a reply back before we can retrieve the request body
-            Self::send_request_headers_message(sender).await?;
+        if let Some(header_msg) = Self::get_request_header_message(stream).await? {
+            // If there is no body, we have to skip these to avoid Envoy errors.
+            let body = if !header_msg.end_of_stream {
+                // We have to send a reply back before we can retrieve the request body
+                Self::send_request_headers_message(sender).await?;
 
-            let body = Self::get_request_body_message(stream)
-                .await
-                .map(|body_msg| body_msg.body);
+                Self::get_request_body_message(stream)
+                    .await?
+                    .map(|body_msg| body_msg.body)
+            } else {
+                None
+            };
 
             // TODO: currently this information isn't used and isn't accessible to the plugin environment yet
             // TODO: does this go into a request extension?
@@ -370,17 +379,22 @@ impl BulwarkProcessor {
 
     async fn prepare_response(
         &self,
-        stream: &mut Streaming<ProcessingRequest>,
         sender: &mut UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
+        stream: &mut Streaming<ProcessingRequest>,
         version: http::Version,
     ) -> Result<bulwark_wasm_sdk::Response, ResponseError> {
-        if let Some(header_msg) = Self::get_response_headers_message(stream).await {
-            // We have to send a reply back before we can retrieve the response body
-            Self::send_response_headers_message(sender).await?;
+        if let Some(header_msg) = Self::get_response_headers_message(stream).await? {
+            // If there is no body, we have to skip these to avoid Envoy errors.
+            let body = if header_msg.end_of_stream {
+                // We have to send a reply back before we can retrieve the response body
+                Self::send_response_headers_message(sender).await?;
 
-            let body = Self::get_response_body_message(stream)
-                .await
-                .map(|body_msg| body_msg.body);
+                Self::get_response_body_message(stream)
+                    .await?
+                    .map(|body_msg| body_msg.body)
+            } else {
+                None
+            };
 
             let status = Self::get_header_value(&header_msg.headers, ":status")
                 .ok_or(ResponseError::MissingStatus)?;
@@ -1241,15 +1255,16 @@ impl BulwarkProcessor {
         // }
 
         let mut restricted = false;
+        let end_of_stream = incoming_request.body().len() == 0;
         match outcome {
             bulwark_wasm_sdk::Outcome::Trusted
             | bulwark_wasm_sdk::Outcome::Accepted
             // suspected requests are monitored but not rejected
             | bulwark_wasm_sdk::Outcome::Suspected => {
-                let result = Self::send_allow_request_message(&sender).await;
+                let result = Self::send_allow_request_message(&sender, end_of_stream).await;
                 // TODO: must perform proper error handling on sender results, sending can fail
                 if let Err(err) = result {
-                    debug!(message = format!("send error: {}", err));
+                    error!(message = format!("send error: {}", err));
                 }
             },
             bulwark_wasm_sdk::Outcome::Restricted => {
@@ -1277,19 +1292,19 @@ impl BulwarkProcessor {
                         },
                         Err(err) => {
                             // TODO: must perform proper error handling on sender results, sending can fail
-                            debug!(message = format!("send error: {}", err));
+                            error!(message = format!("send error: {}", err));
                         },
                     }
 
                     // Short-circuit if restricted, we can skip the response phase
                     return;
-                } else {
-                    // Don't receive a body when we would have otherwise blocked if we weren't in monitor-only mode
-                    let result = Self::send_allow_request_message(&sender).await;
-                    // TODO: must perform proper error handling on sender results, sending can fail
-                    if let Err(err) = result {
-                        debug!(message = format!("send error: {}", err));
-                    }
+                }
+
+                // Don't receive a body when we would have otherwise blocked if we weren't in monitor-only mode
+                let result = Self::send_allow_request_message(&sender, end_of_stream).await;
+                // TODO: must perform proper error handling on sender results, sending can fail
+                if let Err(err) = result {
+                    error!(message = format!("send error: {}", err));
                 }
             },
         }
@@ -1298,7 +1313,7 @@ impl BulwarkProcessor {
         // Observe-only mode should also behave the same way as normal mode here.
         if !restricted {
             match self
-                .prepare_response(&mut stream, &mut sender, incoming_request.version())
+                .prepare_response(&mut sender, &mut stream, incoming_request.version())
                 .await
             {
                 Ok(outgoing_response) => {
@@ -1314,8 +1329,8 @@ impl BulwarkProcessor {
                         )
                         .await;
                     self.complete_response_phase(
-                        sender,
-                        stream,
+                        &mut sender,
+                        &mut stream,
                         plugin_instances,
                         incoming_request,
                         outgoing_response,
@@ -1325,7 +1340,9 @@ impl BulwarkProcessor {
                     )
                     .await;
                 }
-                Err(_) => todo!(),
+                Err(err) => {
+                    error!(message = format!("response error: {}", err));
+                }
             }
         }
     }
@@ -1379,7 +1396,7 @@ impl BulwarkProcessor {
     //             let result = Self::allow_request_body(&sender).await;
     //             // TODO: must perform proper error handling on sender results, sending can fail
     //             if let Err(err) = result {
-    //                 debug!(message = format!("send error: {}", err));
+    //                 error!(message = format!("send error: {}", err));
     //             }
     //         },
     //         bulwark_wasm_sdk::Outcome::Restricted => {
@@ -1388,7 +1405,7 @@ impl BulwarkProcessor {
     //                 let result = Self::block_request_body(&sender).await;
     //                 // TODO: must perform proper error handling on sender results, sending can fail
     //                 if let Err(err) = result {
-    //                     debug!(message = format!("send error: {}", err));
+    //                     error!(message = format!("send error: {}", err));
     //                 }
 
     //                 // Normally we initiate feedback after the response phase, but if we skip the response phase
@@ -1406,7 +1423,7 @@ impl BulwarkProcessor {
     //                 let result = Self::allow_request_body(&sender).await;
     //                 // TODO: must perform proper error handling on sender results, sending can fail
     //                 if let Err(err) = result {
-    //                     debug!(message = format!("send error: {}", err));
+    //                     error!(message = format!("send error: {}", err));
     //                 }
     //             }
     //         },
@@ -1429,8 +1446,8 @@ impl BulwarkProcessor {
 
     async fn complete_response_phase(
         &self,
-        sender: UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
-        mut stream: Streaming<ProcessingRequest>,
+        sender: &mut UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
+        stream: &mut Streaming<ProcessingRequest>,
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         incoming_request: Arc<bulwark_wasm_sdk::Request>,
         outgoing_response: Arc<bulwark_wasm_sdk::Response>,
@@ -1488,34 +1505,35 @@ impl BulwarkProcessor {
         // }
 
         let mut restricted = false;
+        let end_of_stream = outgoing_response.body().len() == 0;
         match outcome {
             bulwark_wasm_sdk::Outcome::Trusted
             | bulwark_wasm_sdk::Outcome::Accepted
             // suspected requests are monitored but not rejected
             | bulwark_wasm_sdk::Outcome::Suspected => {
                 info!(message = "process response", status = u16::from(outgoing_response.status()));
-                let result = Self::send_allow_response_message(&sender).await;
+                let result = Self::send_allow_response_message(sender, end_of_stream).await;
                 // TODO: must perform proper error handling on sender results, sending can fail
                 if let Err(err) = result {
-                    debug!(message = format!("send error: {}", err));
+                    error!(message = format!("send error: {}", err));
                 }
             },
             bulwark_wasm_sdk::Outcome::Restricted => {
                 restricted = true;
                 if !self.thresholds.observe_only {
                     info!(message = "process response", status = 403);
-                    let result = Self::send_block_response_message(&sender).await;
+                    let result = Self::send_block_response_message(sender).await;
                     // TODO: must perform proper error handling on sender results, sending can fail
                     if let Err(err) = result {
-                        debug!(message = format!("send error: {}", err));
+                        error!(message = format!("send error: {}", err));
                     }
                 } else {
                     info!(message = "process response", status = u16::from(outgoing_response.status()));
                     // Don't receive a body when we would have otherwise blocked if we weren't in monitor-only mode
-                    let result = Self::send_allow_response_message(&sender).await;
+                    let result = Self::send_allow_response_message(sender, end_of_stream).await;
                     // TODO: must perform proper error handling on sender results, sending can fail
                     if let Err(err) = result {
-                        debug!(message = format!("send error: {}", err));
+                        error!(message = format!("send error: {}", err));
                     }
                 }
             }
@@ -1587,7 +1605,7 @@ impl BulwarkProcessor {
     //             let result = Self::allow_response_body(&sender).await;
     //             // TODO: must perform proper error handling on sender results, sending can fail
     //             if let Err(err) = result {
-    //                 debug!(message = format!("send error: {}", err));
+    //                 error!(message = format!("send error: {}", err));
     //             }
     //         },
     //         bulwark_wasm_sdk::Outcome::Restricted => {
@@ -1596,7 +1614,7 @@ impl BulwarkProcessor {
     //                 let result = Self::block_response_body(&sender).await;
     //                 // TODO: must perform proper error handling on sender results, sending can fail
     //                 if let Err(err) = result {
-    //                     debug!(message = format!("send error: {}", err));
+    //                     error!(message = format!("send error: {}", err));
     //                 }
     //             } else {
     //                 info!(message = "process response", status = u16::from(http_resp.status()));
@@ -1604,7 +1622,7 @@ impl BulwarkProcessor {
     //                 let result = Self::allow_response_body(&sender).await;
     //                 // TODO: must perform proper error handling on sender results, sending can fail
     //                 if let Err(err) = result {
-    //                     debug!(message = format!("send error: {}", err));
+    //                     error!(message = format!("send error: {}", err));
     //                 }
     //             }
     //         }
@@ -1651,19 +1669,33 @@ impl BulwarkProcessor {
 
     async fn send_allow_request_message(
         mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
+        end_of_stream: bool,
     ) -> Result<(), ProcessingMessageError> {
-        let req_body_resp = ProcessingResponse {
-            response: Some(processing_response::Response::RequestBody(
-                BodyResponse::default(),
-            )),
+        trace!("send_allow_request_message (ProcessingResponse)");
+        let processing_reply = ProcessingResponse {
+            // If the request did not have a body, we're responding to a
+            // RequestHeaders message, otherwise we're responding to a
+            // RequestBody message.
+            response: if end_of_stream {
+                Some(processing_response::Response::RequestHeaders(
+                    HeadersResponse {
+                        response: Some(CommonResponse::default()),
+                    },
+                ))
+            } else {
+                Some(processing_response::Response::RequestBody(
+                    BodyResponse::default(),
+                ))
+            },
             ..Default::default()
         };
-        Ok(sender.send(Ok(req_body_resp)).await?)
+        Ok(sender.send(Ok(processing_reply)).await?)
     }
 
     async fn send_block_request_message(
         mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
     ) -> Result<bulwark_wasm_sdk::Response, ProcessingMessageError> {
+        trace!("send_block_request_message (ProcessingResponse)");
         // Send back a response indicating the request has been blocked.
         let code: i32 = 403;
         // TODO: better default response + customizability
@@ -1690,11 +1722,22 @@ impl BulwarkProcessor {
 
     async fn send_allow_response_message(
         mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
+        end_of_stream: bool,
     ) -> Result<(), ProcessingMessageError> {
+        trace!("send_allow_response_message (ProcessingResponse)");
         let processing_reply = ProcessingResponse {
-            response: Some(processing_response::Response::ResponseBody(
-                BodyResponse::default(),
-            )),
+            // If the response did not have a body, we're responding to a
+            // ResponseHeaders message, otherwise we're responding to a
+            // ResponseBody message.
+            response: if end_of_stream {
+                Some(processing_response::Response::ResponseHeaders(
+                    HeadersResponse::default(),
+                ))
+            } else {
+                Some(processing_response::Response::ResponseBody(
+                    BodyResponse::default(),
+                ))
+            },
             ..Default::default()
         };
         Ok(sender.send(Ok(processing_reply)).await?)
@@ -1703,6 +1746,7 @@ impl BulwarkProcessor {
     async fn send_block_response_message(
         mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
     ) -> Result<bulwark_wasm_sdk::Response, ProcessingMessageError> {
+        trace!("send_block_response_message (ProcessingResponse)");
         // Send back a response indicating the request has been blocked.
         let code: i32 = 403;
         // TODO: better default response + customizability
@@ -1729,19 +1773,21 @@ impl BulwarkProcessor {
 
     async fn get_request_header_message(
         stream: &mut Streaming<ProcessingRequest>,
-    ) -> Option<HttpHeaders> {
+    ) -> Result<Option<HttpHeaders>, tonic::Status> {
+        trace!("get_request_header_message (ProcessingRequest)");
         // TODO: if request attributes are eventually supported, we may need to extract both instead of just headers
-        if let Ok(Some(next_msg)) = stream.message().await {
+        if let Some(next_msg) = stream.message().await? {
             if let Some(processing_request::Request::RequestHeaders(hdrs)) = next_msg.request {
-                return Some(hdrs);
+                return Ok(Some(hdrs));
             }
         }
-        None
+        Ok(None)
     }
 
     async fn send_request_headers_message(
         sender: &mut UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
     ) -> Result<(), futures::channel::mpsc::SendError> {
+        trace!("send_request_headers_message (ProcessingResponse)");
         let processing_reply = ProcessingResponse {
             response: Some(processing_response::Response::RequestHeaders(
                 HeadersResponse {
@@ -1754,34 +1800,37 @@ impl BulwarkProcessor {
             }),
             ..Default::default()
         };
-        Ok(sender.send(Ok(processing_reply)).await?)
+        sender.send(Ok(processing_reply)).await
     }
 
     async fn get_request_body_message(
         stream: &mut Streaming<ProcessingRequest>,
-    ) -> Option<HttpBody> {
-        if let Ok(Some(next_msg)) = stream.message().await {
+    ) -> Result<Option<HttpBody>, tonic::Status> {
+        trace!("get_request_body_message (ProcessingRequest)");
+        if let Some(next_msg) = stream.message().await? {
             if let Some(processing_request::Request::RequestBody(body)) = next_msg.request {
-                return Some(body);
+                return Ok(Some(body));
             }
         }
-        None
+        Ok(None)
     }
 
     async fn get_response_headers_message(
         stream: &mut Streaming<ProcessingRequest>,
-    ) -> Option<HttpHeaders> {
-        if let Ok(Some(next_msg)) = stream.message().await {
+    ) -> Result<Option<HttpHeaders>, tonic::Status> {
+        trace!("get_response_headers_message (ProcessingRequest)");
+        if let Some(next_msg) = stream.message().await? {
             if let Some(processing_request::Request::ResponseHeaders(hdrs)) = next_msg.request {
-                return Some(hdrs);
+                return Ok(Some(hdrs));
             }
         }
-        None
+        Ok(None)
     }
 
     async fn send_response_headers_message(
         sender: &mut UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
     ) -> Result<(), futures::channel::mpsc::SendError> {
+        trace!("send_response_headers_message (ProcessingResponse)");
         let processing_reply = ProcessingResponse {
             response: Some(processing_response::Response::ResponseHeaders(
                 HeadersResponse::default(),
@@ -1792,18 +1841,19 @@ impl BulwarkProcessor {
             }),
             ..Default::default()
         };
-        Ok(sender.send(Ok(processing_reply)).await?)
+        sender.send(Ok(processing_reply)).await
     }
 
     async fn get_response_body_message(
         stream: &mut Streaming<ProcessingRequest>,
-    ) -> Option<HttpBody> {
-        if let Ok(Some(next_msg)) = stream.message().await {
+    ) -> Result<Option<HttpBody>, tonic::Status> {
+        trace!("get_response_body_message (ProcessingRequest)");
+        if let Some(next_msg) = stream.message().await? {
             if let Some(processing_request::Request::ResponseBody(body)) = next_msg.request {
-                return Some(body);
+                return Ok(Some(body));
             }
         }
-        None
+        Ok(None)
     }
 
     fn get_header_value<'a>(header_map: &'a Option<HeaderMap>, name: &str) -> Option<&'a str> {
