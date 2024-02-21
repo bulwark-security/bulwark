@@ -365,6 +365,7 @@ impl PluginInstance {
         let incoming_request: http::Request<HyperIncomingBody> =
             (*incoming_request).clone().map(|body| {
                 if !body.is_empty() {
+                    // Body is already read into a large buffer
                     BoxBody::new(Full::new(body).map_err(|_| unreachable!()))
                 } else {
                     BoxBody::new(Empty::new().map_err(|_| unreachable!()))
@@ -411,6 +412,7 @@ impl PluginInstance {
         let incoming_request: http::Request<HyperIncomingBody> =
             (*incoming_request).clone().map(|body| {
                 if !body.is_empty() {
+                    // Body is already read into a large buffer
                     BoxBody::new(Full::new(body).map_err(|_| unreachable!()))
                 } else {
                     BoxBody::new(Empty::new().map_err(|_| unreachable!()))
@@ -456,6 +458,7 @@ impl PluginInstance {
         let incoming_request: http::Request<HyperIncomingBody> =
             (*incoming_request).clone().map(|body| {
                 if !body.is_empty() {
+                    // Body is already read into a large buffer
                     BoxBody::new(Full::new(body).map_err(|_| unreachable!()))
                 } else {
                     BoxBody::new(Empty::new().map_err(|_| unreachable!()))
@@ -469,22 +472,19 @@ impl PluginInstance {
 
         let (parts, body) = (*incoming_response).clone().into_parts();
 
-        // We already have a fully read body, but HostIncomingResponse seems to assume we won't have that.
-        // Maybe we shouldn't have that?
-        // In any case, for now, we're just going to make a noop join handle.
-        let worker = Arc::new(wasmtime_wasi::preview2::spawn(async move {}));
-
         let incoming_response = wasmtime_wasi_http::types::HostIncomingResponse {
             status: parts.status.as_u16(),
             headers: parts.headers,
             body: match !body.is_empty() {
+                // Body is already read into a large buffer
                 true => Some(wasmtime_wasi_http::body::HostIncomingBody::new(
                     BoxBody::new(Full::new(body).map_err(|_| unreachable!())),
                     std::time::Duration::from_millis(600 * 1000),
                 )),
                 false => None,
             },
-            worker,
+            // No-op worker
+            worker: Arc::new(wasmtime_wasi::preview2::spawn(async {})),
         };
         let incoming_response_handle = self
             .store
@@ -541,23 +541,19 @@ impl PluginInstance {
 
         let (parts, body) = (*incoming_response).clone().into_parts();
 
-        // We already have a fully read body, but HostIncomingResponse seems to assume we won't have that.
-        // Maybe we shouldn't have that?
-        // In any case, for now, we're just going to make a noop join handle.
-        let worker = Arc::new(wasmtime_wasi::preview2::spawn(async move {}));
-
         let incoming_response = wasmtime_wasi_http::types::HostIncomingResponse {
             status: parts.status.as_u16(),
             headers: parts.headers,
             body: match !body.is_empty() {
+                // Body is already read into a large buffer
                 true => Some(wasmtime_wasi_http::body::HostIncomingBody::new(
                     BoxBody::new(Full::new(body).map_err(|_| unreachable!())),
-                    // TODO: this needs to be plumbed through
                     std::time::Duration::from_millis(600 * 1000),
                 )),
                 false => None,
             },
-            worker,
+            // No-op worker
+            worker: Arc::new(wasmtime_wasi::preview2::spawn(async {})),
         };
         let incoming_response_handle = self
             .store
