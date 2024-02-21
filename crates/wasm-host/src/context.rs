@@ -6,7 +6,7 @@ use {
     wasmtime::component::Resource,
     wasmtime_wasi::preview2::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView},
     wasmtime_wasi_http::types::{
-        HostFutureIncomingResponse, HostOutgoingResponse, OutgoingRequest,
+        HostFutureIncomingResponse, HostIncomingResponse, OutgoingRequest,
     },
     wasmtime_wasi_http::{WasiHttpCtx, WasiHttpView},
 };
@@ -204,10 +204,10 @@ impl PluginContext {
         })
     }
 
-    pub fn new_outgoing_response(
+    pub fn new_incoming_response(
         &mut self,
-        response: HostOutgoingResponse,
-    ) -> wasmtime::Result<Resource<HostOutgoingResponse>> {
+        response: HostIncomingResponse,
+    ) -> wasmtime::Result<Resource<HostIncomingResponse>> {
         let id = self.wasi_table.push(response)?;
         Ok(id)
     }

@@ -2,7 +2,7 @@
 use wasi:http/types@0.2.0 as http-types;
 
 interface http-handlers {
-    use http-types.{incoming-request, outgoing-response};
+    use http-types.{incoming-request, incoming-response};
     use types.{handler-output, decision, outcome, param, verdict};
 
     /// Called once when the plugin is first instantiated.
@@ -29,14 +29,14 @@ interface http-handlers {
     /// any side effects from the request on the interior service will
     /// have already taken place, so any blocking logic that results from
     /// a decision by the plugin in this handler is no longer preventative.
-    handle-response-decision: func(request: incoming-request, response: outgoing-response, params: list<param>) -> result<handler-output, error>;
+    handle-response-decision: func(request: incoming-request, response: incoming-response, params: list<param>) -> result<handler-output, error>;
     /// Called after all plugins have rendered their decisions and the results combined.
     ///
     /// This handler may be used to create feedback loops, train models, or to make API calls
     /// to internal services (e.g. session termination). Notably, session termination or other
     /// mitigation steps may be particularly relevant if a blocking operation happened in the
     /// response handler rather than the request handler.
-    handle-decision-feedback: func(request: incoming-request, response: outgoing-response, params: list<param>, verdict: verdict) -> result<_, error>;
+    handle-decision-feedback: func(request: incoming-request, response: incoming-response, params: list<param>, verdict: verdict) -> result<_, error>;
 
     // TODO: the handler error should be easy to use with the ? operator.
 

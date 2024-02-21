@@ -1,4 +1,5 @@
 use anyhow::Context as _;
+use wasmtime_wasi::preview2::AbortOnDropJoinHandle;
 use wasmtime_wasi_http::body::{HyperIncomingBody, HyperOutgoingBody};
 
 mod latest {
@@ -376,7 +377,7 @@ impl PluginInstance {
             .new_incoming_request(incoming_request)?;
 
         // TODO: need to determine if automatic calls to remove_forbidden_headers are going to be a problem
-        let params: Vec<(String, String)> = params.into_iter().map(|(k, v)| (k, v)).collect();
+        let params: Vec<(String, String)> = params.into_iter().collect();
         let result = self
             .http_detection
             .bulwark_plugin_http_handlers()
@@ -396,7 +397,7 @@ impl PluginInstance {
                 "ref" => self.plugin_reference(), "result" => "error"
             ),
         }
-        let params: HashMap<String, String> = result??.into_iter().map(|(k, v)| (k, v)).collect();
+        let params: HashMap<String, String> = result??.into_iter().collect();
 
         Ok(params)
     }
@@ -421,7 +422,7 @@ impl PluginInstance {
             .data_mut()
             .new_incoming_request(incoming_request)?;
 
-        let params: Vec<(String, String)> = params.into_iter().map(|(k, v)| (k, v)).collect();
+        let params: Vec<(String, String)> = params.into_iter().collect();
         let result = self
             .http_detection
             .bulwark_plugin_http_handlers()
@@ -449,7 +450,7 @@ impl PluginInstance {
     pub async fn handle_response_decision(
         &mut self,
         incoming_request: Arc<bulwark_wasm_sdk::Request>,
-        outgoing_response: Arc<bulwark_wasm_sdk::Response>,
+        incoming_response: Arc<bulwark_wasm_sdk::Response>,
         params: HashMap<String, String>,
     ) -> Result<HandlerOutput, PluginExecutionError> {
         let incoming_request: http::Request<HyperIncomingBody> =
@@ -466,30 +467,39 @@ impl PluginInstance {
             .data_mut()
             .new_incoming_request(incoming_request)?;
 
-        let (parts, body) = (*outgoing_response).clone().into_parts();
-        let outgoing_response = wasmtime_wasi_http::types::HostOutgoingResponse {
-            status: parts.status,
+        let (parts, body) = (*incoming_response).clone().into_parts();
+
+        // We already have a fully read body, but HostIncomingResponse seems to assume we won't have that.
+        // Maybe we shouldn't have that?
+        // In any case, for now, we're just going to make a noop join handle.
+        let worker = Arc::new(wasmtime_wasi::preview2::spawn(async move {}));
+
+        let incoming_response = wasmtime_wasi_http::types::HostIncomingResponse {
+            status: parts.status.as_u16(),
             headers: parts.headers,
-            body: Some(if !body.is_empty() {
-                BoxBody::new(Full::new(body).map_err(|_| unreachable!()))
-            } else {
-                BoxBody::new(Empty::new().map_err(|_| unreachable!()))
-            }),
+            body: match !body.is_empty() {
+                true => Some(wasmtime_wasi_http::body::HostIncomingBody::new(
+                    BoxBody::new(Full::new(body).map_err(|_| unreachable!())),
+                    std::time::Duration::from_millis(600 * 1000),
+                )),
+                false => None,
+            },
+            worker,
         };
-        let outgoing_response_handle = self
+        let incoming_response_handle = self
             .store
             .as_context_mut()
             .data_mut()
-            .new_outgoing_response(outgoing_response)?;
+            .new_incoming_response(incoming_response)?;
 
-        let params: Vec<(String, String)> = params.into_iter().map(|(k, v)| (k, v)).collect();
+        let params: Vec<(String, String)> = params.into_iter().collect();
         let result = self
             .http_detection
             .bulwark_plugin_http_handlers()
             .call_handle_response_decision(
                 self.store.as_context_mut(),
                 incoming_request_handle,
-                outgoing_response_handle,
+                incoming_response_handle,
                 params.as_slice(),
             )
             .await;
@@ -511,7 +521,7 @@ impl PluginInstance {
     pub async fn handle_decision_feedback(
         &mut self,
         incoming_request: Arc<bulwark_wasm_sdk::Request>,
-        outgoing_response: Arc<bulwark_wasm_sdk::Response>,
+        incoming_response: Arc<bulwark_wasm_sdk::Response>,
         params: HashMap<String, String>,
         verdict: bulwark_wasm_sdk::Verdict,
     ) -> Result<(), PluginExecutionError> {
@@ -529,30 +539,40 @@ impl PluginInstance {
             .data_mut()
             .new_incoming_request(incoming_request)?;
 
-        let (parts, body) = (*outgoing_response).clone().into_parts();
-        let outgoing_response = wasmtime_wasi_http::types::HostOutgoingResponse {
-            status: parts.status,
+        let (parts, body) = (*incoming_response).clone().into_parts();
+
+        // We already have a fully read body, but HostIncomingResponse seems to assume we won't have that.
+        // Maybe we shouldn't have that?
+        // In any case, for now, we're just going to make a noop join handle.
+        let worker = Arc::new(wasmtime_wasi::preview2::spawn(async move {}));
+
+        let incoming_response = wasmtime_wasi_http::types::HostIncomingResponse {
+            status: parts.status.as_u16(),
             headers: parts.headers,
-            body: Some(if !body.is_empty() {
-                BoxBody::new(Full::new(bytes::Bytes::from(body)).map_err(|_| unreachable!()))
-            } else {
-                BoxBody::new(Empty::new().map_err(|_| unreachable!()))
-            }),
+            body: match !body.is_empty() {
+                true => Some(wasmtime_wasi_http::body::HostIncomingBody::new(
+                    BoxBody::new(Full::new(body).map_err(|_| unreachable!())),
+                    // TODO: this needs to be plumbed through
+                    std::time::Duration::from_millis(600 * 1000),
+                )),
+                false => None,
+            },
+            worker,
         };
-        let outgoing_response_handle = self
+        let incoming_response_handle = self
             .store
             .as_context_mut()
             .data_mut()
-            .new_outgoing_response(outgoing_response)?;
+            .new_incoming_response(incoming_response)?;
 
-        let params: Vec<(String, String)> = params.into_iter().map(|(k, v)| (k, v)).collect();
+        let params: Vec<(String, String)> = params.into_iter().collect();
         let result = self
             .http_detection
             .bulwark_plugin_http_handlers()
             .call_handle_decision_feedback(
                 self.store.as_context_mut(),
                 incoming_request_handle,
-                outgoing_response_handle,
+                incoming_response_handle,
                 params.as_slice(),
                 &verdict.into(),
             )

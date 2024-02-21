@@ -352,7 +352,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                 if !end_of_stream {
                     // A body should be available, extract it.
                     let body = request.consume().map_err(|_| {
-                        crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other("body already consumed".to_string())
+                        crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other("body cannot be consumed".to_string())
                     })?;
                     let mut stream = body.stream().map_err(|_| {
                         crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other("could not get body stream".to_string())
@@ -362,7 +362,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                     })?);
                 }
 
-                // TODO: Add support for trailers.
+                // TODO: Add support for trailers?
 
                 Ok(builder.body(bulwark_wasm_sdk::Bytes::from(buffer)).map_err(|e| {
                     crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
@@ -377,7 +377,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                 const MAX_SIZE: u64 = 1048576;
                 let mut builder = ::bulwark_wasm_sdk::ResponseBuilder::new();
                 // We have no way to know the HTTP version here, so leave it as default.
-                builder = builder.status(response.status_code());
+                builder = builder.status(response.status());
 
                 let mut end_of_stream = true;
                 let headers = response.headers().entries();
@@ -401,7 +401,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                 if !end_of_stream {
                     // A body should be available, extract it.
                     let body = response.consume().map_err(|_| {
-                        crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other("body already consumed".to_string())
+                        crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other("body cannot be consumed".to_string())
                     })?;
                     let mut stream = body.stream().map_err(|_| {
                         crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other("could not get body stream".to_string())
@@ -411,7 +411,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                     })?);
                 }
 
-                // TODO: Add support for trailers.
+                // TODO: Add support for trailers?
 
                 Ok(builder.body(bulwark_wasm_sdk::Bytes::from(buffer)).map_err(|e| {
                     crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
@@ -545,7 +545,7 @@ pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
                 #(#attrs)*
                 fn handle_response_decision(
                     request: handlers::wasi::http::types::IncomingRequest,
-                    response: handlers::wasi::http::types::OutgoingResponse,
+                    response: handlers::wasi::http::types::IncomingResponse,
                     params: wit_bindgen::rt::vec::Vec<handlers::bulwark::plugin::types::Param>,
                 ) -> Result<
                     handlers::exports::bulwark::plugin::http_handlers::HandlerOutput,
@@ -577,7 +577,7 @@ pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
                 #(#attrs)*
                 fn handle_decision_feedback(
                     request: handlers::wasi::http::types::IncomingRequest,
-                    response: handlers::wasi::http::types::OutgoingResponse,
+                    response: handlers::wasi::http::types::IncomingResponse,
                     params: wit_bindgen::rt::vec::Vec<handlers::bulwark::plugin::types::Param>,
                     verdict: handlers::bulwark::plugin::types::Verdict,
                 ) -> Result<(), handlers::exports::bulwark::plugin::http_handlers::Error> {
