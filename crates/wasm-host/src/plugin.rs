@@ -348,29 +348,20 @@ impl PluginInstance {
         Ok(())
     }
 
-    // TODO: WasiHttpView implements new_incoming_request but unsure how WasiHttpView ends up in the mix
-    // TODO: looks like it's implemented as a trait onto the context
-    // TODO: Spin may not be a good example for this specific scenario?
-    // let request = self.store.as_mut().data_mut().new_incoming_request(req)?;
-
-    // TODO: need to avoid exposing the binding types across a public interface, will need to do some type conversions
-    // TODO: this is now just the HandlerOutput and Verdict types
-
     /// Executes the guest's `on_request` function.
     pub async fn handle_request_enrichment(
         &mut self,
-        incoming_request: Arc<bulwark_wasm_sdk::Request>,
+        request: Arc<bulwark_wasm_sdk::Request>,
         params: HashMap<String, String>,
     ) -> Result<HashMap<String, String>, PluginExecutionError> {
-        let incoming_request: http::Request<HyperIncomingBody> =
-            (*incoming_request).clone().map(|body| {
-                if !body.is_empty() {
-                    // Body is already read into a large buffer
-                    BoxBody::new(Full::new(body).map_err(|_| unreachable!()))
-                } else {
-                    BoxBody::new(Empty::new().map_err(|_| unreachable!()))
-                }
-            });
+        let incoming_request: http::Request<HyperIncomingBody> = (*request).clone().map(|body| {
+            if !body.is_empty() {
+                // Body is already read into a large buffer
+                BoxBody::new(Full::new(body).map_err(|_| unreachable!()))
+            } else {
+                BoxBody::new(Empty::new().map_err(|_| unreachable!()))
+            }
+        });
         let incoming_request_handle = self
             .store
             .as_context_mut()
@@ -406,18 +397,17 @@ impl PluginInstance {
     /// Executes the guest's `on_request_decision` function.
     pub async fn handle_request_decision(
         &mut self,
-        incoming_request: Arc<bulwark_wasm_sdk::Request>,
+        request: Arc<bulwark_wasm_sdk::Request>,
         params: HashMap<String, String>,
     ) -> Result<HandlerOutput, PluginExecutionError> {
-        let incoming_request: http::Request<HyperIncomingBody> =
-            (*incoming_request).clone().map(|body| {
-                if !body.is_empty() {
-                    // Body is already read into a large buffer
-                    BoxBody::new(Full::new(body).map_err(|_| unreachable!()))
-                } else {
-                    BoxBody::new(Empty::new().map_err(|_| unreachable!()))
-                }
-            });
+        let incoming_request: http::Request<HyperIncomingBody> = (*request).clone().map(|body| {
+            if !body.is_empty() {
+                // Body is already read into a large buffer
+                BoxBody::new(Full::new(body).map_err(|_| unreachable!()))
+            } else {
+                BoxBody::new(Empty::new().map_err(|_| unreachable!()))
+            }
+        });
         let incoming_request_handle = self
             .store
             .as_context_mut()
@@ -451,38 +441,37 @@ impl PluginInstance {
     /// Executes the guest's `on_response_decision` function.
     pub async fn handle_response_decision(
         &mut self,
-        incoming_request: Arc<bulwark_wasm_sdk::Request>,
-        incoming_response: Arc<bulwark_wasm_sdk::Response>,
+        request: Arc<bulwark_wasm_sdk::Request>,
+        response: Arc<bulwark_wasm_sdk::Response>,
         params: HashMap<String, String>,
     ) -> Result<HandlerOutput, PluginExecutionError> {
-        let incoming_request: http::Request<HyperIncomingBody> =
-            (*incoming_request).clone().map(|body| {
-                if !body.is_empty() {
-                    // Body is already read into a large buffer
-                    BoxBody::new(Full::new(body).map_err(|_| unreachable!()))
-                } else {
-                    BoxBody::new(Empty::new().map_err(|_| unreachable!()))
-                }
-            });
+        let incoming_request: http::Request<HyperIncomingBody> = (*request).clone().map(|body| {
+            if !body.is_empty() {
+                // Body is already read into a large buffer
+                BoxBody::new(Full::new(body).map_err(|_| unreachable!()))
+            } else {
+                BoxBody::new(Empty::new().map_err(|_| unreachable!()))
+            }
+        });
         let incoming_request_handle = self
             .store
             .as_context_mut()
             .data_mut()
             .new_incoming_request(incoming_request)?;
 
-        let (parts, body) = (*incoming_response).clone().into_parts();
+        let (parts, body) = (*response).clone().into_parts();
 
         let incoming_response = wasmtime_wasi_http::types::HostIncomingResponse {
             status: parts.status.as_u16(),
             headers: parts.headers,
-            body: match !body.is_empty() {
-                // Body is already read into a large buffer
-                true => Some(wasmtime_wasi_http::body::HostIncomingBody::new(
-                    BoxBody::new(Full::new(body).map_err(|_| unreachable!())),
-                    std::time::Duration::from_millis(600 * 1000),
-                )),
-                false => None,
-            },
+            body: Some(wasmtime_wasi_http::body::HostIncomingBody::new(
+                match !body.is_empty() {
+                    // Body is already read into a large buffer
+                    true => BoxBody::new(Full::new(body).map_err(|_| unreachable!())),
+                    false => BoxBody::new(Empty::new().map_err(|_| unreachable!())),
+                },
+                std::time::Duration::from_millis(600 * 1000),
+            )),
             // No-op worker
             worker: Arc::new(wasmtime_wasi::preview2::spawn(async {})),
         };
@@ -520,38 +509,37 @@ impl PluginInstance {
     /// Executes the guest's `on_decision_feedback` function.
     pub async fn handle_decision_feedback(
         &mut self,
-        incoming_request: Arc<bulwark_wasm_sdk::Request>,
-        incoming_response: Arc<bulwark_wasm_sdk::Response>,
+        request: Arc<bulwark_wasm_sdk::Request>,
+        response: Arc<bulwark_wasm_sdk::Response>,
         params: HashMap<String, String>,
         verdict: bulwark_wasm_sdk::Verdict,
     ) -> Result<(), PluginExecutionError> {
-        let incoming_request: http::Request<HyperIncomingBody> =
-            (*incoming_request).clone().map(|body| {
-                if !body.is_empty() {
-                    BoxBody::new(Full::new(body).map_err(|_| unreachable!()))
-                } else {
-                    BoxBody::new(Empty::new().map_err(|_| unreachable!()))
-                }
-            });
+        let incoming_request: http::Request<HyperIncomingBody> = (*request).clone().map(|body| {
+            if !body.is_empty() {
+                BoxBody::new(Full::new(body).map_err(|_| unreachable!()))
+            } else {
+                BoxBody::new(Empty::new().map_err(|_| unreachable!()))
+            }
+        });
         let incoming_request_handle = self
             .store
             .as_context_mut()
             .data_mut()
             .new_incoming_request(incoming_request)?;
 
-        let (parts, body) = (*incoming_response).clone().into_parts();
+        let (parts, body) = (*response).clone().into_parts();
 
         let incoming_response = wasmtime_wasi_http::types::HostIncomingResponse {
             status: parts.status.as_u16(),
             headers: parts.headers,
-            body: match !body.is_empty() {
-                // Body is already read into a large buffer
-                true => Some(wasmtime_wasi_http::body::HostIncomingBody::new(
-                    BoxBody::new(Full::new(body).map_err(|_| unreachable!())),
-                    std::time::Duration::from_millis(600 * 1000),
-                )),
-                false => None,
-            },
+            body: Some(wasmtime_wasi_http::body::HostIncomingBody::new(
+                match !body.is_empty() {
+                    // Body is already read into a large buffer
+                    true => BoxBody::new(Full::new(body).map_err(|_| unreachable!())),
+                    false => BoxBody::new(Empty::new().map_err(|_| unreachable!())),
+                },
+                std::time::Duration::from_millis(600 * 1000),
+            )),
             // No-op worker
             worker: Arc::new(wasmtime_wasi::preview2::spawn(async {})),
         };
