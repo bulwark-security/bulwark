@@ -254,7 +254,7 @@ impl WasiHttpView for PluginContext {
 impl crate::bindings::bulwark::plugin::types::Host for PluginContext {}
 
 impl crate::bindings::bulwark::plugin::config::Host for PluginContext {
-    /// Returns the plugin\\'s entire config.
+    /// Returns the plugin's entire config.
     fn config<'life0, 'async_trait>(
         &'life0 mut self,
     ) -> ::core::pin::Pin<
@@ -302,38 +302,10 @@ impl crate::bindings::bulwark::plugin::config::Host for PluginContext {
     }
 }
 
-impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {}
-
-impl crate::bindings::bulwark::plugin::redis::HostPool for PluginContext {
-    /// Acquires a reference to the Redis connection pool that Bulwark has been configured to use.
-    fn acquire<'life0, 'async_trait>(
-        &'life0 mut self,
-    ) -> ::core::pin::Pin<
-        Box<
-            dyn ::core::future::Future<
-                    Output = wasmtime::Result<
-                        Result<
-                            wasmtime::component::Resource<
-                                crate::bindings::bulwark::plugin::redis::Pool,
-                            >,
-                            crate::bindings::bulwark::plugin::redis::Error,
-                        >,
-                    >,
-                > + ::core::marker::Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'life0: 'async_trait,
-        Self: 'async_trait,
-    {
-        todo!()
-    }
-
+impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
     /// Retrieves the value associated with the given key.
     fn get<'life0, 'async_trait>(
         &'life0 mut self,
-        self_: wasmtime::component::Resource<crate::bindings::bulwark::plugin::redis::Pool>,
         key: String,
     ) -> ::core::pin::Pin<
         Box<
@@ -357,7 +329,6 @@ impl crate::bindings::bulwark::plugin::redis::HostPool for PluginContext {
     /// Overwrites any previously existing value.
     fn set<'life0, 'async_trait>(
         &'life0 mut self,
-        self_: wasmtime::component::Resource<crate::bindings::bulwark::plugin::redis::Pool>,
         key: String,
         value: Vec<u8>,
     ) -> ::core::pin::Pin<
@@ -382,7 +353,6 @@ impl crate::bindings::bulwark::plugin::redis::HostPool for PluginContext {
     /// Non-existant keys are ignored. Returns the number of keys that were removed.
     fn del<'life0, 'async_trait>(
         &'life0 mut self,
-        self_: wasmtime::component::Resource<crate::bindings::bulwark::plugin::redis::Pool>,
         keys: Vec<String>,
     ) -> ::core::pin::Pin<
         Box<
@@ -407,7 +377,6 @@ impl crate::bindings::bulwark::plugin::redis::HostPool for PluginContext {
     /// If the key already has a value that cannot be incremented, a `error::type-error` is returned.
     fn incr<'life0, 'async_trait>(
         &'life0 mut self,
-        self_: wasmtime::component::Resource<crate::bindings::bulwark::plugin::redis::Pool>,
         key: String,
     ) -> ::core::pin::Pin<
         Box<
@@ -432,7 +401,6 @@ impl crate::bindings::bulwark::plugin::redis::HostPool for PluginContext {
     /// If the key already has a value that cannot be incremented, a `error::type-error` is returned.
     fn incr_by<'life0, 'async_trait>(
         &'life0 mut self,
-        self_: wasmtime::component::Resource<crate::bindings::bulwark::plugin::redis::Pool>,
         key: String,
         delta: i64,
     ) -> ::core::pin::Pin<
@@ -458,7 +426,6 @@ impl crate::bindings::bulwark::plugin::redis::HostPool for PluginContext {
     /// not including all the elements already present in the set.
     fn sadd<'life0, 'async_trait>(
         &'life0 mut self,
-        self_: wasmtime::component::Resource<crate::bindings::bulwark::plugin::redis::Pool>,
         key: String,
         values: Vec<String>,
     ) -> ::core::pin::Pin<
@@ -481,7 +448,6 @@ impl crate::bindings::bulwark::plugin::redis::HostPool for PluginContext {
     /// Returns the contents of the given set.
     fn smembers<'life0, 'async_trait>(
         &'life0 mut self,
-        self_: wasmtime::component::Resource<crate::bindings::bulwark::plugin::redis::Pool>,
         key: String,
     ) -> ::core::pin::Pin<
         Box<
@@ -506,7 +472,6 @@ impl crate::bindings::bulwark::plugin::redis::HostPool for PluginContext {
     /// not including non existing members.
     fn srem<'life0, 'async_trait>(
         &'life0 mut self,
-        self_: wasmtime::component::Resource<crate::bindings::bulwark::plugin::redis::Pool>,
         key: String,
         values: Vec<String>,
     ) -> ::core::pin::Pin<
@@ -529,7 +494,6 @@ impl crate::bindings::bulwark::plugin::redis::HostPool for PluginContext {
     /// Sets the time to live for the given key.
     fn expire<'life0, 'async_trait>(
         &'life0 mut self,
-        self_: wasmtime::component::Resource<crate::bindings::bulwark::plugin::redis::Pool>,
         key: String,
         ttl: i64,
     ) -> ::core::pin::Pin<
@@ -552,7 +516,6 @@ impl crate::bindings::bulwark::plugin::redis::HostPool for PluginContext {
     /// Sets the expiration for the given key to the given unix time.
     fn expire_at<'life0, 'async_trait>(
         &'life0 mut self,
-        self_: wasmtime::component::Resource<crate::bindings::bulwark::plugin::redis::Pool>,
         key: String,
         unix_time: i64,
     ) -> ::core::pin::Pin<
@@ -574,7 +537,6 @@ impl crate::bindings::bulwark::plugin::redis::HostPool for PluginContext {
 
     fn incr_rate_limit<'life0, 'async_trait>(
         &'life0 mut self,
-        self_: wasmtime::component::Resource<crate::bindings::bulwark::plugin::redis::Pool>,
         key: String,
         delta: i64,
         window: i64,
@@ -600,7 +562,6 @@ impl crate::bindings::bulwark::plugin::redis::HostPool for PluginContext {
 
     fn check_rate_limit<'life0, 'async_trait>(
         &'life0 mut self,
-        self_: wasmtime::component::Resource<crate::bindings::bulwark::plugin::redis::Pool>,
         key: String,
     ) -> ::core::pin::Pin<
         Box<
@@ -624,7 +585,6 @@ impl crate::bindings::bulwark::plugin::redis::HostPool for PluginContext {
 
     fn incr_breaker<'life0, 'async_trait>(
         &'life0 mut self,
-        self_: wasmtime::component::Resource<crate::bindings::bulwark::plugin::redis::Pool>,
         key: String,
         success_delta: i64,
         failure_delta: i64,
@@ -651,7 +611,6 @@ impl crate::bindings::bulwark::plugin::redis::HostPool for PluginContext {
 
     fn check_breaker<'life0, 'async_trait>(
         &'life0 mut self,
-        self_: wasmtime::component::Resource<crate::bindings::bulwark::plugin::redis::Pool>,
         key: String,
     ) -> ::core::pin::Pin<
         Box<
@@ -670,13 +629,6 @@ impl crate::bindings::bulwark::plugin::redis::HostPool for PluginContext {
         'life0: 'async_trait,
         Self: 'async_trait,
     {
-        todo!()
-    }
-
-    fn drop(
-        &mut self,
-        rep: wasmtime::component::Resource<crate::bindings::bulwark::plugin::redis::Pool>,
-    ) -> wasmtime::Result<()> {
         todo!()
     }
 }
