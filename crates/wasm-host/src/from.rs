@@ -2,46 +2,99 @@ use crate::HandlerOutput;
 use bulwark_wasm_sdk::{Decision, Outcome, Verdict};
 use std::collections::{HashMap, HashSet};
 
-// impl From<Arc<bulwark_wasm_sdk::Request>> for bulwark_host::RequestInterface {
-//     fn from(request: Arc<bulwark_wasm_sdk::Request>) -> Self {
-//         bulwark_host::RequestInterface {
-//             method: request.method().to_string(),
-//             uri: request.uri().to_string(),
-//             version: format!("{:?}", request.version()),
-//             headers: request
-//                 .headers()
-//                 .iter()
-//                 .map(|(name, value)| (name.to_string(), value.as_bytes().to_vec()))
-//                 .collect(),
-//             body_received: request.body().received,
-//             chunk_start: request.body().start,
-//             chunk_length: request.body().size,
-//             end_of_stream: request.body().end_of_stream,
-//             // TODO: figure out how to avoid the copy
-//             chunk: request.body().content.clone(),
-//         }
-//     }
-// }
+impl TryFrom<serde_json::Value> for crate::bindings::bulwark::plugin::config::Value {
+    type Error = &'static str;
 
-// impl From<Arc<bulwark_wasm_sdk::Response>> for bulwark_host::ResponseInterface {
-//     fn from(response: Arc<bulwark_wasm_sdk::Response>) -> Self {
-//         bulwark_host::ResponseInterface {
-//             // this unwrap should be okay since a non-zero u16 should always be coercible to u32
-//             status: response.status().as_u16().try_into().unwrap(),
-//             headers: response
-//                 .headers()
-//                 .iter()
-//                 .map(|(name, value)| (name.to_string(), value.as_bytes().to_vec()))
-//                 .collect(),
-//             body_received: response.body().received,
-//             chunk_start: response.body().start,
-//             chunk_length: response.body().size,
-//             end_of_stream: response.body().end_of_stream,
-//             // TODO: figure out how to avoid the copy
-//             chunk: response.body().content.clone(),
-//         }
-//     }
-// }
+    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+        Ok(match value {
+            serde_json::Value::Null => crate::bindings::bulwark::plugin::config::Value::Null,
+            serde_json::Value::Bool(b) => {
+                crate::bindings::bulwark::plugin::config::Value::Boolean(b)
+            }
+            serde_json::Value::Number(n) => {
+                if let Some(n) = n.as_u64() {
+                    crate::bindings::bulwark::plugin::config::Value::Num(
+                        crate::bindings::bulwark::plugin::config::Number::Posint(n),
+                    )
+                } else if let Some(n) = n.as_i64() {
+                    // This should only be Some if the number is negative
+                    crate::bindings::bulwark::plugin::config::Value::Num(
+                        crate::bindings::bulwark::plugin::config::Number::Negint(n),
+                    )
+                } else {
+                    // This should only fall through if the number is not an integer
+                    crate::bindings::bulwark::plugin::config::Value::Num(
+                        crate::bindings::bulwark::plugin::config::Number::Float(
+                            // Error scenario is presumably more likely to be not finite since
+                            // all 3 underlying representations can successfully coerce to f64.
+                            n.as_f64().ok_or("not finite or not a float")?,
+                        ),
+                    )
+                }
+            }
+            serde_json::Value::String(s) => crate::bindings::bulwark::plugin::config::Value::Str(s),
+            serde_json::Value::Array(a) => {
+                let mut values = Vec::with_capacity(a.len());
+                for value in a {
+                    values.push(
+                        crate::bindings::bulwark::plugin::config::PrimitiveValue::try_from(value)?,
+                    );
+                }
+                crate::bindings::bulwark::plugin::config::Value::Arr(values)
+            }
+            serde_json::Value::Object(o) => {
+                let mut obj = HashMap::with_capacity(o.len());
+                for (key, value) in o {
+                    obj.insert(
+                        key,
+                        crate::bindings::bulwark::plugin::config::PrimitiveValue::try_from(value)?,
+                    );
+                }
+                crate::bindings::bulwark::plugin::config::Value::Obj(obj.into_iter().collect())
+            }
+        })
+    }
+}
+
+impl TryFrom<serde_json::Value> for crate::bindings::bulwark::plugin::config::PrimitiveValue {
+    type Error = &'static str;
+
+    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+        Ok(match value {
+            serde_json::Value::Null => {
+                crate::bindings::bulwark::plugin::config::PrimitiveValue::Null
+            }
+            serde_json::Value::Bool(b) => {
+                crate::bindings::bulwark::plugin::config::PrimitiveValue::Boolean(b)
+            }
+            serde_json::Value::Number(n) => {
+                if let Some(n) = n.as_u64() {
+                    crate::bindings::bulwark::plugin::config::PrimitiveValue::Num(
+                        crate::bindings::bulwark::plugin::config::Number::Posint(n),
+                    )
+                } else if let Some(n) = n.as_i64() {
+                    // This should only be Some if the number is negative
+                    crate::bindings::bulwark::plugin::config::PrimitiveValue::Num(
+                        crate::bindings::bulwark::plugin::config::Number::Negint(n),
+                    )
+                } else {
+                    // This should only fall through if the number is not an integer
+                    crate::bindings::bulwark::plugin::config::PrimitiveValue::Num(
+                        crate::bindings::bulwark::plugin::config::Number::Float(
+                            // Error scenario is presumably more likely to be not finite since
+                            // all 3 underlying representations can successfully coerce to f64.
+                            n.as_f64().ok_or("not finite or not a float")?,
+                        ),
+                    )
+                }
+            }
+            serde_json::Value::String(s) => {
+                crate::bindings::bulwark::plugin::config::PrimitiveValue::Str(s)
+            }
+            _ => Err("not a primitive value")?,
+        })
+    }
+}
 
 impl From<crate::bindings::bulwark::plugin::types::Decision> for Decision {
     fn from(decision: crate::bindings::bulwark::plugin::types::Decision) -> Self {

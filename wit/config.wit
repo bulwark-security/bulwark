@@ -26,15 +26,16 @@ interface config {
         float(float64),
     }
 
-    /// Returns the plugin's entire config.
-    config: func() -> result<value, error>;
+    /// Returns all config key names.
+    config-keys: func() -> list<string>;
     /// Returns the named config value.
     config-var: func(key: string) -> result<option<value>, error>;
 
     variant error {
         missing(string),
+        invalid-serialization(string),
         invalid-unicode(string),
-        invalid-nesting(string),
+        invalid-conversion(string),
         permission(string),
     }
 }

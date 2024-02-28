@@ -37,9 +37,13 @@ impl From<crate::wit::bulwark::plugin::config::Error> for EnvVarError {
                     message: format!("environment variable '{var}' contained invalid unicode"),
                 }
             }
-            crate::wit::bulwark::plugin::config::Error::InvalidNesting(var) => {
+            crate::wit::bulwark::plugin::config::Error::InvalidSerialization(_) => {
                 // This shouldn't happen because environment variables are always returned as bytes or strings
-                EnvVarError::Other { var }
+                unreachable!()
+            }
+            crate::wit::bulwark::plugin::config::Error::InvalidConversion(_) => {
+                // This shouldn't happen because environment variables are always returned as bytes or strings
+                unreachable!()
             }
         }
     }
@@ -60,8 +64,10 @@ pub enum ConfigError {
     Missing { var: String },
     #[error("{message}")]
     InvalidUnicode { message: String },
-    #[error("config value '{var}' contained nested data that could not be parsed")]
-    InvalidNesting { var: String },
+    #[error("{message}")]
+    InvalidSerialization { message: String },
+    #[error("config value could not be converted: {message}")]
+    InvalidConversion { message: String },
     #[error("an unexpected error occurred accessing config variable '{var}'")]
     Other { var: String },
 }
@@ -69,9 +75,9 @@ pub enum ConfigError {
 impl From<crate::wit::bulwark::plugin::config::Error> for ConfigError {
     fn from(error: crate::wit::bulwark::plugin::config::Error) -> Self {
         match error {
-            crate::wit::bulwark::plugin::config::Error::Permission(var) => {
+            crate::wit::bulwark::plugin::config::Error::Permission(_) => {
                 // This shouldn't happen because config is not gated by a permissions check
-                ConfigError::Other { var }
+                unreachable!()
             }
             crate::wit::bulwark::plugin::config::Error::Missing(var) => {
                 ConfigError::Missing { var }
@@ -81,8 +87,13 @@ impl From<crate::wit::bulwark::plugin::config::Error> for ConfigError {
                     message: format!("config variable '{var}' contained invalid unicode"),
                 }
             }
-            crate::wit::bulwark::plugin::config::Error::InvalidNesting(var) => {
-                ConfigError::InvalidNesting { var }
+            crate::wit::bulwark::plugin::config::Error::InvalidSerialization(message) => {
+                ConfigError::InvalidSerialization {
+                    message: format!("config serialization invalid: {message}"),
+                }
+            }
+            crate::wit::bulwark::plugin::config::Error::InvalidConversion(message) => {
+                ConfigError::InvalidConversion { message }
             }
         }
     }

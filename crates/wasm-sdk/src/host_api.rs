@@ -196,21 +196,24 @@ pub struct Verdict {
 //     Ok(())
 // }
 
-/// Returns the guest environment's configuration value as a [`Value`].
-///
-/// By convention this will return a [`Value::Object`].
-pub fn get_config() -> Result<Value, Error> {
-    Ok(crate::wit::bulwark::plugin::config::config()?.into())
+// /// Returns the guest environment's configuration value as a [`Value`].
+// ///
+// /// By convention this will return a [`Value::Object`].
+// pub fn get_config() -> Result<Value, Error> {
+//     Ok(crate::wit::bulwark::plugin::config::config()?.into())
+// }
+
+/// Returns all of the plugin's configuration key names.
+pub fn config_keys() -> Vec<String> {
+    crate::wit::bulwark::plugin::config::config_keys()
 }
 
-/// Returns a named guest environment configuration value as a [`Value`].
-///
-/// Equivalent to calling [`get_config`], reading it as an `Object`, and then retrieving a named [`Value`] from it.
+/// Returns a named plugin configuration value as a [`Value`].
 ///
 /// # Arguments
 ///
 /// * `key` - A key indexing into a configuration [`Map`]
-pub fn get_config_value(key: &str) -> Result<Option<Value>, Error> {
+pub fn config_var(key: &str) -> Result<Option<Value>, Error> {
     Ok(crate::wit::bulwark::plugin::config::config_var(key)?.map(|v| v.into()))
 }
 

@@ -3,16 +3,13 @@
 use bulwark_wasm_sdk::Verdict;
 
 use {
-    crate::{
-        serialize_decision_sfv, serialize_tags_sfv, PluginGroupInstantiationError,
-        ProcessingMessageError, RequestError, ResponseError, SfvError,
-    },
+    crate::{PluginGroupInstantiationError, ProcessingMessageError, RequestError, ResponseError},
     bulwark_config::Config,
     bulwark_wasm_host::{
         ForwardedIP, HandlerOutput, Plugin, PluginContext, PluginExecutionError, PluginInstance,
         PluginLoadError, RedisInfo, ScriptRegistry,
     },
-    bulwark_wasm_sdk::{Decision, Outcome},
+    bulwark_wasm_sdk::Decision,
     envoy_control_plane::envoy::{
         config::core::v3::{HeaderMap, HeaderValue, HeaderValueOption},
         extensions::filters::http::ext_proc::v3::{processing_mode, ProcessingMode},
@@ -1068,7 +1065,6 @@ impl BulwarkProcessor {
                         .await;
                     self.complete_response_phase(
                         &mut sender,
-                        &mut stream,
                         plugin_instances,
                         request,
                         response,
@@ -1088,7 +1084,6 @@ impl BulwarkProcessor {
     async fn complete_response_phase(
         &self,
         sender: &mut UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
-        stream: &mut Streaming<ProcessingRequest>,
         plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
         request: Arc<bulwark_wasm_sdk::Request>,
         response: Arc<bulwark_wasm_sdk::Response>,
@@ -1128,7 +1123,7 @@ impl BulwarkProcessor {
             "observe_only" => self.thresholds.observe_only.to_string(),
         );
 
-        let end_of_stream = response.body().len() == 0;
+        let end_of_stream = response.body().is_empty();
         match outcome {
             bulwark_wasm_sdk::Outcome::Trusted
             | bulwark_wasm_sdk::Outcome::Accepted

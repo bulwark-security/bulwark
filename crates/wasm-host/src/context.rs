@@ -1,8 +1,8 @@
 use {
     crate::ContextInstantiationError,
     crate::{Plugin, PluginStdio},
-    std::collections::HashMap,
-    std::sync::Arc,
+    core::{future::Future, marker::Send, pin::Pin},
+    std::{collections::HashMap, sync::Arc},
     wasmtime::component::Resource,
     wasmtime_wasi::preview2::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView},
     wasmtime_wasi_http::types::{
@@ -26,7 +26,7 @@ pub struct PluginContext {
     /// There may be multiple instances of the same plugin with different values for this configuration
     /// causing the plugin behavior to be different. For instance, a plugin might define a pattern-matching
     /// algorithm in its code while reading the specific patterns to match from this configuration.
-    config: Arc<Vec<u8>>,
+    config: Arc<Vec<u8>>, // TODO: store this as a native type instead of serializing
     /// The set of permissions granted to a plugin.
     permissions: bulwark_config::Permissions,
     /// The Redis connection pool and its associated Lua scripts.
@@ -254,71 +254,96 @@ impl WasiHttpView for PluginContext {
 impl crate::bindings::bulwark::plugin::types::Host for PluginContext {}
 
 impl crate::bindings::bulwark::plugin::config::Host for PluginContext {
-    /// Returns the plugin's entire config.
-    fn config<'life0, 'async_trait>(
-        &'life0 mut self,
-    ) -> ::core::pin::Pin<
-        Box<
-            dyn ::core::future::Future<
-                    Output = wasmtime::Result<
-                        Result<
-                            crate::bindings::bulwark::plugin::config::Value,
-                            crate::bindings::bulwark::plugin::config::Error,
-                        >,
-                    >,
-                > + ::core::marker::Send
-                + 'async_trait,
-        >,
-    >
+    /// Returns the named config value.
+    fn config_keys<'ctx, 'async_trait>(
+        &'ctx mut self,
+    ) -> Pin<Box<dyn Future<Output = wasmtime::Result<Vec<String>>> + Send + 'async_trait>>
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
-        todo!()
+        Box::pin(async move {
+            // First convert bytes to JSON, then extract the keys
+            serde_json::to_value(self.config.to_vec())
+                .map_err(wasmtime::Error::new)
+                .map(|value| {
+                    value
+                        .as_object()
+                        .map_or(vec![], |obj| obj.keys().cloned().collect())
+                })
+        })
     }
 
     /// Returns the named config value.
-    fn config_var<'life0, 'async_trait>(
-        &'life0 mut self,
+    fn config_var<'ctx, 'async_trait>(
+        &'ctx mut self,
         key: String,
-    ) -> ::core::pin::Pin<
+    ) -> Pin<
         Box<
-            dyn ::core::future::Future<
+            dyn Future<
                     Output = wasmtime::Result<
                         Result<
                             Option<crate::bindings::bulwark::plugin::config::Value>,
                             crate::bindings::bulwark::plugin::config::Error,
                         >,
                     >,
-                > + ::core::marker::Send
+                > + Send
                 + 'async_trait,
         >,
     >
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
-        todo!()
+        Box::pin(async move {
+            // First convert bytes to JSON, then extract the value we're after
+            Ok(serde_json::to_value(self.config.to_vec())
+            .map_err(|e| {
+                crate::bindings::bulwark::plugin::config::Error::InvalidSerialization(
+                    e.to_string(),
+                )
+            })
+            .and_then(|value| {
+                    value
+                        .as_object()
+                        .map_or(Ok(None), |obj| {
+                            // Use match to invert the Option<Result<V, E>> to Result<Option<V>, E>
+                            match obj.get(&key) {
+                                Some(value) => {
+                                    value.clone()
+                                    .try_into()
+                                    .map_err(|e: &'static str| {
+                                        crate::bindings::bulwark::plugin::config::Error::InvalidConversion(
+                                            e.to_string(),
+                                        )
+                                    })
+                                    .map(Some)
+                                },
+                                None => Ok(None),
+                            }
+                        })
+                }))
+        })
     }
 }
 
 impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
     /// Retrieves the value associated with the given key.
-    fn get<'life0, 'async_trait>(
-        &'life0 mut self,
+    fn get<'ctx, 'async_trait>(
+        &'ctx mut self,
         key: String,
-    ) -> ::core::pin::Pin<
+    ) -> Pin<
         Box<
-            dyn ::core::future::Future<
+            dyn Future<
                     Output = wasmtime::Result<
                         Result<Option<Vec<u8>>, crate::bindings::bulwark::plugin::redis::Error>,
                     >,
-                > + ::core::marker::Send
+                > + Send
                 + 'async_trait,
         >,
     >
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
         todo!()
@@ -327,22 +352,22 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
     /// Sets the given key to the given value.
     ///
     /// Overwrites any previously existing value.
-    fn set<'life0, 'async_trait>(
-        &'life0 mut self,
+    fn set<'ctx, 'async_trait>(
+        &'ctx mut self,
         key: String,
         value: Vec<u8>,
-    ) -> ::core::pin::Pin<
+    ) -> Pin<
         Box<
-            dyn ::core::future::Future<
+            dyn Future<
                     Output = wasmtime::Result<
                         Result<(), crate::bindings::bulwark::plugin::redis::Error>,
                     >,
-                > + ::core::marker::Send
+                > + Send
                 + 'async_trait,
         >,
     >
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
         todo!()
@@ -351,21 +376,21 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
     /// Removes the given keys.
     ///
     /// Non-existant keys are ignored. Returns the number of keys that were removed.
-    fn del<'life0, 'async_trait>(
-        &'life0 mut self,
+    fn del<'ctx, 'async_trait>(
+        &'ctx mut self,
         keys: Vec<String>,
-    ) -> ::core::pin::Pin<
+    ) -> Pin<
         Box<
-            dyn ::core::future::Future<
+            dyn Future<
                     Output = wasmtime::Result<
                         Result<u32, crate::bindings::bulwark::plugin::redis::Error>,
                     >,
-                > + ::core::marker::Send
+                > + Send
                 + 'async_trait,
         >,
     >
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
         todo!()
@@ -375,21 +400,21 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
     ///
     /// If the key does not exist, it is set to zero before being incremented.
     /// If the key already has a value that cannot be incremented, a `error::type-error` is returned.
-    fn incr<'life0, 'async_trait>(
-        &'life0 mut self,
+    fn incr<'ctx, 'async_trait>(
+        &'ctx mut self,
         key: String,
-    ) -> ::core::pin::Pin<
+    ) -> Pin<
         Box<
-            dyn ::core::future::Future<
+            dyn Future<
                     Output = wasmtime::Result<
                         Result<i64, crate::bindings::bulwark::plugin::redis::Error>,
                     >,
-                > + ::core::marker::Send
+                > + Send
                 + 'async_trait,
         >,
     >
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
         todo!()
@@ -399,22 +424,22 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
     ///
     /// If the key does not exist, it is set to zero before being incremented.
     /// If the key already has a value that cannot be incremented, a `error::type-error` is returned.
-    fn incr_by<'life0, 'async_trait>(
-        &'life0 mut self,
+    fn incr_by<'ctx, 'async_trait>(
+        &'ctx mut self,
         key: String,
         delta: i64,
-    ) -> ::core::pin::Pin<
+    ) -> Pin<
         Box<
-            dyn ::core::future::Future<
+            dyn Future<
                     Output = wasmtime::Result<
                         Result<i64, crate::bindings::bulwark::plugin::redis::Error>,
                     >,
-                > + ::core::marker::Send
+                > + Send
                 + 'async_trait,
         >,
     >
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
         todo!()
@@ -424,43 +449,43 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
     ///
     /// Returns the number of elements that were added to the set,
     /// not including all the elements already present in the set.
-    fn sadd<'life0, 'async_trait>(
-        &'life0 mut self,
+    fn sadd<'ctx, 'async_trait>(
+        &'ctx mut self,
         key: String,
         values: Vec<String>,
-    ) -> ::core::pin::Pin<
+    ) -> Pin<
         Box<
-            dyn ::core::future::Future<
+            dyn Future<
                     Output = wasmtime::Result<
                         Result<u32, crate::bindings::bulwark::plugin::redis::Error>,
                     >,
-                > + ::core::marker::Send
+                > + Send
                 + 'async_trait,
         >,
     >
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
         todo!()
     }
 
     /// Returns the contents of the given set.
-    fn smembers<'life0, 'async_trait>(
-        &'life0 mut self,
+    fn smembers<'ctx, 'async_trait>(
+        &'ctx mut self,
         key: String,
-    ) -> ::core::pin::Pin<
+    ) -> Pin<
         Box<
-            dyn ::core::future::Future<
+            dyn Future<
                     Output = wasmtime::Result<
                         Result<Vec<String>, crate::bindings::bulwark::plugin::redis::Error>,
                     >,
-                > + ::core::marker::Send
+                > + Send
                 + 'async_trait,
         >,
     >
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
         todo!()
@@ -470,163 +495,163 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
     ///
     /// Returns the number of members that were removed from the set,
     /// not including non existing members.
-    fn srem<'life0, 'async_trait>(
-        &'life0 mut self,
+    fn srem<'ctx, 'async_trait>(
+        &'ctx mut self,
         key: String,
         values: Vec<String>,
-    ) -> ::core::pin::Pin<
+    ) -> Pin<
         Box<
-            dyn ::core::future::Future<
+            dyn Future<
                     Output = wasmtime::Result<
                         Result<u32, crate::bindings::bulwark::plugin::redis::Error>,
                     >,
-                > + ::core::marker::Send
+                > + Send
                 + 'async_trait,
         >,
     >
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
         todo!()
     }
 
     /// Sets the time to live for the given key.
-    fn expire<'life0, 'async_trait>(
-        &'life0 mut self,
+    fn expire<'ctx, 'async_trait>(
+        &'ctx mut self,
         key: String,
         ttl: i64,
-    ) -> ::core::pin::Pin<
+    ) -> Pin<
         Box<
-            dyn ::core::future::Future<
+            dyn Future<
                     Output = wasmtime::Result<
                         Result<(), crate::bindings::bulwark::plugin::redis::Error>,
                     >,
-                > + ::core::marker::Send
+                > + Send
                 + 'async_trait,
         >,
     >
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
         todo!()
     }
 
     /// Sets the expiration for the given key to the given unix time.
-    fn expire_at<'life0, 'async_trait>(
-        &'life0 mut self,
+    fn expire_at<'ctx, 'async_trait>(
+        &'ctx mut self,
         key: String,
         unix_time: i64,
-    ) -> ::core::pin::Pin<
+    ) -> Pin<
         Box<
-            dyn ::core::future::Future<
+            dyn Future<
                     Output = wasmtime::Result<
                         Result<(), crate::bindings::bulwark::plugin::redis::Error>,
                     >,
-                > + ::core::marker::Send
+                > + Send
                 + 'async_trait,
         >,
     >
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
         todo!()
     }
 
-    fn incr_rate_limit<'life0, 'async_trait>(
-        &'life0 mut self,
+    fn incr_rate_limit<'ctx, 'async_trait>(
+        &'ctx mut self,
         key: String,
         delta: i64,
         window: i64,
-    ) -> ::core::pin::Pin<
+    ) -> Pin<
         Box<
-            dyn ::core::future::Future<
+            dyn Future<
                     Output = wasmtime::Result<
                         Result<
                             crate::bindings::bulwark::plugin::redis::Rate,
                             crate::bindings::bulwark::plugin::redis::Error,
                         >,
                     >,
-                > + ::core::marker::Send
+                > + Send
                 + 'async_trait,
         >,
     >
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
         todo!()
     }
 
-    fn check_rate_limit<'life0, 'async_trait>(
-        &'life0 mut self,
+    fn check_rate_limit<'ctx, 'async_trait>(
+        &'ctx mut self,
         key: String,
-    ) -> ::core::pin::Pin<
+    ) -> Pin<
         Box<
-            dyn ::core::future::Future<
+            dyn Future<
                     Output = wasmtime::Result<
                         Result<
                             crate::bindings::bulwark::plugin::redis::Rate,
                             crate::bindings::bulwark::plugin::redis::Error,
                         >,
                     >,
-                > + ::core::marker::Send
+                > + Send
                 + 'async_trait,
         >,
     >
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
         todo!()
     }
 
-    fn incr_breaker<'life0, 'async_trait>(
-        &'life0 mut self,
+    fn incr_breaker<'ctx, 'async_trait>(
+        &'ctx mut self,
         key: String,
         success_delta: i64,
         failure_delta: i64,
         window: i64,
-    ) -> ::core::pin::Pin<
+    ) -> Pin<
         Box<
-            dyn ::core::future::Future<
+            dyn Future<
                     Output = wasmtime::Result<
                         Result<
                             crate::bindings::bulwark::plugin::redis::Breaker,
                             crate::bindings::bulwark::plugin::redis::Error,
                         >,
                     >,
-                > + ::core::marker::Send
+                > + Send
                 + 'async_trait,
         >,
     >
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
         todo!()
     }
 
-    fn check_breaker<'life0, 'async_trait>(
-        &'life0 mut self,
+    fn check_breaker<'ctx, 'async_trait>(
+        &'ctx mut self,
         key: String,
-    ) -> ::core::pin::Pin<
+    ) -> Pin<
         Box<
-            dyn ::core::future::Future<
+            dyn Future<
                     Output = wasmtime::Result<
                         Result<
                             crate::bindings::bulwark::plugin::redis::Breaker,
                             crate::bindings::bulwark::plugin::redis::Error,
                         >,
                     >,
-                > + ::core::marker::Send
+                > + Send
                 + 'async_trait,
         >,
     >
     where
-        'life0: 'async_trait,
+        'ctx: 'async_trait,
         Self: 'async_trait,
     {
         todo!()
