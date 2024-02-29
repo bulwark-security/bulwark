@@ -192,14 +192,13 @@ impl Plugin {
     }
 
     /// Makes the guest's configuration available as serialized JSON bytes.
-    pub(crate) fn guest_config(&self) -> Result<Vec<u8>, ConfigSerializationError> {
-        // TODO: should guest config be required or optional?
-        self.config.config_to_json()
+    pub(crate) fn guest_config(&self) -> &bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value> {
+        &self.config.config
     }
 
     /// Makes the permissions the plugin has been granted available to the guest environment.
-    pub fn permissions(&self) -> bulwark_config::Permissions {
-        self.config.permissions.clone()
+    pub fn permissions(&self) -> &bulwark_config::Permissions {
+        &self.config.permissions
     }
 }
 

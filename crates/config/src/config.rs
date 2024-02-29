@@ -235,14 +235,6 @@ pub struct Plugin {
 /// The default [`Plugin::weight`] value.
 pub const DEFAULT_PLUGIN_WEIGHT: f64 = 1.0;
 
-impl Plugin {
-    /// Serializes the [`config`](Plugin::config) value to JSON bytes.
-    pub fn config_to_json(&self) -> Result<Vec<u8>, ConfigSerializationError> {
-        let obj = serde_json::Value::Object(self.config.clone());
-        Ok(serde_json::to_vec(&obj)?)
-    }
-}
-
 /// The permissions granted to an associated plugin.
 #[derive(Debug, Clone, Default)]
 pub struct Permissions {

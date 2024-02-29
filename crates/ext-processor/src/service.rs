@@ -423,10 +423,10 @@ impl BulwarkProcessor {
         let mut plugin_instances = Vec::with_capacity(plugins.len());
         for plugin in plugins {
             let mut environment = HashMap::new();
-            for key in plugin.permissions().env {
-                match std::env::var(&key) {
+            for key in &plugin.permissions().env {
+                match std::env::var(key) {
                     Ok(value) => {
-                        environment.insert(key, value);
+                        environment.insert(key.clone(), value);
                     }
                     Err(err) => {
                         warn!("plugin requested environment variable '{}' but it could not be provided: {}", key, err);

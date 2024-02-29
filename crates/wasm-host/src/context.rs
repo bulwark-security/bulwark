@@ -26,7 +26,7 @@ pub struct PluginContext {
     /// There may be multiple instances of the same plugin with different values for this configuration
     /// causing the plugin behavior to be different. For instance, a plugin might define a pattern-matching
     /// algorithm in its code while reading the specific patterns to match from this configuration.
-    config: Arc<Vec<u8>>, // TODO: store this as a native type instead of serializing
+    config: Arc<serde_json::Map<String, serde_json::Value>>,
     /// The set of permissions granted to a plugin.
     permissions: bulwark_config::Permissions,
     /// The Redis connection pool and its associated Lua scripts.
@@ -197,8 +197,8 @@ impl PluginContext {
             wasi_http: WasiHttpCtx,
             wasi_table: ResourceTable::new(),
             stdio,
-            config: Arc::new(plugin.guest_config()?),
-            permissions: plugin.permissions(),
+            config: Arc::new(plugin.guest_config().clone()),
+            permissions: plugin.permissions().clone(),
             redis_info,
             http_client,
         })
@@ -262,16 +262,7 @@ impl crate::bindings::bulwark::plugin::config::Host for PluginContext {
         'ctx: 'async_trait,
         Self: 'async_trait,
     {
-        Box::pin(async move {
-            // First convert bytes to JSON, then extract the keys
-            serde_json::to_value(self.config.to_vec())
-                .map_err(wasmtime::Error::new)
-                .map(|value| {
-                    value
-                        .as_object()
-                        .map_or(vec![], |obj| obj.keys().cloned().collect())
-                })
-        })
+        Box::pin(async move { Ok(self.config.keys().into_iter().cloned().collect()) })
     }
 
     /// Returns the named config value.
@@ -296,33 +287,19 @@ impl crate::bindings::bulwark::plugin::config::Host for PluginContext {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            // First convert bytes to JSON, then extract the value we're after
-            Ok(serde_json::to_value(self.config.to_vec())
-            .map_err(|e| {
-                crate::bindings::bulwark::plugin::config::Error::InvalidSerialization(
-                    e.to_string(),
-                )
-            })
-            .and_then(|value| {
-                    value
-                        .as_object()
-                        .map_or(Ok(None), |obj| {
-                            // Use match to invert the Option<Result<V, E>> to Result<Option<V>, E>
-                            match obj.get(&key) {
-                                Some(value) => {
-                                    value.clone()
-                                    .try_into()
-                                    .map_err(|e: &'static str| {
-                                        crate::bindings::bulwark::plugin::config::Error::InvalidConversion(
-                                            e.to_string(),
-                                        )
-                                    })
-                                    .map(Some)
-                                },
-                                None => Ok(None),
-                            }
-                        })
-                }))
+            Ok(self.config.get(key.as_str()).map_or(Ok(None), |value| {
+                // Invert, we need Result<Option<V>, E> rather than Option<Result<V, E>>.
+                // This is also why the map_or default above is Ok(None).
+                value
+                    .clone()
+                    .try_into()
+                    .map_err(|e: &'static str| {
+                        crate::bindings::bulwark::plugin::config::Error::InvalidConversion(
+                            e.to_string(),
+                        )
+                    })
+                    .map(Some)
+            }))
         })
     }
 }
