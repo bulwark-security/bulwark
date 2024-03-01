@@ -14,7 +14,7 @@ lazy_static! {
 /// The root of a Bulwark configuration.
 ///
 /// Wraps all child configuration structures and provides the internal representation of Bulwark's configuration.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Config {
     /// Configuration for the services being launched.
     pub service: Service,
@@ -64,7 +64,7 @@ impl Config {
 }
 
 /// Configuration for the services being launched.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Service {
     /// The port for the primary service.
     pub port: u16,
@@ -107,7 +107,7 @@ impl Default for Service {
 }
 
 /// Configuration for the runtime environment.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Runtime {
     /// The maximum number of concurrent incoming requests that the runtime will process before blocking.
     pub max_concurrent_requests: usize,

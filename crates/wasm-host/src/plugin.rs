@@ -26,6 +26,7 @@ pub(crate) mod bindings {
             "wasi:http/types/response-outparam": super::latest::http::types::ResponseOutparam,
             "wasi:http/types/future-incoming-response": super::latest::http::types::FutureIncomingResponse,
             "wasi:http/types/future-trailers": super::latest::http::types::FutureTrailers,
+            "wasi:sockets/network/ip-address": super::latest::sockets::network::IpAddress,
         }
     });
 }
@@ -108,7 +109,8 @@ impl HandlerOutput {
 #[derive(Clone)]
 pub struct Plugin {
     reference: String,
-    config: Arc<bulwark_config::Plugin>,
+    host_config: Arc<bulwark_config::Config>,
+    guest_config: Arc<bulwark_config::Plugin>,
     engine: Engine,
     component: Component,
 }
@@ -119,11 +121,13 @@ impl Plugin {
     pub fn from_wat(
         name: String,
         wat: &str,
-        config: &bulwark_config::Plugin,
+        host_config: &bulwark_config::Config,
+        guest_config: &bulwark_config::Plugin,
     ) -> Result<Self, PluginLoadError> {
         Self::from_component(
             name,
-            config,
+            host_config,
+            guest_config,
             |engine| -> Result<Component, PluginLoadError> {
                 Ok(Component::new(engine, wat.as_bytes())?)
             },
@@ -137,11 +141,13 @@ impl Plugin {
     pub fn from_bytes(
         name: String,
         bytes: &[u8],
-        config: &bulwark_config::Plugin,
+        host_config: &bulwark_config::Config,
+        guest_config: &bulwark_config::Plugin,
     ) -> Result<Self, PluginLoadError> {
         Self::from_component(
             name,
-            config,
+            host_config,
+            guest_config,
             |engine| -> Result<Component, PluginLoadError> {
                 Ok(Component::from_binary(engine, bytes)?)
             },
@@ -153,12 +159,14 @@ impl Plugin {
     /// See [`Component::from_file`].
     pub fn from_file(
         path: impl AsRef<Path>,
-        config: &bulwark_config::Plugin,
+        host_config: &bulwark_config::Config,
+        guest_config: &bulwark_config::Plugin,
     ) -> Result<Self, PluginLoadError> {
-        let name = config.reference.clone();
+        let name = guest_config.reference.clone();
         Self::from_component(
             name,
-            config,
+            host_config,
+            guest_config,
             |engine| -> Result<Component, PluginLoadError> {
                 Ok(Component::from_file(engine, &path)?)
             },
@@ -168,7 +176,8 @@ impl Plugin {
     /// Helper method for the other `from_*` functions.
     fn from_component<F>(
         reference: String,
-        config: &bulwark_config::Plugin,
+        host_config: &bulwark_config::Config,
+        guest_config: &bulwark_config::Plugin,
         mut get_component: F,
     ) -> Result<Self, PluginLoadError>
     where
@@ -185,20 +194,26 @@ impl Plugin {
 
         Ok(Plugin {
             reference,
-            config: Arc::new(config.clone()),
+            host_config: Arc::new(host_config.clone()),
+            guest_config: Arc::new(guest_config.clone()),
             engine,
             component,
         })
     }
 
-    /// Makes the guest's configuration available as serialized JSON bytes.
+    /// Makes the host's configuration available to host functions.
+    pub(crate) fn host_config(&self) -> &bulwark_config::Config {
+        &self.host_config
+    }
+
+    /// Makes the guest's configuration available to the guest environment.
     pub(crate) fn guest_config(&self) -> &bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value> {
-        &self.config.config
+        &self.guest_config.config
     }
 
     /// Makes the permissions the plugin has been granted available to the guest environment.
     pub fn permissions(&self) -> &bulwark_config::Permissions {
-        &self.config.permissions
+        &self.guest_config.permissions
     }
 }
 
@@ -316,7 +331,7 @@ impl PluginInstance {
 
     /// Returns the configured weight value for tuning [`Decision`] values.
     pub fn weight(&self) -> f64 {
-        self.plugin.config.weight
+        self.plugin.guest_config.weight
     }
 
     /// Returns the plugin's identifier.

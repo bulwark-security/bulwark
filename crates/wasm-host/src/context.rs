@@ -1,14 +1,14 @@
 use {
-    crate::ContextInstantiationError,
-    crate::{Plugin, PluginStdio},
+    crate::{ContextInstantiationError, Plugin, PluginStdio},
     core::{future::Future, marker::Send, pin::Pin},
-    std::{collections::HashMap, sync::Arc},
+    std::{borrow::Borrow, collections::HashMap, sync::Arc},
+    url::Url,
     wasmtime::component::Resource,
     wasmtime_wasi::preview2::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView},
-    wasmtime_wasi_http::types::{
-        HostFutureIncomingResponse, HostIncomingResponse, OutgoingRequest,
+    wasmtime_wasi_http::{
+        types::{HostFutureIncomingResponse, HostIncomingResponse, OutgoingRequest},
+        WasiHttpCtx, WasiHttpView,
     },
-    wasmtime_wasi_http::{WasiHttpCtx, WasiHttpView},
 };
 
 /// The PluginContext manages access to information that needs to cross the plugin sandbox boundary.
@@ -21,12 +21,14 @@ pub struct PluginContext {
     wasi_table: ResourceTable,
     /// The standard I/O buffers used by WASI and captured for logging.
     pub(crate) stdio: PluginStdio,
+    /// All host configuration.
+    host_config: Arc<bulwark_config::Config>,
     /// Plugin-specific configuration. Stored as bytes and deserialized as JSON values by the SDK.
     ///
     /// There may be multiple instances of the same plugin with different values for this configuration
     /// causing the plugin behavior to be different. For instance, a plugin might define a pattern-matching
     /// algorithm in its code while reading the specific patterns to match from this configuration.
-    config: Arc<serde_json::Map<String, serde_json::Value>>,
+    guest_config: Arc<serde_json::Map<String, serde_json::Value>>,
     /// The set of permissions granted to a plugin.
     permissions: bulwark_config::Permissions,
     /// The Redis connection pool and its associated Lua scripts.
@@ -197,7 +199,8 @@ impl PluginContext {
             wasi_http: WasiHttpCtx,
             wasi_table: ResourceTable::new(),
             stdio,
-            config: Arc::new(plugin.guest_config().clone()),
+            host_config: Arc::new(plugin.host_config().clone()),
+            guest_config: Arc::new(plugin.guest_config().clone()),
             permissions: plugin.permissions().clone(),
             redis_info,
             http_client,
@@ -247,7 +250,8 @@ impl WasiHttpView for PluginContext {
     where
         Self: Sized,
     {
-        Err(anyhow::anyhow!("Not implemented yet"))
+        verify_http_domains(&self.permissions.http, &request.authority)?;
+        wasmtime_wasi_http::types::default_send_request(self, request)
     }
 }
 
@@ -262,7 +266,7 @@ impl crate::bindings::bulwark::plugin::config::Host for PluginContext {
         'ctx: 'async_trait,
         Self: 'async_trait,
     {
-        Box::pin(async move { Ok(self.config.keys().into_iter().cloned().collect()) })
+        Box::pin(async move { Ok(self.guest_config.keys().cloned().collect()) })
     }
 
     /// Returns the named config value.
@@ -287,20 +291,34 @@ impl crate::bindings::bulwark::plugin::config::Host for PluginContext {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            Ok(self.config.get(key.as_str()).map_or(Ok(None), |value| {
-                // Invert, we need Result<Option<V>, E> rather than Option<Result<V, E>>.
-                // This is also why the map_or default above is Ok(None).
-                value
-                    .clone()
-                    .try_into()
-                    .map_err(|e: &'static str| {
-                        crate::bindings::bulwark::plugin::config::Error::InvalidConversion(
-                            e.to_string(),
-                        )
-                    })
-                    .map(Some)
-            }))
+            Ok(self
+                .guest_config
+                .get(key.as_str())
+                .map_or(Ok(None), |value| {
+                    // Invert, we need Result<Option<V>, E> rather than Option<Result<V, E>>.
+                    // This is also why the map_or default above is Ok(None).
+                    value
+                        .clone()
+                        .try_into()
+                        .map_err(|e: &'static str| {
+                            crate::bindings::bulwark::plugin::config::Error::InvalidConversion(
+                                e.to_string(),
+                            )
+                        })
+                        .map(Some)
+                }))
         })
+    }
+
+    /// Returns the number of proxy hops expected exterior to Bulwark.
+    fn proxy_hops<'ctx, 'async_trait>(
+        &'ctx mut self,
+    ) -> Pin<Box<dyn Future<Output = wasmtime::Result<u8>> + Send + 'async_trait>>
+    where
+        'ctx: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(async move { Ok(self.host_config.service.proxy_hops) })
     }
 }
 
@@ -635,51 +653,6 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
     }
 }
 
-// #[async_trait]
-// impl bulwark_host::HostApiImports for PluginContext {
-//     /// Returns the guest environment's configuration value as serialized JSON.
-//     async fn get_config(&mut self) -> Result<Vec<u8>, wasmtime::Error> {
-//         Ok(self.read_only_ctx.config.to_vec())
-//     }
-
-//     /// Returns a named value from the request context's params.
-//     ///
-//     /// # Arguments
-//     ///
-//     /// * `key` - The key name corresponding to the param value.
-//     async fn get_param_value(
-//         &mut self,
-//         key: String,
-//     ) -> Result<Result<Vec<u8>, bulwark_host::ParamError>, wasmtime::Error> {
-//         let params = self.guest_mut_ctx.params.lock().expect("poisoned mutex");
-//         let value = params.get(&key).unwrap_or(&bulwark_wasm_sdk::Value::Null);
-//         match serde_json::to_vec(value) {
-//             Ok(bytes) => Ok(Ok(bytes)),
-//             Err(err) => Ok(Err(bulwark_host::ParamError::Json(err.to_string()))),
-//         }
-//     }
-
-//     /// Set a named value in the request context's params.
-//     ///
-//     /// # Arguments
-//     ///
-//     /// * `key` - The key name corresponding to the param value.
-//     /// * `value` - The value to record. Values are serialized JSON.
-//     async fn set_param_value(
-//         &mut self,
-//         key: String,
-//         value: Vec<u8>,
-//     ) -> Result<Result<(), bulwark_host::ParamError>, wasmtime::Error> {
-//         let mut params = self.guest_mut_ctx.params.lock().expect("poisoned mutex");
-//         match serde_json::from_slice(&value) {
-//             Ok(value) => {
-//                 params.insert(key, value);
-//                 Ok(Ok(()))
-//             }
-//             Err(err) => Ok(Err(bulwark_host::ParamError::Json(err.to_string()))),
-//         }
-//     }
-
 //     /// Returns a named environment variable value as bytes.
 //     ///
 //     /// # Arguments
@@ -708,46 +681,6 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
 //                 }
 //             },
 //         }
-//     }
-
-//     /// Returns the incoming request associated with the request context.
-//     async fn get_request(&mut self) -> Result<bulwark_host::RequestInterface, wasmtime::Error> {
-//         let request = self.host_mut_ctx.request.lock().expect("poisoned mutex");
-//         Ok(request.clone())
-//     }
-
-//     /// Returns the response received from the interior service.
-//     ///
-//     /// If called from `on_request` or `on_request_decision`, it will return `None` since a response
-//     /// is not yet available.
-//     async fn get_response(
-//         &mut self,
-//     ) -> Result<Option<bulwark_host::ResponseInterface>, wasmtime::Error> {
-//         let response: MutexGuard<Option<bulwark_host::ResponseInterface>> =
-//             self.host_mut_ctx.response.lock().expect("poisoned mutex");
-//         Ok(response.to_owned())
-//     }
-
-//     /// Determines whether the request body will be received by the plugin in the `on_request_body_decision` handler.
-//     async fn receive_request_body(&mut self, body: bool) -> Result<(), wasmtime::Error> {
-//         let mut receive_request_body = self
-//             .guest_mut_ctx
-//             .receive_request_body
-//             .lock()
-//             .expect("poisoned mutex");
-//         *receive_request_body = body;
-//         Ok(())
-//     }
-
-//     /// Determines whether the response body will be received by the plugin in the `on_response_body_decision` handler.
-//     async fn receive_response_body(&mut self, body: bool) -> Result<(), wasmtime::Error> {
-//         let mut receive_response_body = self
-//             .guest_mut_ctx
-//             .receive_response_body
-//             .lock()
-//             .expect("poisoned mutex");
-//         *receive_response_body = body;
-//         Ok(())
 //     }
 
 //     /// Returns the originating client's IP address, if available.
@@ -1271,22 +1204,26 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
 //     }
 // }
 
-// /// Ensures that access to any HTTP host has the appropriate permissions set.
-// fn verify_http_domains(
-//     // TODO: BTreeSet<String> instead, all the way up
-//     allowed_http_domains: &[String],
-//     uri: &str,
-// ) -> Result<(), bulwark_host::HttpError> {
-//     let parsed_uri =
-//         Url::parse(uri).map_err(|_| bulwark_host::HttpError::InvalidUri(uri.to_string()))?;
-//     let requested_domain = parsed_uri
-//         .domain()
-//         .ok_or_else(|| bulwark_host::HttpError::InvalidUri(uri.to_string()))?;
-//     if !allowed_http_domains.contains(&requested_domain.to_string()) {
-//         return Err(bulwark_host::HttpError::Permission(uri.to_string()));
-//     }
-//     Ok(())
-// }
+/// Ensures that access to any HTTP host has the appropriate permissions set.
+fn verify_http_domains(
+    // TODO: BTreeSet<String> instead, all the way up
+    allowed_http_domains: &[String],
+    authority: &str,
+) -> Result<(), bulwark_wasm_sdk::Error> {
+    let parsed_uri = Url::parse(format!("//{}/", authority).as_str()).map_err(|e| {
+        bulwark_wasm_sdk::error!("invalid request authority <{}>: {}", authority, e)
+    })?;
+    let requested_domain = parsed_uri.domain().ok_or_else(|| {
+        bulwark_wasm_sdk::error!("request authority must be a valid dns name <{}>", authority)
+    })?;
+    if !allowed_http_domains.contains(&requested_domain.to_string()) {
+        return Err(bulwark_wasm_sdk::error!(
+            "missing http permissions <{}>",
+            authority
+        ));
+    }
+    Ok(())
+}
 
 /// Ensures that access to any remote state key has the appropriate permissions set.
 fn verify_remote_state_prefixes(

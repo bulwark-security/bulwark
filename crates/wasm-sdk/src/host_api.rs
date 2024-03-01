@@ -1,4 +1,5 @@
 use {
+    forwarded_header_value::ForwardedHeaderValue,
     std::{collections::HashMap, net::IpAddr, str, str::FromStr},
     validator::Validate,
 };
@@ -215,6 +216,52 @@ pub fn config_keys() -> Vec<String> {
 /// * `key` - A key indexing into a configuration [`Map`]
 pub fn config_var(key: &str) -> Result<Option<Value>, Error> {
     Ok(crate::wit::bulwark::plugin::config::config_var(key)?.map(|v| v.into()))
+}
+
+/// Returns the true remote client IP address.
+///
+/// This is derived from the `proxy_hops` configuration value and the
+/// `Forwarded` or `X-Forwarded-For` headers.
+pub fn client_ip(req: &Request) -> Option<IpAddr> {
+    let proxy_hops = crate::wit::bulwark::plugin::config::proxy_hops();
+
+    if let Some(forwarded) = req.headers().get("forwarded") {
+        return parse_forwarded_ip(forwarded.as_bytes(), proxy_hops as usize);
+    }
+    if let Some(forwarded) = req.headers().get("x-forwarded-for") {
+        return parse_x_forwarded_for_ip(forwarded.as_bytes(), proxy_hops as usize);
+    }
+    None
+}
+
+/// Checks the request for a valid `Forwarded` header and returns the client IP address
+/// indicated by the number of exterior proxy hops.
+fn parse_forwarded_ip(forwarded: &[u8], proxy_hops: usize) -> Option<IpAddr> {
+    let forwarded = str::from_utf8(forwarded).ok()?;
+    let value = ForwardedHeaderValue::from_forwarded(forwarded).ok();
+    value.and_then(|fhv| {
+        if proxy_hops > fhv.len() {
+            None
+        } else {
+            let item = fhv.iter().nth(fhv.len() - proxy_hops);
+            item.and_then(|fs| fs.forwarded_for_ip())
+        }
+    })
+}
+
+/// Checks the request for a valid `X-Forwarded-For` header and returns the client IP address
+/// indicated by the number of exterior proxy hops.
+fn parse_x_forwarded_for_ip(forwarded: &[u8], proxy_hops: usize) -> Option<IpAddr> {
+    let forwarded = str::from_utf8(forwarded).ok()?;
+    let value = ForwardedHeaderValue::from_x_forwarded_for(forwarded).ok();
+    value.and_then(|fhv| {
+        if proxy_hops > fhv.len() {
+            None
+        } else {
+            let item = fhv.iter().nth(fhv.len() - proxy_hops);
+            item.and_then(|fs| fs.forwarded_for_ip())
+        }
+    })
 }
 
 // /// Returns a named environment variable value as a [`String`].

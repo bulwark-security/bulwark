@@ -275,7 +275,7 @@ impl BulwarkProcessor {
                     path = plugin_config.path,
                     resource = resource.route
                 );
-                let plugin = Plugin::from_file(plugin_config.path.clone(), plugin_config)?;
+                let plugin = Plugin::from_file(plugin_config.path.clone(), &config, plugin_config)?;
                 plugins.push(Arc::new(plugin));
             }
             router

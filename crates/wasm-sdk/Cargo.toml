@@ -21,6 +21,7 @@ wit-bindgen = { workspace = true }
 
 anyhow = { workspace = true }
 bytes = { workspace = true }
+forwarded-header-value = { workspace = true }
 http = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

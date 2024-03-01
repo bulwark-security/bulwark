@@ -1,5 +1,6 @@
 /// Generic error
 pub type Error = ::anyhow::Error;
+pub use ::anyhow::anyhow as error;
 
 /// Returned when an attempt to parse a counter within a plugin environment fails.
 #[derive(thiserror::Error, Debug)]
