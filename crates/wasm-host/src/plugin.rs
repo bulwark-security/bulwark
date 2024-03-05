@@ -1,5 +1,5 @@
 use anyhow::Context as _;
-use wasmtime_wasi_http::body::{HyperIncomingBody};
+use wasmtime_wasi_http::body::HyperIncomingBody;
 
 mod latest {
     pub use wasmtime_wasi::preview2::bindings::wasi::*;
