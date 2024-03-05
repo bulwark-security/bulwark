@@ -1398,24 +1398,6 @@ impl BulwarkProcessor {
         }
     }
 
-    fn insert_header(cr: &mut CommonResponse, key: &str, value: &str) {
-        let new_header = HeaderValueOption {
-            header: Some(HeaderValue {
-                key: key.into(),
-                value: value.into(),
-            }),
-            ..Default::default()
-        };
-        match &mut cr.header_mutation {
-            Some(hm) => hm.set_headers.push(new_header),
-            None => {
-                let mut new_hm = HeaderMutation::default();
-                new_hm.set_headers.push(new_header);
-                cr.header_mutation = Some(new_hm);
-            }
-        }
-    }
-
     fn parse_forwarded_ip(forwarded: &str, proxy_hops: usize) -> Option<IpAddr> {
         let value = ForwardedHeaderValue::from_forwarded(forwarded).ok();
         value.and_then(|fhv| {
