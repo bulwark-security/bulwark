@@ -1001,36 +1001,6 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
     }
 }
 
-//     /// Returns a named environment variable value as bytes.
-//     ///
-//     /// # Arguments
-//     ///
-//     /// * `key` - The environment variable name. Case-sensitive.
-//     async fn get_env_bytes(
-//         &mut self,
-//         key: String,
-//     ) -> Result<Result<Vec<u8>, bulwark_host::EnvError>, wasmtime::Error> {
-//         let allowed_env_vars = self
-//             .read_only_ctx
-//             .permissions
-//             .env
-//             .iter()
-//             .cloned()
-//             .collect::<BTreeSet<String>>();
-//         if !allowed_env_vars.contains(&key) {
-//             return Ok(Err(bulwark_host::EnvError::Permission(key)));
-//         }
-//         match std::env::var(&key) {
-//             Ok(var) => Ok(Ok(var.as_bytes().to_vec())),
-//             Err(err) => match err {
-//                 std::env::VarError::NotPresent => Ok(Err(bulwark_host::EnvError::Missing(key))),
-//                 std::env::VarError::NotUnicode(_) => {
-//                     Ok(Err(bulwark_host::EnvError::NotUnicode(key)))
-//                 }
-//             },
-//         }
-//     }
-
 /// Ensures that access to any HTTP host has the appropriate permissions set.
 fn verify_http_domains(
     // TODO: BTreeSet<String> instead, all the way up
