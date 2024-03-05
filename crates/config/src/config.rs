@@ -1,6 +1,6 @@
 //! The config module provides the internal representation of Bulwark's configuration.
 
-use crate::{ConfigSerializationError, ResolutionError};
+use crate::ResolutionError;
 use itertools::Itertools;
 use regex::Regex;
 use serde::Serialize;

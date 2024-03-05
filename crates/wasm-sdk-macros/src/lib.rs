@@ -1,10 +1,6 @@
 use proc_macro::TokenStream;
-use proc_macro2::Span;
 use quote::{quote, quote_spanned};
-use syn::{
-    parse_macro_input, parse_quote, punctuated::Punctuated, spanned::Spanned, Attribute, Ident,
-    ItemFn, ItemImpl, LitBool, LitStr, ReturnType, Signature, Visibility,
-};
+use syn::{parse_macro_input, parse_quote, spanned::Spanned, Ident, ItemFn, ItemImpl, Visibility};
 extern crate proc_macro;
 
 const WIT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wit");
@@ -451,7 +447,6 @@ pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
     // attributes and visibility of the inner function that we will inline.
     let attrs = raw_handler.attrs.clone();
     let (name, inner_fn) = inner_fn_info(raw_handler);
-    let name_str = LitStr::new(name.to_string().as_str(), Span::call_site());
 
     let output;
 
@@ -618,28 +613,6 @@ pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     output.into()
-}
-
-/// Returns a 2-tuple containing the attributes and signature of our outer `handler`.
-///
-/// The outer handler function will use the same attributes and visibility as our raw handler
-/// function.
-///
-/// The signature of the outer function will be changed to have inputs and outputs of the form
-/// `fn handler_name() -> Result<(), ()>`. The name of the outer handler function will be the same
-/// as the inlined function.
-fn outer_handler_info(inner_handler: &ItemFn) -> (Vec<Attribute>, Signature) {
-    let attrs = inner_handler.attrs.clone();
-    let name = inner_handler.sig.ident.to_string();
-    let sig = {
-        let mut sig = inner_handler.sig.clone();
-        sig.ident = Ident::new(&name, Span::call_site());
-        sig.inputs = Punctuated::new();
-        sig.output = parse_quote!(-> ::std::result::Result<(), ()>);
-        sig
-    };
-
-    (attrs, sig)
 }
 
 /// Prepare our inner function to be inlined into our outer handler function.

@@ -1,42 +1,40 @@
 //! The service module contains the main Envoy external processor service implementation.
 
+use crate::{PluginGroupInstantiationError, ProcessingMessageError, RequestError, ResponseError};
+use bulwark_config::Config;
 use bulwark_wasm_sdk::Verdict;
 
-use {
-    crate::{PluginGroupInstantiationError, ProcessingMessageError, RequestError, ResponseError},
-    bulwark_config::Config,
-    bulwark_wasm_host::{
-        ForwardedIP, HandlerOutput, Plugin, PluginContext, PluginExecutionError, PluginInstance,
-        PluginLoadError, RedisInfo, ScriptRegistry,
-    },
-    bulwark_wasm_sdk::Decision,
-    envoy_control_plane::envoy::{
-        config::core::v3::{HeaderMap, HeaderValue, HeaderValueOption},
-        extensions::filters::http::ext_proc::v3::{processing_mode, ProcessingMode},
-        r#type::v3::HttpStatus,
-        service::ext_proc::v3::{
-            external_processor_server::ExternalProcessor, processing_request, processing_response,
-            BodyResponse, CommonResponse, HeaderMutation, HeadersResponse, HttpBody, HttpHeaders,
-            ImmediateResponse, ProcessingRequest, ProcessingResponse,
-        },
-    },
-    forwarded_header_value::ForwardedHeaderValue,
-    futures::lock::Mutex,
-    futures::{channel::mpsc::UnboundedSender, SinkExt, Stream},
-    matchit::Router,
-    std::{
-        collections::{HashMap, HashSet},
-        net::IpAddr,
-        pin::Pin,
-        str,
-        str::FromStr,
-        sync::Arc,
-        time::Duration,
-    },
-    tokio::{sync::RwLock, sync::Semaphore, task::JoinSet, time::timeout},
-    tonic::Streaming,
-    tracing::{debug, error, info, instrument, trace, warn, Instrument},
+use bulwark_wasm_host::{
+    ForwardedIP, HandlerOutput, Plugin, PluginContext, PluginExecutionError, PluginInstance,
+    PluginLoadError, RedisInfo, ScriptRegistry,
 };
+use bulwark_wasm_sdk::Decision;
+use envoy_control_plane::envoy::{
+    config::core::v3::{HeaderMap, HeaderValue, HeaderValueOption},
+    extensions::filters::http::ext_proc::v3::{processing_mode, ProcessingMode},
+    r#type::v3::HttpStatus,
+    service::ext_proc::v3::{
+        external_processor_server::ExternalProcessor, processing_request, processing_response,
+        BodyResponse, CommonResponse, HeaderMutation, HeadersResponse, HttpBody, HttpHeaders,
+        ImmediateResponse, ProcessingRequest, ProcessingResponse,
+    },
+};
+use forwarded_header_value::ForwardedHeaderValue;
+use futures::lock::Mutex;
+use futures::{channel::mpsc::UnboundedSender, SinkExt, Stream};
+use matchit::Router;
+use std::{
+    collections::{HashMap, HashSet},
+    net::IpAddr,
+    pin::Pin,
+    str,
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
+};
+use tokio::{sync::RwLock, sync::Semaphore, task::JoinSet, time::timeout};
+use tonic::Streaming;
+use tracing::{debug, error, info, instrument, trace, warn, Instrument};
 
 extern crate redis;
 
@@ -99,7 +97,6 @@ pub struct BulwarkProcessor {
     // TODO: may need to have a plugin registry at some point
     router: Arc<RwLock<Router<RouteTarget>>>,
     redis_info: Option<Arc<RedisInfo>>,
-    http_client: Arc<reqwest::blocking::Client>,
     request_semaphore: Arc<tokio::sync::Semaphore>,
     plugin_semaphore: Arc<tokio::sync::Semaphore>,
     thresholds: bulwark_config::Thresholds,
@@ -292,7 +289,6 @@ impl BulwarkProcessor {
         Ok(Self {
             router: Arc::new(RwLock::new(router)),
             redis_info,
-            http_client: Arc::new(reqwest::blocking::Client::new()),
             request_semaphore: Arc::new(Semaphore::new(config.runtime.max_concurrent_requests)),
             plugin_semaphore: Arc::new(Semaphore::new(config.runtime.max_plugin_tasks)),
             thresholds: config.thresholds,
@@ -433,12 +429,8 @@ impl BulwarkProcessor {
                     }
                 }
             }
-            let request_context = PluginContext::new(
-                plugin.clone(),
-                environment,
-                self.redis_info.clone(),
-                self.http_client.clone(),
-            )?;
+            let request_context =
+                PluginContext::new(plugin.clone(), environment, self.redis_info.clone())?;
             plugin_instances.push(Arc::new(Mutex::new(
                 PluginInstance::new(plugin.clone(), request_context).await?,
             )));

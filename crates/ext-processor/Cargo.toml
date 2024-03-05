@@ -25,7 +25,6 @@ http = { workspace = true }
 metrics = { workspace = true }
 r2d2 = { workspace = true }
 redis = { workspace = true }
-reqwest = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }

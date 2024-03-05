@@ -3,7 +3,7 @@ use {
     ::redis::Commands,
     chrono::Utc,
     core::{future::Future, marker::Send, pin::Pin},
-    std::{borrow::Borrow, collections::HashMap, ops::DerefMut, sync::Arc},
+    std::{collections::HashMap, ops::DerefMut, sync::Arc},
     url::Url,
     wasmtime::component::Resource,
     wasmtime_wasi::preview2::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView},
@@ -35,8 +35,6 @@ pub struct PluginContext {
     permissions: bulwark_config::Permissions,
     /// The Redis connection pool and its associated Lua scripts.
     redis_info: Option<Arc<RedisInfo>>,
-    /// The HTTP client used to send outbound requests from plugins.
-    http_client: Arc<reqwest::blocking::Client>,
 }
 
 /// Wraps a Redis connection pool and a registry of predefined Lua scripts.
@@ -181,7 +179,6 @@ impl PluginContext {
         plugin: Arc<Plugin>,
         environment: HashMap<String, String>,
         redis_info: Option<Arc<RedisInfo>>,
-        http_client: Arc<reqwest::blocking::Client>,
     ) -> Result<PluginContext, ContextInstantiationError> {
         let stdio = PluginStdio::default();
         let wasi_ctx = WasiCtxBuilder::new()
@@ -205,7 +202,6 @@ impl PluginContext {
             guest_config: Arc::new(plugin.guest_config().clone()),
             permissions: plugin.permissions().clone(),
             redis_info,
-            http_client,
         })
     }
 

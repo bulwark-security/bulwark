@@ -1,6 +1,5 @@
 use anyhow::Context as _;
-use wasmtime_wasi::preview2::AbortOnDropJoinHandle;
-use wasmtime_wasi_http::body::{HyperIncomingBody, HyperOutgoingBody};
+use wasmtime_wasi_http::body::{HyperIncomingBody};
 
 mod latest {
     pub use wasmtime_wasi::preview2::bindings::wasi::*;
@@ -36,30 +35,18 @@ pub(crate) mod bindings {
 use {
     crate::PluginContext,
     crate::{PluginExecutionError, PluginInstantiationError, PluginLoadError},
-    async_trait::async_trait,
-    bulwark_config::ConfigSerializationError,
-    bulwark_wasm_sdk::{Decision, Outcome},
-    chrono::Utc,
-    http_body_util::{combinators::BoxBody, BodyExt, Empty, Full, Limited},
-    redis::Commands,
-    std::str::FromStr,
+    bulwark_wasm_sdk::Decision,
+    http_body_util::{combinators::BoxBody, BodyExt, Empty, Full},
     std::{
-        collections::{BTreeSet, HashMap, HashSet},
-        convert::From,
+        collections::{HashMap, HashSet},
         net::IpAddr,
-        ops::DerefMut,
         path::Path,
-        sync::{Arc, Mutex, MutexGuard},
+        sync::Arc,
     },
-    url::Url,
-    validator::Validate,
     wasmtime::component::{Component, Linker},
     wasmtime::{AsContextMut, Config, Engine, Store},
-    wasmtime_wasi::preview2::{
-        pipe::MemoryOutputPipe, HostOutputStream, ResourceTable, StdoutStream, WasiCtx,
-        WasiCtxBuilder, WasiView,
-    },
-    wasmtime_wasi_http::{proxy::Proxy, WasiHttpCtx, WasiHttpView},
+    wasmtime_wasi::preview2::{pipe::MemoryOutputPipe, HostOutputStream, StdoutStream},
+    wasmtime_wasi_http::WasiHttpView,
 };
 
 extern crate redis;
