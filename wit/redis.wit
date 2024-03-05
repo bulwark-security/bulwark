@@ -75,9 +75,9 @@ interface redis {
     /// not including non existing members.
     srem: func(key: string, values: list<string>) -> result<u32, error>;
     /// Sets the time to live for the given key.
-    expire: func(key: string, ttl: s64) -> result<_, error>;
+    expire: func(key: string, ttl: u64) -> result<_, error>;
     /// Sets the expiration for the given key to the given unix time.
-    expire-at: func(key: string, unix-time: s64) -> result<_, error>;
+    expire-at: func(key: string, unix-time: u64) -> result<_, error>;
 
     incr-rate-limit: func(key: string, delta: s64, window: s64) -> result<rate, error>;
     check-rate-limit: func(key: string) -> result<rate, error>;

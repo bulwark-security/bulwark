@@ -205,7 +205,7 @@ pub fn srem<K: AsRef<str>, I: IntoIterator<Item = T>, T: Into<String>>(
 ///
 /// * `key` - The key name corresponding to the state value.
 /// * `ttl` - The time-to-live for the value in seconds.
-pub fn expire<K: AsRef<str>>(key: K, ttl: i64) -> Result<(), crate::RemoteStateError> {
+pub fn expire<K: AsRef<str>>(key: K, ttl: u64) -> Result<(), crate::RemoteStateError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::expire(key, ttl)?)
 }
@@ -219,7 +219,7 @@ pub fn expire<K: AsRef<str>>(key: K, ttl: i64) -> Result<(), crate::RemoteStateE
 ///
 /// * `key` - The key name corresponding to the state value.
 /// * `unix_time` - The unix timestamp in seconds.
-pub fn expire_at<K: AsRef<str>>(key: K, unix_time: i64) -> Result<(), crate::RemoteStateError> {
+pub fn expire_at<K: AsRef<str>>(key: K, unix_time: u64) -> Result<(), crate::RemoteStateError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::expire_at(
         key, unix_time,
