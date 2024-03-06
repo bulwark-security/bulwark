@@ -1,4 +1,5 @@
 use crate::ThresholdError;
+use approx::RelativeEq;
 use strum_macros::{Display, EnumString};
 use validator::{Validate, ValidationError};
 
@@ -34,7 +35,7 @@ pub enum Outcome {
 /// This data structure is a two-state [Dempster-Shafer](https://en.wikipedia.org/wiki/Dempster%E2%80%93Shafer_theory)
 /// mass function, with the power set represented by the `unknown` value. This enables the use of combination rules
 /// to aggregate decisions from multiple sources. However, knowledge of Dempster-Shafer theory should not be necessary.
-#[derive(Debug, Validate, Copy, Clone)]
+#[derive(Debug, Validate, Copy, Clone, PartialEq)]
 #[validate(schema(function = "validate_sum", skip_on_field_errors = false))]
 pub struct Decision {
     #[validate(range(min = 0.0, max = 1.0))]
@@ -100,9 +101,12 @@ impl Decision {
     /// # Examples
     ///
     /// ```
-    /// assert!(Decision::accepted(1.0), Decision { accept: 1.0, restrict: 0.0, unknown: 0.0 });
-    /// assert!(Decision::accepted(0.5), Decision { accept: 0.5, restrict: 0.0, unknown: 0.5 });
-    /// assert!(Decision::accepted(0.0), Decision { accept: 0.0, restrict: 0.0, unknown: 1.0 });
+    /// use approx::assert_relative_eq;
+    /// use bulwark_decision::Decision;
+    ///
+    /// assert_relative_eq!(Decision::accepted(1.0), Decision { accept: 1.0, restrict: 0.0, unknown: 0.0 });
+    /// assert_relative_eq!(Decision::accepted(0.5), Decision { accept: 0.5, restrict: 0.0, unknown: 0.5 });
+    /// assert_relative_eq!(Decision::accepted(0.0), Decision { accept: 0.0, restrict: 0.0, unknown: 1.0 });
     /// ```
     pub fn accepted(accept: f64) -> Self {
         Self {
@@ -124,9 +128,12 @@ impl Decision {
     /// # Examples
     ///
     /// ```
-    /// assert!(Decision::restricted(1.0), Decision { accept: 0.0, restrict: 1.0, unknown: 0.0 });
-    /// assert!(Decision::restricted(0.5), Decision { accept: 0.0, restrict: 0.5, unknown: 0.5 });
-    /// assert!(Decision::restricted(0.0), Decision { accept: 0.0, restrict: 0.0, unknown: 1.0 });
+    /// use approx::assert_relative_eq;
+    /// use bulwark_decision::Decision;
+    ///
+    /// assert_relative_eq!(Decision::restricted(1.0), Decision { accept: 0.0, restrict: 1.0, unknown: 0.0 });
+    /// assert_relative_eq!(Decision::restricted(0.5), Decision { accept: 0.0, restrict: 0.5, unknown: 0.5 });
+    /// assert_relative_eq!(Decision::restricted(0.0), Decision { accept: 0.0, restrict: 0.0, unknown: 1.0 });
     /// ```
     pub fn restricted(restrict: f64) -> Self {
         Self {
@@ -472,6 +479,49 @@ impl Decision {
         } else {
             f64::INFINITY
         }
+    }
+}
+
+impl approx::AbsDiffEq for Decision {
+    type Epsilon = <f64 as approx::AbsDiffEq>::Epsilon;
+
+    fn default_epsilon() -> Self::Epsilon {
+        <f64 as approx::AbsDiffEq>::default_epsilon()
+    }
+
+    fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
+        f64::abs_diff_eq(&self.accept, &other.accept, epsilon)
+            && f64::abs_diff_eq(&self.restrict, &other.restrict, epsilon)
+            && f64::abs_diff_eq(&self.unknown, &other.unknown, epsilon)
+    }
+}
+
+impl approx::RelativeEq for Decision {
+    fn default_max_relative() -> Self::Epsilon {
+        <f64 as approx::RelativeEq>::default_max_relative()
+    }
+
+    fn relative_eq(
+        &self,
+        other: &Self,
+        epsilon: Self::Epsilon,
+        max_relative: Self::Epsilon,
+    ) -> bool {
+        f64::relative_eq(&self.accept, &other.accept, epsilon, max_relative)
+            && f64::relative_eq(&self.restrict, &other.restrict, epsilon, max_relative)
+            && f64::relative_eq(&self.unknown, &other.unknown, epsilon, max_relative)
+    }
+}
+
+impl approx::UlpsEq for Decision {
+    fn default_max_ulps() -> u32 {
+        <f64 as approx::UlpsEq>::default_max_ulps()
+    }
+
+    fn ulps_eq(&self, other: &Self, epsilon: Self::Epsilon, max_ulps: u32) -> bool {
+        f64::ulps_eq(&self.accept, &other.accept, epsilon, max_ulps)
+            && f64::ulps_eq(&self.restrict, &other.restrict, epsilon, max_ulps)
+            && f64::ulps_eq(&self.unknown, &other.unknown, epsilon, max_ulps)
     }
 }
 
