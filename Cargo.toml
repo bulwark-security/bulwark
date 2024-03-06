@@ -15,9 +15,8 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 bulwark-config = { workspace = true }
+bulwark-build = { workspace = true }
 bulwark-ext-processor = { workspace = true }
-
-wit-component = { workspace = true }
 
 chrono = { workspace = true }
 envoy-control-plane = { workspace = true }
@@ -32,7 +31,6 @@ tonic = { workspace = true }
 tracing = { workspace = true }
 
 axum = { version = "0.7.0", features = ["http2"] }
-cargo_metadata = "0.18.1"
 clap = { version = "4.4.3", features = ["derive"] }
 clap_complete = "4.4.1"
 color-eyre = "0.6.2"
@@ -63,6 +61,7 @@ clap_mangen = "0.2.5"
 
 [workspace]
 members = [
+    "crates/build",
     "crates/config",
     "crates/ext-processor",
     "crates/wasm-host",
@@ -80,6 +79,7 @@ rust-version = "1.73.0"
 
 [workspace.dependencies]
 # Internal dependencies
+bulwark-build = { path = "crates/build", version = "=0.4.0" }
 bulwark-config = { path = "crates/config", version = "=0.4.0" }
 bulwark-decision = { path = "crates/decision", version = "=0.4.0" }
 bulwark-ext-processor = { path = "crates/ext-processor", version = "=0.4.0" }

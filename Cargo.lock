@@ -286,13 +286,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "bulwark-build"
+version = "0.4.0"
+dependencies = [
+ "cargo_metadata",
+ "thiserror",
+ "wit-component",
+]
+
+[[package]]
 name = "bulwark-cli"
 version = "0.4.0"
 dependencies = [
  "axum",
+ "bulwark-build",
  "bulwark-config",
  "bulwark-ext-processor",
- "cargo_metadata",
  "chrono",
  "clap",
  "clap_complete",
@@ -323,7 +332,6 @@ dependencies = [
  "tracing-log",
  "tracing-opentelemetry",
  "tracing-subscriber",
- "wit-component",
 ]
 
 [[package]]
