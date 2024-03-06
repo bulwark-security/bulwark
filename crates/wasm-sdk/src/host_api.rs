@@ -1,7 +1,6 @@
 use {
     forwarded_header_value::ForwardedHeaderValue,
-    std::{collections::HashMap, net::IpAddr, str, str::FromStr},
-    validator::Validate,
+    std::{collections::HashMap, net::IpAddr, str},
 };
 
 // For some reason, doc-tests in this module trigger a linker error, so they're set to no_run

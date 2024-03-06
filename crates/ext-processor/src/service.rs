@@ -10,12 +10,12 @@ use bulwark_wasm_host::{
 };
 use bulwark_wasm_sdk::Decision;
 use envoy_control_plane::envoy::{
-    config::core::v3::{HeaderMap, HeaderValue, HeaderValueOption},
+    config::core::v3::{HeaderMap},
     extensions::filters::http::ext_proc::v3::{processing_mode, ProcessingMode},
     r#type::v3::HttpStatus,
     service::ext_proc::v3::{
         external_processor_server::ExternalProcessor, processing_request, processing_response,
-        BodyResponse, CommonResponse, HeaderMutation, HeadersResponse, HttpBody, HttpHeaders,
+        BodyResponse, CommonResponse, HeadersResponse, HttpBody, HttpHeaders,
         ImmediateResponse, ProcessingRequest, ProcessingResponse,
     },
 };

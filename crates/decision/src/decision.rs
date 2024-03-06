@@ -1,5 +1,4 @@
 use crate::ThresholdError;
-use approx::RelativeEq;
 use strum_macros::{Display, EnumString};
 use validator::{Validate, ValidationError};
 

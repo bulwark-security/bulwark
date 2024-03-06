@@ -2,7 +2,6 @@ use anyhow::Context as _;
 use wasmtime_wasi_http::body::HyperIncomingBody;
 
 mod latest {
-    pub use wasmtime_wasi::preview2::bindings::wasi::*;
     pub mod http {
         pub use wasmtime_wasi_http::bindings::wasi::http::*;
     }
@@ -25,7 +24,6 @@ pub(crate) mod bindings {
             "wasi:http/types/response-outparam": super::latest::http::types::ResponseOutparam,
             "wasi:http/types/future-incoming-response": super::latest::http::types::FutureIncomingResponse,
             "wasi:http/types/future-trailers": super::latest::http::types::FutureTrailers,
-            "wasi:sockets/network/ip-address": super::latest::sockets::network::IpAddress,
         }
     });
 }
