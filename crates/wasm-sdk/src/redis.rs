@@ -100,7 +100,7 @@ pub fn set_string<K: AsRef<str>, V: AsRef<str>>(
     let value: &str = value.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::set(
         key,
-        &value.as_bytes().to_vec(),
+        value.as_bytes(),
     )?)
 }
 
@@ -117,7 +117,7 @@ pub fn set_i64<K: AsRef<str>>(key: K, value: i64) -> Result<(), crate::RemoteSta
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::set(
         key,
-        &value.to_string().as_bytes().to_vec(),
+        value.to_string().as_bytes(),
     )?)
 }
 

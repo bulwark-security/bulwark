@@ -10,13 +10,13 @@ use bulwark_wasm_host::{
 };
 use bulwark_wasm_sdk::Decision;
 use envoy_control_plane::envoy::{
-    config::core::v3::{HeaderMap},
+    config::core::v3::HeaderMap,
     extensions::filters::http::ext_proc::v3::{processing_mode, ProcessingMode},
     r#type::v3::HttpStatus,
     service::ext_proc::v3::{
         external_processor_server::ExternalProcessor, processing_request, processing_response,
-        BodyResponse, CommonResponse, HeadersResponse, HttpBody, HttpHeaders,
-        ImmediateResponse, ProcessingRequest, ProcessingResponse,
+        BodyResponse, CommonResponse, HeadersResponse, HttpBody, HttpHeaders, ImmediateResponse,
+        ProcessingRequest, ProcessingResponse,
     },
 };
 use forwarded_header_value::ForwardedHeaderValue;
@@ -658,7 +658,7 @@ impl BulwarkProcessor {
             let new_output_by_plugin = new_output_by_plugin.clone();
             let prior_output_by_plugin = output_by_plugin
                 .get(&plugin_instance.lock().await.plugin_reference())
-                .map(|h| h.clone());
+                .cloned();
             response_phase_tasks.spawn(
                 timeout(timeout_duration, async move {
                     let output_result = Self::dispatch_response_decision(
@@ -982,7 +982,7 @@ impl BulwarkProcessor {
         );
 
         let mut restricted = false;
-        let end_of_stream = request.body().len() == 0;
+        let end_of_stream = request.body().is_empty();
         match outcome {
             bulwark_wasm_sdk::Outcome::Trusted
             | bulwark_wasm_sdk::Outcome::Accepted
