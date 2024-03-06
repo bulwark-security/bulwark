@@ -54,6 +54,14 @@ tracing-log = "0.2.0"
 tracing-opentelemetry = "0.22.0"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 
+[dev-dependencies]
+bulwark-wasm-host = { workspace = true }
+bulwark-wasm-sdk = { workspace = true }
+
+bytes = { workspace = true }
+
+tokio-test = "0.4.2"
+
 [build-dependencies]
 reqwest = { workspace = true }
 
