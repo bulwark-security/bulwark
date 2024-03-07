@@ -445,283 +445,6 @@ impl BulwarkProcessor {
         }
         result
     }
-
-    #[instrument(name = "plugin output", skip(plugin_instances))]
-    async fn capture_stdio(plugin_instances: Vec<Arc<Mutex<PluginInstance>>>) {
-        // TODO: refactor to process one plugin at a time and try to avoid having handle_decision_feedback join_all
-        for plugin_instance in plugin_instances {
-            let plugin_instance = plugin_instance.lock().await;
-            let stdout = plugin_instance.stdio().stdout_buffer();
-            let stderr = plugin_instance.stdio().stderr_buffer();
-            if !stdout.is_empty() {
-                let stdout = str::from_utf8(&stdout).unwrap();
-                for line in stdout.lines() {
-                    info!(
-                        message = "stdout",
-                        plugin = plugin_instance.plugin_reference(),
-                        content = line
-                    );
-                }
-            }
-            if !stderr.is_empty() {
-                let stderr = str::from_utf8(&stderr).unwrap();
-                for line in stderr.lines() {
-                    error!(
-                        message = "stderr",
-                        plugin = plugin_instance.plugin_reference(),
-                        content = line
-                    );
-                }
-            }
-        }
-    }
-
-    async fn send_allow_request_message(
-        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
-        end_of_stream: bool,
-    ) -> Result<(), ProcessingMessageError> {
-        let mut sender = sender.lock().await;
-
-        trace!("send_allow_request_message (ProcessingResponse)");
-        let processing_reply = ProcessingResponse {
-            // If the request did not have a body, we're responding to a
-            // RequestHeaders message, otherwise we're responding to a
-            // RequestBody message.
-            response: if end_of_stream {
-                Some(processing_response::Response::RequestHeaders(
-                    HeadersResponse {
-                        response: Some(CommonResponse::default()),
-                    },
-                ))
-            } else {
-                Some(processing_response::Response::RequestBody(
-                    BodyResponse::default(),
-                ))
-            },
-            ..Default::default()
-        };
-        Ok(sender.send(Ok(processing_reply)).await?)
-    }
-
-    async fn send_block_request_message(
-        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
-    ) -> Result<bulwark_wasm_sdk::Response, ProcessingMessageError> {
-        let mut sender = sender.lock().await;
-
-        trace!("send_block_request_message (ProcessingResponse)");
-        // Send back a response indicating the request has been blocked.
-        let code: i32 = 403;
-        // TODO: better default response + customizability
-        let body = "Access Denied\n";
-        let response: bulwark_wasm_sdk::Response = http::response::Builder::new()
-            .status(code as u16)
-            .body(bytes::Bytes::from(body))?;
-        let processing_reply = ProcessingResponse {
-            response: Some(processing_response::Response::ImmediateResponse(
-                ImmediateResponse {
-                    status: Some(HttpStatus { code }),
-                    // TODO: add decision debug
-                    details: "blocked by bulwark".to_string(),
-                    body: body.to_string(),
-                    headers: None,
-                    grpc_status: None,
-                },
-            )),
-            ..Default::default()
-        };
-        sender.send(Ok(processing_reply)).await?;
-        Ok(response)
-    }
-
-    async fn send_allow_response_message(
-        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
-        end_of_stream: bool,
-    ) -> Result<(), ProcessingMessageError> {
-        let mut sender = sender.lock().await;
-
-        trace!("send_allow_response_message (ProcessingResponse)");
-        let processing_reply = ProcessingResponse {
-            // If the response did not have a body, we're responding to a
-            // ResponseHeaders message, otherwise we're responding to a
-            // ResponseBody message.
-            response: if end_of_stream {
-                Some(processing_response::Response::ResponseHeaders(
-                    HeadersResponse::default(),
-                ))
-            } else {
-                Some(processing_response::Response::ResponseBody(
-                    BodyResponse::default(),
-                ))
-            },
-            ..Default::default()
-        };
-        Ok(sender.send(Ok(processing_reply)).await?)
-    }
-
-    async fn send_block_response_message(
-        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
-    ) -> Result<bulwark_wasm_sdk::Response, ProcessingMessageError> {
-        let mut sender = sender.lock().await;
-
-        trace!("send_block_response_message (ProcessingResponse)");
-        // Send back a response indicating the request has been blocked.
-        let code: i32 = 403;
-        // TODO: better default response + customizability
-        let body = "Access Denied\n";
-        let response: bulwark_wasm_sdk::Response = http::response::Builder::new()
-            .status(code as u16)
-            .body(bytes::Bytes::from(body))?;
-        let processing_reply = ProcessingResponse {
-            response: Some(processing_response::Response::ImmediateResponse(
-                ImmediateResponse {
-                    status: Some(HttpStatus { code }),
-                    // TODO: add decision debug
-                    details: "blocked by bulwark".to_string(),
-                    body: body.to_string(),
-                    headers: None,
-                    grpc_status: None,
-                },
-            )),
-            ..Default::default()
-        };
-        sender.send(Ok(processing_reply)).await?;
-        Ok(response)
-    }
-
-    async fn get_request_header_message(
-        stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
-    ) -> Result<Option<HttpHeaders>, tonic::Status> {
-        let mut stream = stream.lock().await;
-
-        trace!("get_request_header_message (ProcessingRequest)");
-        // TODO: if request attributes are eventually supported, we may need to extract both instead of just headers
-        if let Some(next_msg) = stream.message().await? {
-            if let Some(processing_request::Request::RequestHeaders(hdrs)) = next_msg.request {
-                return Ok(Some(hdrs));
-            }
-        }
-        Ok(None)
-    }
-
-    async fn send_request_headers_message(
-        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
-    ) -> Result<(), futures::channel::mpsc::SendError> {
-        let mut sender = sender.lock().await;
-
-        trace!("send_request_headers_message (ProcessingResponse)");
-        let processing_reply = ProcessingResponse {
-            response: Some(processing_response::Response::RequestHeaders(
-                HeadersResponse {
-                    response: Some(CommonResponse::default()),
-                },
-            )),
-            mode_override: Some(ProcessingMode {
-                request_body_mode: processing_mode::BodySendMode::BufferedPartial as i32,
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        sender.send(Ok(processing_reply)).await
-    }
-
-    async fn get_request_body_message(
-        stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
-    ) -> Result<Option<HttpBody>, tonic::Status> {
-        let mut stream = stream.lock().await;
-
-        trace!("get_request_body_message (ProcessingRequest)");
-        if let Some(next_msg) = stream.message().await? {
-            if let Some(processing_request::Request::RequestBody(body)) = next_msg.request {
-                return Ok(Some(body));
-            }
-        }
-        Ok(None)
-    }
-
-    async fn get_response_headers_message(
-        stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
-    ) -> Result<Option<HttpHeaders>, tonic::Status> {
-        let mut stream = stream.lock().await;
-
-        trace!("get_response_headers_message (ProcessingRequest)");
-        if let Some(next_msg) = stream.message().await? {
-            if let Some(processing_request::Request::ResponseHeaders(hdrs)) = next_msg.request {
-                return Ok(Some(hdrs));
-            }
-        }
-        Ok(None)
-    }
-
-    async fn send_response_headers_message(
-        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
-    ) -> Result<(), futures::channel::mpsc::SendError> {
-        let mut sender = sender.lock().await;
-
-        trace!("send_response_headers_message (ProcessingResponse)");
-        let processing_reply = ProcessingResponse {
-            response: Some(processing_response::Response::ResponseHeaders(
-                HeadersResponse::default(),
-            )),
-            mode_override: Some(ProcessingMode {
-                response_body_mode: processing_mode::BodySendMode::BufferedPartial as i32,
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        sender.send(Ok(processing_reply)).await
-    }
-
-    async fn get_response_body_message(
-        stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
-    ) -> Result<Option<HttpBody>, tonic::Status> {
-        let mut stream = stream.lock().await;
-
-        trace!("get_response_body_message (ProcessingRequest)");
-        if let Some(next_msg) = stream.message().await? {
-            if let Some(processing_request::Request::ResponseBody(body)) = next_msg.request {
-                return Ok(Some(body));
-            }
-        }
-        Ok(None)
-    }
-
-    fn get_header_value<'a>(header_map: &'a Option<HeaderMap>, name: &str) -> Option<&'a str> {
-        match header_map {
-            Some(headers) => {
-                for header in &headers.headers {
-                    if header.key == name {
-                        return Some(&header.value);
-                    }
-                }
-                None
-            }
-            None => None,
-        }
-    }
-
-    fn parse_forwarded_ip(forwarded: &str, proxy_hops: usize) -> Option<IpAddr> {
-        let value = ForwardedHeaderValue::from_forwarded(forwarded).ok();
-        value.and_then(|fhv| {
-            if proxy_hops > fhv.len() {
-                None
-            } else {
-                let item = fhv.iter().nth(fhv.len() - proxy_hops);
-                item.and_then(|fs| fs.forwarded_for_ip())
-            }
-        })
-    }
-
-    fn parse_x_forwarded_for_ip(forwarded: &str, proxy_hops: usize) -> Option<IpAddr> {
-        let value = ForwardedHeaderValue::from_x_forwarded_for(forwarded).ok();
-        value.and_then(|fhv| {
-            if proxy_hops > fhv.len() {
-                None
-            } else {
-                let item = fhv.iter().nth(fhv.len() - proxy_hops);
-                item.and_then(|fs| fs.forwarded_for_ip())
-            }
-        })
-    }
 }
 
 /// The `ProcessorContext` wraps values associated with a single request/response cycle.
@@ -746,15 +469,13 @@ impl ProcessorContext {
         stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
         proxy_hops: usize,
     ) -> Result<bulwark_wasm_sdk::Request, RequestError> {
-        if let Some(header_msg) =
-            BulwarkProcessor::get_request_header_message(stream.clone()).await?
-        {
+        if let Some(header_msg) = Self::get_request_header_message(stream.clone()).await? {
             // If there is no body, we have to skip these to avoid Envoy errors.
             let body = if !header_msg.end_of_stream {
                 // We have to send a reply back before we can retrieve the request body
-                BulwarkProcessor::send_request_headers_message(sender).await?;
+                Self::send_request_headers_message(sender).await?;
 
-                BulwarkProcessor::get_request_body_message(stream)
+                Self::get_request_body_message(stream)
                     .await?
                     .map(|body_msg| body_msg.body)
             } else {
@@ -764,16 +485,16 @@ impl ProcessorContext {
             // TODO: currently this information isn't used and isn't accessible to the plugin environment yet
             // TODO: does this go into a request extension?
             // TODO: :protocol?
-            let _authority = BulwarkProcessor::get_header_value(&header_msg.headers, ":authority")
+            let _authority = Self::get_header_value(&header_msg.headers, ":authority")
                 .ok_or(RequestError::MissingAuthority)?;
-            let _scheme = BulwarkProcessor::get_header_value(&header_msg.headers, ":scheme")
+            let _scheme = Self::get_header_value(&header_msg.headers, ":scheme")
                 .ok_or(RequestError::MissingScheme)?;
 
             let method = http::Method::from_str(
-                BulwarkProcessor::get_header_value(&header_msg.headers, ":method")
+                Self::get_header_value(&header_msg.headers, ":method")
                     .ok_or(RequestError::MissingMethod)?,
             )?;
-            let request_uri = BulwarkProcessor::get_header_value(&header_msg.headers, ":path")
+            let request_uri = Self::get_header_value(&header_msg.headers, ":path")
                 .ok_or(RequestError::MissingPath)?;
             let mut request = http::Request::builder();
             let request_chunk = if let Some(body) = body {
@@ -797,18 +518,14 @@ impl ProcessorContext {
 
             // TODO: remote IP should probably be received via an external attribute, but that doesn't seem to be currently supported by envoy?
             // NOTE: header keys must be sent in lower case
-            if let Some(forwarded) =
-                BulwarkProcessor::get_header_value(&header_msg.headers, "forwarded")
-            {
-                if let Some(ip_addr) = BulwarkProcessor::parse_forwarded_ip(forwarded, proxy_hops) {
+            if let Some(forwarded) = Self::get_header_value(&header_msg.headers, "forwarded") {
+                if let Some(ip_addr) = Self::parse_forwarded_ip(forwarded, proxy_hops) {
                     request = request.extension(ForwardedIP(ip_addr));
                 }
             } else if let Some(forwarded) =
-                BulwarkProcessor::get_header_value(&header_msg.headers, "x-forwarded-for")
+                Self::get_header_value(&header_msg.headers, "x-forwarded-for")
             {
-                if let Some(ip_addr) =
-                    BulwarkProcessor::parse_x_forwarded_for_ip(forwarded, proxy_hops)
-                {
+                if let Some(ip_addr) = Self::parse_x_forwarded_for_ip(forwarded, proxy_hops) {
                     request = request.extension(ForwardedIP(ip_addr));
                 }
             }
@@ -819,22 +536,20 @@ impl ProcessorContext {
     }
 
     async fn prepare_response(&mut self) -> Result<bulwark_wasm_sdk::Response, ResponseError> {
-        if let Some(header_msg) =
-            BulwarkProcessor::get_response_headers_message(self.stream.clone()).await?
-        {
+        if let Some(header_msg) = Self::get_response_headers_message(self.stream.clone()).await? {
             // If there is no body, we have to skip these to avoid Envoy errors.
             let body = if !header_msg.end_of_stream {
                 // We have to send a reply back before we can retrieve the response body
-                BulwarkProcessor::send_response_headers_message(self.sender.clone()).await?;
+                Self::send_response_headers_message(self.sender.clone()).await?;
 
-                BulwarkProcessor::get_response_body_message(self.stream.clone())
+                Self::get_response_body_message(self.stream.clone())
                     .await?
                     .map(|body_msg| body_msg.body)
             } else {
                 None
             };
 
-            let status = BulwarkProcessor::get_header_value(&header_msg.headers, ":status")
+            let status = Self::get_header_value(&header_msg.headers, ":status")
                 .ok_or(ResponseError::MissingStatus)?;
 
             let mut response = http::Response::builder();
@@ -1194,7 +909,7 @@ impl ProcessorContext {
         metrics::histogram!("combined_conflict", Decision::conflict(&decisions));
 
         // Capturing stdio is always the last thing that happens and feedback should always be the second-to-last.
-        BulwarkProcessor::capture_stdio(self.plugin_instances.clone()).await;
+        self.capture_stdio().await;
     }
 
     async fn complete_request_phase(&mut self) {
@@ -1238,7 +953,7 @@ impl ProcessorContext {
             | bulwark_wasm_sdk::Outcome::Accepted
             // suspected requests are monitored but not rejected
             | bulwark_wasm_sdk::Outcome::Suspected => {
-                let result = BulwarkProcessor::send_allow_request_message(self.sender.clone(), end_of_stream).await;
+                let result = Self::send_allow_request_message(self.sender.clone(), end_of_stream).await;
                 // TODO: must perform proper error handling on sender results, sending can fail
                 if let Err(err) = result {
                     error!(message = format!("send error: {}", err));
@@ -1248,7 +963,7 @@ impl ProcessorContext {
                 restricted = true;
                 if !self.thresholds.observe_only {
                     info!(message = "process response", status = 403);
-                    match BulwarkProcessor::send_block_request_message(self.sender.clone()).await {
+                    match Self::send_block_request_message(self.sender.clone()).await {
                         Ok(response) => {
                             // Normally we initiate feedback after the response phase, but if we skip the response phase
                             // we need to do it here instead.
@@ -1269,10 +984,29 @@ impl ProcessorContext {
 
                     // Short-circuit if restricted, we can skip the response phase
                     return;
+                } else {
+                    // In observe-only mode, we still perform decision feedback, but there won't be a response.
+                    let verdict = Verdict {
+                        decision,
+                        outcome,
+                        tags: self.combined_output.tags.iter().cloned().collect(),
+                    };
+                    self.verdict = Some(verdict);
+
+                    // We need to set a response or decision feedback will panic.
+                    // This response is what would have been sent if we had blocked, rather than what will actually
+                    // be sent, since we're about to call send_allow_request_message and that instructs envoy that
+                    // the processor no longer needs to continue processing the request or response.
+                    let code: i32 = 403;
+                    let body = "Access Denied\n";
+                    // The generate function should be infallible here.
+                    let response = Self::generate_block_response(code, body).expect("could not generate block response");
+                    self.response = Some(Arc::new(response));
+
+                    self.execute_decision_feedback().await;
                 }
 
-                // Don't receive a body when we would have otherwise blocked if we weren't in monitor-only mode
-                let result = BulwarkProcessor::send_allow_request_message(self.sender.clone(), end_of_stream).await;
+                let result = Self::send_allow_request_message(self.sender.clone(), end_of_stream).await;
                 // TODO: must perform proper error handling on sender results, sending can fail
                 if let Err(err) = result {
                     error!(message = format!("send error: {}", err));
@@ -1341,7 +1075,7 @@ impl ProcessorContext {
             // suspected requests are monitored but not rejected
             | bulwark_wasm_sdk::Outcome::Suspected => {
                 info!(message = "process response", status = u16::from(response.status()));
-                let result = BulwarkProcessor::send_allow_response_message(self.sender.clone(), end_of_stream).await;
+                let result = Self::send_allow_response_message(self.sender.clone(), end_of_stream).await;
                 // TODO: must perform proper error handling on sender results, sending can fail
                 if let Err(err) = result {
                     error!(message = format!("send error: {}", err));
@@ -1350,7 +1084,7 @@ impl ProcessorContext {
             bulwark_wasm_sdk::Outcome::Restricted => {
                 if !self.thresholds.observe_only {
                     info!(message = "process response", status = 403);
-                    let result = BulwarkProcessor::send_block_response_message(self.sender.clone()).await;
+                    let result = Self::send_block_response_message(self.sender.clone()).await;
                     // TODO: must perform proper error handling on sender results, sending can fail
                     if let Err(err) = result {
                         error!(message = format!("send error: {}", err));
@@ -1358,7 +1092,7 @@ impl ProcessorContext {
                 } else {
                     info!(message = "process response", status = u16::from(response.status()));
                     // Don't receive a body when we would have otherwise blocked if we weren't in monitor-only mode
-                    let result = BulwarkProcessor::send_allow_response_message(self.sender.clone(), end_of_stream).await;
+                    let result = Self::send_allow_response_message(self.sender.clone(), end_of_stream).await;
                     // TODO: must perform proper error handling on sender results, sending can fail
                     if let Err(err) = result {
                         error!(message = format!("send error: {}", err));
@@ -1374,6 +1108,291 @@ impl ProcessorContext {
         };
         self.verdict = Some(verdict);
         self.execute_decision_feedback().await;
+    }
+
+    #[instrument(name = "plugin output", skip(self))]
+    async fn capture_stdio(&self) {
+        // TODO: refactor to process one plugin at a time and try to avoid having handle_decision_feedback join_all
+        for plugin_instance in self.plugin_instances.iter() {
+            let plugin_instance = plugin_instance.lock().await;
+            let stdout = plugin_instance.stdio().stdout_buffer();
+            let stderr = plugin_instance.stdio().stderr_buffer();
+            if !stdout.is_empty() {
+                let stdout = str::from_utf8(&stdout).unwrap();
+                for line in stdout.lines() {
+                    info!(
+                        message = "stdout",
+                        plugin = plugin_instance.plugin_reference(),
+                        content = line
+                    );
+                }
+            }
+            if !stderr.is_empty() {
+                let stderr = str::from_utf8(&stderr).unwrap();
+                for line in stderr.lines() {
+                    error!(
+                        message = "stderr",
+                        plugin = plugin_instance.plugin_reference(),
+                        content = line
+                    );
+                }
+            }
+        }
+    }
+
+    /// Generates a response indicating the request has been blocked.
+    fn generate_block_response(
+        code: i32,
+        body: &str,
+    ) -> Result<bulwark_wasm_sdk::Response, http::Error> {
+        http::response::Builder::new()
+            .status(code as u16)
+            .body(bytes::Bytes::from(body.to_string()))
+    }
+
+    async fn send_allow_request_message(
+        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
+        end_of_stream: bool,
+    ) -> Result<(), ProcessingMessageError> {
+        let mut sender = sender.lock().await;
+
+        trace!("send_allow_request_message (ProcessingResponse)");
+        let processing_reply = ProcessingResponse {
+            // If the request did not have a body, we're responding to a
+            // RequestHeaders message, otherwise we're responding to a
+            // RequestBody message.
+            response: if end_of_stream {
+                Some(processing_response::Response::RequestHeaders(
+                    HeadersResponse {
+                        response: Some(CommonResponse::default()),
+                    },
+                ))
+            } else {
+                Some(processing_response::Response::RequestBody(
+                    BodyResponse::default(),
+                ))
+            },
+            ..Default::default()
+        };
+        Ok(sender.send(Ok(processing_reply)).await?)
+    }
+
+    async fn send_block_request_message(
+        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
+    ) -> Result<bulwark_wasm_sdk::Response, ProcessingMessageError> {
+        let mut sender = sender.lock().await;
+
+        trace!("send_block_request_message (ProcessingResponse)");
+        // TODO: better default response + customizability
+        let code: i32 = 403;
+        let body = "Access Denied\n";
+        let response = Self::generate_block_response(code, body)?;
+
+        let processing_reply = ProcessingResponse {
+            response: Some(processing_response::Response::ImmediateResponse(
+                ImmediateResponse {
+                    status: Some(HttpStatus { code }),
+                    // TODO: add decision debug
+                    details: "blocked by bulwark".to_string(),
+                    body: body.to_string(),
+                    headers: None,
+                    grpc_status: None,
+                },
+            )),
+            ..Default::default()
+        };
+        sender.send(Ok(processing_reply)).await?;
+        Ok(response)
+    }
+
+    async fn send_allow_response_message(
+        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
+        end_of_stream: bool,
+    ) -> Result<(), ProcessingMessageError> {
+        let mut sender = sender.lock().await;
+
+        trace!("send_allow_response_message (ProcessingResponse)");
+        let processing_reply = ProcessingResponse {
+            // If the response did not have a body, we're responding to a
+            // ResponseHeaders message, otherwise we're responding to a
+            // ResponseBody message.
+            response: if end_of_stream {
+                Some(processing_response::Response::ResponseHeaders(
+                    HeadersResponse::default(),
+                ))
+            } else {
+                Some(processing_response::Response::ResponseBody(
+                    BodyResponse::default(),
+                ))
+            },
+            ..Default::default()
+        };
+        Ok(sender.send(Ok(processing_reply)).await?)
+    }
+
+    async fn send_block_response_message(
+        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
+    ) -> Result<bulwark_wasm_sdk::Response, ProcessingMessageError> {
+        let mut sender = sender.lock().await;
+
+        trace!("send_block_response_message (ProcessingResponse)");
+        // Send back a response indicating the request has been blocked.
+        let code: i32 = 403;
+        // TODO: better default response + customizability
+        let body = "Access Denied\n";
+        let response: bulwark_wasm_sdk::Response = http::response::Builder::new()
+            .status(code as u16)
+            .body(bytes::Bytes::from(body))?;
+        let processing_reply = ProcessingResponse {
+            response: Some(processing_response::Response::ImmediateResponse(
+                ImmediateResponse {
+                    status: Some(HttpStatus { code }),
+                    // TODO: add decision debug
+                    details: "blocked by bulwark".to_string(),
+                    body: body.to_string(),
+                    headers: None,
+                    grpc_status: None,
+                },
+            )),
+            ..Default::default()
+        };
+        sender.send(Ok(processing_reply)).await?;
+        Ok(response)
+    }
+
+    async fn get_request_header_message(
+        stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
+    ) -> Result<Option<HttpHeaders>, tonic::Status> {
+        let mut stream = stream.lock().await;
+
+        trace!("get_request_header_message (ProcessingRequest)");
+        // TODO: if request attributes are eventually supported, we may need to extract both instead of just headers
+        if let Some(next_msg) = stream.message().await? {
+            if let Some(processing_request::Request::RequestHeaders(hdrs)) = next_msg.request {
+                return Ok(Some(hdrs));
+            }
+        }
+        Ok(None)
+    }
+
+    async fn send_request_headers_message(
+        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
+    ) -> Result<(), futures::channel::mpsc::SendError> {
+        let mut sender = sender.lock().await;
+
+        trace!("send_request_headers_message (ProcessingResponse)");
+        let processing_reply = ProcessingResponse {
+            response: Some(processing_response::Response::RequestHeaders(
+                HeadersResponse {
+                    response: Some(CommonResponse::default()),
+                },
+            )),
+            mode_override: Some(ProcessingMode {
+                request_body_mode: processing_mode::BodySendMode::BufferedPartial as i32,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        sender.send(Ok(processing_reply)).await
+    }
+
+    async fn get_request_body_message(
+        stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
+    ) -> Result<Option<HttpBody>, tonic::Status> {
+        let mut stream = stream.lock().await;
+
+        trace!("get_request_body_message (ProcessingRequest)");
+        if let Some(next_msg) = stream.message().await? {
+            if let Some(processing_request::Request::RequestBody(body)) = next_msg.request {
+                return Ok(Some(body));
+            }
+        }
+        Ok(None)
+    }
+
+    async fn get_response_headers_message(
+        stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
+    ) -> Result<Option<HttpHeaders>, tonic::Status> {
+        let mut stream = stream.lock().await;
+
+        trace!("get_response_headers_message (ProcessingRequest)");
+        if let Some(next_msg) = stream.message().await? {
+            if let Some(processing_request::Request::ResponseHeaders(hdrs)) = next_msg.request {
+                return Ok(Some(hdrs));
+            }
+        }
+        Ok(None)
+    }
+
+    async fn send_response_headers_message(
+        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
+    ) -> Result<(), futures::channel::mpsc::SendError> {
+        let mut sender = sender.lock().await;
+
+        trace!("send_response_headers_message (ProcessingResponse)");
+        let processing_reply = ProcessingResponse {
+            response: Some(processing_response::Response::ResponseHeaders(
+                HeadersResponse::default(),
+            )),
+            mode_override: Some(ProcessingMode {
+                response_body_mode: processing_mode::BodySendMode::BufferedPartial as i32,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        sender.send(Ok(processing_reply)).await
+    }
+
+    async fn get_response_body_message(
+        stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
+    ) -> Result<Option<HttpBody>, tonic::Status> {
+        let mut stream = stream.lock().await;
+
+        trace!("get_response_body_message (ProcessingRequest)");
+        if let Some(next_msg) = stream.message().await? {
+            if let Some(processing_request::Request::ResponseBody(body)) = next_msg.request {
+                return Ok(Some(body));
+            }
+        }
+        Ok(None)
+    }
+
+    fn get_header_value<'a>(header_map: &'a Option<HeaderMap>, name: &str) -> Option<&'a str> {
+        match header_map {
+            Some(headers) => {
+                for header in &headers.headers {
+                    if header.key == name {
+                        return Some(&header.value);
+                    }
+                }
+                None
+            }
+            None => None,
+        }
+    }
+
+    fn parse_forwarded_ip(forwarded: &str, proxy_hops: usize) -> Option<IpAddr> {
+        let value = ForwardedHeaderValue::from_forwarded(forwarded).ok();
+        value.and_then(|fhv| {
+            if proxy_hops > fhv.len() {
+                None
+            } else {
+                let item = fhv.iter().nth(fhv.len() - proxy_hops);
+                item.and_then(|fs| fs.forwarded_for_ip())
+            }
+        })
+    }
+
+    fn parse_x_forwarded_for_ip(forwarded: &str, proxy_hops: usize) -> Option<IpAddr> {
+        let value = ForwardedHeaderValue::from_x_forwarded_for(forwarded).ok();
+        value.and_then(|fhv| {
+            if proxy_hops > fhv.len() {
+                None
+            } else {
+                let item = fhv.iter().nth(fhv.len() - proxy_hops);
+                item.and_then(|fs| fs.forwarded_for_ip())
+            }
+        })
     }
 }
 
@@ -1416,7 +1435,7 @@ mod tests {
         ];
 
         for (forwarded, hops, expected) in test_cases {
-            let parsed = BulwarkProcessor::parse_forwarded_ip(forwarded, hops);
+            let parsed = ProcessorContext::parse_forwarded_ip(forwarded, hops);
             assert_eq!(parsed, expected);
         }
 
@@ -1454,7 +1473,7 @@ mod tests {
         ];
 
         for (forwarded, hops, expected) in test_cases {
-            let parsed = BulwarkProcessor::parse_x_forwarded_for_ip(forwarded, hops);
+            let parsed = ProcessorContext::parse_x_forwarded_for_ip(forwarded, hops);
             assert_eq!(parsed, expected);
         }
 
