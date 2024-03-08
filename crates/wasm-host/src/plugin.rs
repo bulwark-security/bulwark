@@ -275,8 +275,6 @@ impl PluginInstance {
         // Clone the stdio so we can read the captured stdout and stderr buffers after execution has completed.
         let stdio = plugin_context.stdio.clone();
 
-        // TODO: do we need to retain a reference to the linker value anywhere? explore how other wasm-based systems use it.
-        // convert from normal request struct to wasm request interface
         let mut linker: Linker<PluginContext> = Linker::new(&plugin.engine);
         let mut store = Store::new(&plugin.engine, plugin_context);
 
