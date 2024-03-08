@@ -551,8 +551,48 @@ where
 mod tests {
     use super::*;
 
+    fn build_plugins() -> Result<(), Box<dyn std::error::Error>> {
+        let root = Path::new("../..");
+        let src_file = root.join(file!());
+        let base = src_file.parent().unwrap_or(Path::new("."));
+
+        if !base
+            .join("../../../tests/dist/plugins/bulwark_blank_slate.wasm")
+            .exists()
+        {
+            bulwark_build::build_plugin(
+                base.join("../../../crates/wasm-sdk/examples/blank-slate"),
+                base.join("../../../tests/dist/plugins/bulwark_blank_slate.wasm"),
+                &[],
+                true,
+            )?;
+            assert!(base
+                .join("../../../tests/dist/plugins/bulwark_blank_slate.wasm")
+                .exists());
+        }
+
+        if !base
+            .join("../../../tests/dist/plugins/bulwark_evil_bit.wasm")
+            .exists()
+        {
+            bulwark_build::build_plugin(
+                base.join("../../../crates/wasm-sdk/examples/evil-bit"),
+                base.join("../../../tests/dist/plugins/bulwark_evil_bit.wasm"),
+                &[],
+                true,
+            )?;
+            assert!(base
+                .join("../../../tests/dist/plugins/bulwark_evil_bit.wasm")
+                .exists());
+        }
+
+        Ok(())
+    }
+
     #[test]
     fn test_deserialize() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
         let root: Config = toml::from_str(
             r#"
         [service]
@@ -565,7 +605,7 @@ mod tests {
 
         [thresholds]
         restrict = 0.75
-    
+
         [[include]]
         path = "default.toml"
 
@@ -632,6 +672,8 @@ mod tests {
 
     #[test]
     fn test_load_config() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
         let root: crate::config::Config = load_config("tests/main.toml")?;
 
         assert_eq!(root.service.port, 10002); // non-default
@@ -690,6 +732,8 @@ mod tests {
 
     #[test]
     fn test_load_config_overlapping_preset() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
         let root: crate::config::Config = load_config("tests/overlapping_preset.toml")?;
 
         let resource = root.resources.first().unwrap();
@@ -709,6 +753,8 @@ mod tests {
 
     #[test]
     fn test_load_config_circular_include() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
         let result = load_config("tests/circular_include.toml");
         // This needs to be an error, not a panic.
         assert!(result.is_err());
@@ -721,6 +767,8 @@ mod tests {
 
     #[test]
     fn test_load_config_circular_preset() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
         let result = load_config("tests/circular_preset.toml");
         // This needs to be an error, not a panic.
         assert!(result.is_err());
@@ -733,6 +781,8 @@ mod tests {
 
     #[test]
     fn test_load_config_duplicate_plugin() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
         let result = load_config("tests/duplicate_plugin.toml");
         assert!(result.is_err());
         assert_eq!(
@@ -744,6 +794,8 @@ mod tests {
 
     #[test]
     fn test_load_config_duplicate_preset() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
         let result = load_config("tests/duplicate_preset.toml");
         assert!(result.is_err());
         assert_eq!(
@@ -755,6 +807,8 @@ mod tests {
 
     #[test]
     fn test_load_config_duplicate_mixed() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
         let result = load_config("tests/duplicate_mixed.toml");
         assert!(result.is_err());
         assert_eq!(
@@ -766,6 +820,8 @@ mod tests {
 
     #[test]
     fn test_load_config_resolution_missing() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
         let result = load_config("tests/missing.toml");
         assert!(result.is_err());
         assert_eq!(
@@ -777,6 +833,8 @@ mod tests {
 
     #[test]
     fn test_load_config_missing_include() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
         let result = load_config("tests/missing_include.toml");
         assert!(result.is_err());
         assert!(result
