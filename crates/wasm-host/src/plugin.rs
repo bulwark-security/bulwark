@@ -9,7 +9,6 @@ mod latest {
 
 #[doc(hidden)]
 pub(crate) mod bindings {
-    // TODO: tracing
     wasmtime::component::bindgen!({
         world: "bulwark:plugin/http-detection",
         async: true,
@@ -27,8 +26,6 @@ pub(crate) mod bindings {
         }
     });
 }
-
-// TODO: figure out how to add_to_linker the bindings
 
 use {
     crate::PluginContext,
