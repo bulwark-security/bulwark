@@ -256,7 +256,7 @@ impl WasiHttpView for PluginContext {
 impl crate::bindings::bulwark::plugin::types::Host for PluginContext {}
 
 impl crate::bindings::bulwark::plugin::config::Host for PluginContext {
-    /// Returns the named config value.
+    /// Returns all config key names.
     fn config_keys<'ctx, 'async_trait>(
         &'ctx mut self,
     ) -> Pin<Box<dyn Future<Output = wasmtime::Result<Vec<String>>> + Send + 'async_trait>>
