@@ -552,37 +552,35 @@ mod tests {
     use super::*;
 
     fn build_plugins() -> Result<(), Box<dyn std::error::Error>> {
-        let root = Path::new("../..");
-        let src_file = root.join(file!());
-        let base = src_file.parent().unwrap_or(Path::new("."));
+        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
-        if !base
-            .join("../../../tests/dist/plugins/bulwark_blank_slate.wasm")
+        if !project_root
+            .join("tests/dist/plugins/bulwark_blank_slate.wasm")
             .exists()
         {
             bulwark_build::build_plugin(
-                base.join("../../../crates/wasm-sdk/examples/blank-slate"),
-                base.join("../../../tests/dist/plugins/bulwark_blank_slate.wasm"),
+                project_root.join("crates/wasm-sdk/examples/blank-slate"),
+                project_root.join("tests/dist/plugins/bulwark_blank_slate.wasm"),
                 &[],
                 true,
             )?;
-            assert!(base
-                .join("../../../tests/dist/plugins/bulwark_blank_slate.wasm")
+            assert!(project_root
+                .join("tests/dist/plugins/bulwark_blank_slate.wasm")
                 .exists());
         }
 
-        if !base
-            .join("../../../tests/dist/plugins/bulwark_evil_bit.wasm")
+        if !project_root
+            .join("tests/dist/plugins/bulwark_evil_bit.wasm")
             .exists()
         {
             bulwark_build::build_plugin(
-                base.join("../../../crates/wasm-sdk/examples/evil-bit"),
-                base.join("../../../tests/dist/plugins/bulwark_evil_bit.wasm"),
+                project_root.join("crates/wasm-sdk/examples/evil-bit"),
+                project_root.join("tests/dist/plugins/bulwark_evil_bit.wasm"),
                 &[],
                 true,
             )?;
-            assert!(base
-                .join("../../../tests/dist/plugins/bulwark_evil_bit.wasm")
+            assert!(project_root
+                .join("tests/dist/plugins/bulwark_evil_bit.wasm")
                 .exists());
         }
 
