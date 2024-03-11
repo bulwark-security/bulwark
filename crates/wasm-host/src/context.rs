@@ -748,6 +748,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         })
     }
 
+    /// Increments a rate limit, returning the number of attempts so far and the expiration time.
     fn incr_rate_limit<'ctx, 'async_trait>(
         &'ctx mut self,
         key: String,
@@ -806,6 +807,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         })
     }
 
+    /// Checks a rate limit, returning the number of attempts so far and the expiration time.
     fn check_rate_limit<'ctx, 'async_trait>(
         &'ctx mut self,
         key: String,
@@ -860,6 +862,8 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         })
     }
 
+    /// Increments a circuit breaker, returning the generation count, success count, failure count,
+    /// consecutive success count, consecutive failure count, and expiration time.
     fn incr_breaker<'ctx, 'async_trait>(
         &'ctx mut self,
         key: String,
@@ -931,6 +935,8 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         })
     }
 
+    /// Checks a circuit breaker, returning the generation count, success count, failure count,
+    /// consecutive success count, consecutive failure count, and expiration time.
     fn check_breaker<'ctx, 'async_trait>(
         &'ctx mut self,
         key: String,
