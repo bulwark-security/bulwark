@@ -124,17 +124,17 @@ impl Default for ScriptRegistry {
                 local consec_successes = 0
                 local consec_failures = 0
                 if success_delta > 0 then
-                    successes = redis.call("incrby", success_key, success_delta)
+                    successes = redis.call("incrby", success_key, success_delta) or 0
                     failures = tonumber(redis.call("get", failure_key)) or 0
-                    consec_successes = redis.call("incrby", consec_success_key, success_delta)
+                    consec_successes = redis.call("incrby", consec_success_key, success_delta) or 0
                     redis.call("set", consec_failure_key, 0)
                     consec_failures = 0
                 else
-                    successes = tonumber(redis.call("get", success_key))
+                    successes = tonumber(redis.call("get", success_key)) or 0
                     failures = redis.call("incrby", failure_key, failure_delta) or 0
                     redis.call("set", consec_success_key, 0)
                     consec_successes = 0
-                    consec_failures = redis.call("incrby", consec_failure_key, failure_delta)
+                    consec_failures = redis.call("incrby", consec_failure_key, failure_delta) or 0
                 end
                 redis.call("expireat", generation_key, expiration + 1)
                 redis.call("expireat", success_key, expiration + 1)
