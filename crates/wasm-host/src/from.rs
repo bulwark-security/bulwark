@@ -91,7 +91,7 @@ impl TryFrom<serde_json::Value> for crate::bindings::bulwark::plugin::config::Pr
             serde_json::Value::String(s) => {
                 crate::bindings::bulwark::plugin::config::PrimitiveValue::Str(s)
             }
-            _ => Err("not a primitive value")?,
+            _ => Err("not a primitive value (null, boolean, number, or string)")?,
         })
     }
 }
