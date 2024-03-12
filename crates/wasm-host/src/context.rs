@@ -777,6 +777,12 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
                 || -> Result<crate::bindings::bulwark::plugin::redis::Rate, crate::bindings::bulwark::plugin::redis::Error> {
                     verify_remote_state_prefixes(&self.permissions.state, &key)?;
 
+                    if delta < 0 {
+                        return Err(crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
+                            "delta must be positive".to_string(),
+                        ));
+                    }
+
                     if let Some(redis_info) = self.redis_info.clone() {
                         let mut conn = redis_info
                             .pool
@@ -892,6 +898,17 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
                 // Inner function to permit ? operator
                 || -> Result<crate::bindings::bulwark::plugin::redis::Breaker, crate::bindings::bulwark::plugin::redis::Error> {
                     verify_remote_state_prefixes(&self.permissions.state, &key)?;
+
+                    if success_delta < 0 {
+                        return Err(crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
+                            "success_delta must be positive".to_string(),
+                        ));
+                    }
+                    if failure_delta < 0 {
+                        return Err(crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
+                            "failure_delta must be positive".to_string(),
+                        ));
+                    }
 
                     if let Some(redis_info) = self.redis_info.clone() {
                         let mut conn = redis_info

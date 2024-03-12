@@ -36,6 +36,8 @@ interface redis {
         permission(string),
         /// There was an error communicating with Redis.
         remote(string),
+        /// An invalid argument was passed as a parameter.
+        invalid-argument(string),
         /// There was a type mismatch.
         type-error,
         /// Some other error occurred.

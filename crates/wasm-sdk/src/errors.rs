@@ -115,6 +115,8 @@ pub enum RemoteStateError {
     Permission { key: String },
     #[error("error accessing remote state: {message}")]
     Remote { message: String },
+    #[error("invalid argument: {message}")]
+    InvalidArgument { message: String },
     #[error("unexpected type received")]
     TypeError,
     #[error("{message}")]
@@ -133,6 +135,9 @@ impl From<crate::wit::bulwark::plugin::redis::Error> for RemoteStateError {
             }
             crate::wit::bulwark::plugin::redis::Error::Remote(message) => {
                 RemoteStateError::Remote { message }
+            }
+            crate::wit::bulwark::plugin::redis::Error::InvalidArgument(message) => {
+                RemoteStateError::InvalidArgument { message }
             }
             crate::wit::bulwark::plugin::redis::Error::TypeError => RemoteStateError::TypeError,
             crate::wit::bulwark::plugin::redis::Error::Other(message) => {
