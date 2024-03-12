@@ -68,7 +68,6 @@ pub struct ScriptRegistry {
 impl Default for ScriptRegistry {
     fn default() -> ScriptRegistry {
         ScriptRegistry {
-            // TODO: handle overflow errors by expiring everything on overflow and returning nil?
             increment_rate_limit: redis::Script::new(
                 r#"
                 local counter_key = "bulwark:rl:" .. KEYS[1]
