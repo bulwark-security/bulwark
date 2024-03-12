@@ -782,6 +782,11 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
                             "delta must be positive".to_string(),
                         ));
                     }
+                    if window < 0 {
+                        return Err(crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
+                            "window must be positive".to_string(),
+                        ));
+                    }
 
                     if let Some(redis_info) = self.redis_info.clone() {
                         let mut conn = redis_info
@@ -907,6 +912,11 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
                     if failure_delta < 0 {
                         return Err(crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
                             "failure_delta must be positive".to_string(),
+                        ));
+                    }
+                    if window < 0 {
+                        return Err(crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
+                            "window must be positive".to_string(),
                         ));
                     }
 
