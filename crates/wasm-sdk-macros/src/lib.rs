@@ -360,9 +360,9 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
 
                 // TODO: Add support for trailers?
 
-                Ok(builder.body(bulwark_wasm_sdk::Bytes::from(buffer)).map_err(|e| {
+                builder.body(bulwark_wasm_sdk::Bytes::from(buffer)).map_err(|e| {
                     crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
-                })?)
+                })
             }
         }
 
@@ -409,9 +409,9 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
 
                 // TODO: Add support for trailers?
 
-                Ok(builder.body(bulwark_wasm_sdk::Bytes::from(buffer)).map_err(|e| {
+                builder.body(bulwark_wasm_sdk::Bytes::from(buffer)).map_err(|e| {
                     crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
-                })?)
+                })
             }
         }
 
@@ -599,7 +599,7 @@ pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
             return syn::Error::new(
                 inner_fn.sig.span(),
                 "`handler` expects a function named one of:
-                
+
 - `handle_init`
 - `handle_request_enrichment`
 - `handle_request_decision`
