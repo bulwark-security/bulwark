@@ -27,7 +27,8 @@ impl TryFrom<serde_json::Value> for crate::bindings::bulwark::plugin::config::Va
                         crate::bindings::bulwark::plugin::config::Number::Float(
                             // Error scenario is presumably more likely to be not finite since
                             // all 3 underlying representations can successfully coerce to f64.
-                            n.as_f64().ok_or("could not convert number, not finite or not a float")?,
+                            n.as_f64()
+                                .ok_or("could not convert number, not finite or not a float")?,
                         ),
                     )
                 }
@@ -83,7 +84,8 @@ impl TryFrom<serde_json::Value> for crate::bindings::bulwark::plugin::config::Pr
                         crate::bindings::bulwark::plugin::config::Number::Float(
                             // Error scenario is presumably more likely to be not finite since
                             // all 3 underlying representations can successfully coerce to f64.
-                            n.as_f64().ok_or("could not convert number, not finite or not a float")?,
+                            n.as_f64()
+                                .ok_or("could not convert number, not finite or not a float")?,
                         ),
                     )
                 }
