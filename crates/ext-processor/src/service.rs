@@ -965,8 +965,9 @@ impl ProcessorContext {
                     info!(message = "process response", status = 403);
                     match Self::send_block_request_message(self.sender.clone()).await {
                         Ok(response) => {
-                            // Normally we initiate feedback after the response phase, but if we skip the response phase
-                            // we need to do it here instead.
+                            // Normally we initiate feedback after the response phase, but if we're blocking the request
+                            // in the request phase, we're also skipping the response phase and we need to do it here
+                            // instead.
                             let verdict = Verdict {
                                 decision,
                                 outcome,
