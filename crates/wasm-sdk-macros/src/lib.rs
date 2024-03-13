@@ -147,7 +147,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                             _: ::bulwark_wasm_sdk::Request,
                             _: ::std::collections::HashMap<String, String>
                         ) -> Result<::std::collections::HashMap<String, String>, ::bulwark_wasm_sdk::Error> {
-                            Ok(HashMap::new())
+                            Ok(::std::collections::HashMap::new())
                         }
                     }
                 }
