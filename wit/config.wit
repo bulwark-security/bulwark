@@ -1,0 +1,43 @@
+interface config {
+    variant value {
+        null,
+        boolean(bool),
+        num(number),
+        str(string),
+        arr(list<primitive-value>),
+        /// There's no native map type in WIT, so we use a list of tuples.
+        obj(list<tuple<string, primitive-value>>),
+    }
+
+    /// Types cannot be recursive in WIT, so we need to create a
+    /// second type for the top-level type to reference.
+    variant primitive-value {
+        null,
+        boolean(bool),
+        num(number),
+        str(string),
+    }
+
+    variant number {
+        posint(u64),
+        /// Always less than zero.
+        negint(s64),
+        /// Always finite.
+        float(float64),
+    }
+
+    /// Returns all config key names.
+    config-keys: func() -> list<string>;
+    /// Returns the named config value.
+    config-var: func(key: string) -> result<option<value>, error>;
+    /// Returns the number of proxy hops expected exterior to Bulwark.
+    proxy-hops: func() -> u8;
+
+    variant error {
+        missing(string),
+        invalid-serialization(string),
+        invalid-unicode(string),
+        invalid-conversion(string),
+        permission(string),
+    }
+}

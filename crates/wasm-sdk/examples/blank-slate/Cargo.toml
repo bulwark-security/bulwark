@@ -13,8 +13,10 @@ publish = false
 maintenance = { status = "experimental" }
 
 [dependencies]
-bulwark-wasm-sdk = { path = "../..", version = "0.4.0" }
-wit-bindgen = "0.14.0"
+bulwark-wasm-sdk = { path = "../.." }
+wit-bindgen = "0.17.0"
+
+[workspace]
 
 [lib]
 crate-type = ["cdylib"]

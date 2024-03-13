@@ -1,0 +1,21 @@
+[package]
+name = "bulwark-build"
+description = "Plugin builder for the Bulwark security engine."
+version.workspace = true
+edition.workspace = true
+license = "Apache-2.0 WITH LLVM-exception"
+homepage = "https://bulwark.security/"
+repository = "https://github.com/bulwark-security/bulwark"
+readme = "README.md"
+keywords = ["bulwark", "configuration"]
+categories = ["wasm"]
+
+[badges]
+maintenance = { status = "experimental" }
+
+[dependencies]
+wit-component = { workspace = true }
+
+thiserror = { workspace = true }
+
+cargo_metadata = "0.18.1"

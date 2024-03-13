@@ -15,9 +15,8 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 bulwark-config = { workspace = true }
+bulwark-build = { workspace = true }
 bulwark-ext-processor = { workspace = true }
-
-wit-component = { workspace = true }
 
 chrono = { workspace = true }
 envoy-control-plane = { workspace = true }
@@ -31,17 +30,16 @@ toml = { workspace = true }
 tonic = { workspace = true }
 tracing = { workspace = true }
 
-axum = { version = "0.6.18", features = ["http2"] }
-cargo_metadata = "0.18.1"
+axum = { version = "0.7.0", features = ["http2"] }
 clap = { version = "4.4.3", features = ["derive"] }
 clap_complete = "4.4.1"
 color-eyre = "0.6.2"
-hyper = { version = "0.14.25", features = ["server"] }
+hyper = { version = "1.0.1", features = ["server"] }
 metrics-exporter-prometheus = "0.12.1"
 metrics-exporter-statsd = "0.6.0"
 quoted-string = "0.6.1"
 tower = { version = "0.4.13", features = ["tokio", "tracing"] }
-tower-http = { version = "0.4.0", features = [
+tower-http = { version = "0.5.0", features = [
     "tokio",
     "trace",
     "tracing",
@@ -56,6 +54,14 @@ tracing-log = "0.2.0"
 tracing-opentelemetry = "0.22.0"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 
+[dev-dependencies]
+bulwark-wasm-host = { workspace = true }
+bulwark-wasm-sdk = { workspace = true }
+
+bytes = { workspace = true }
+
+tokio-test = "0.4.2"
+
 [build-dependencies]
 reqwest = { workspace = true }
 
@@ -63,6 +69,7 @@ clap_mangen = "0.2.5"
 
 [workspace]
 members = [
+    "crates/build",
     "crates/config",
     "crates/ext-processor",
     "crates/wasm-host",
@@ -70,15 +77,17 @@ members = [
     "crates/wasm-sdk-macros",
     "crates/decision",
 ]
+exclude = ["crates/wasm-sdk/examples"]
 
 [workspace.package]
 version = "0.4.0"
 edition = "2021"
 # This should be no larger than the current stable release of Rust minus 2.
-rust-version = "1.72.0"
+rust-version = "1.73.0"
 
 [workspace.dependencies]
 # Internal dependencies
+bulwark-build = { path = "crates/build", version = "=0.4.0" }
 bulwark-config = { path = "crates/config", version = "=0.4.0" }
 bulwark-decision = { path = "crates/decision", version = "=0.4.0" }
 bulwark-ext-processor = { path = "crates/ext-processor", version = "=0.4.0" }
@@ -87,22 +96,25 @@ bulwark-wasm-sdk = { path = "crates/wasm-sdk", version = "=0.4.0" }
 bulwark-wasm-sdk-macros = { path = "crates/wasm-sdk-macros", version = "=0.4.0" }
 
 # WASM dependencies
-wasi-cap-std-sync = { version = "15" }
-wasi-common = { version = "15" }
-wasmtime = { version = "15", features = ["component-model"] }
-wasmtime-types = { version = "15" }
-wasmtime-wasi = { version = "15" }
-wat = "1.0.81"
-wit-bindgen = "0.14.0"
-wit-component = "0.18.2"
+wasi-cap-std-sync = { version = "17" }
+wasi-common = { version = "17" }
+wasmtime = { version = "17.0.1", features = ["component-model"] }
+wasmtime-types = { version = "17" }
+wasmtime-wasi = { version = "17" }
+wasmtime-wasi-http = { version = "17", features = ["sync"] }
+wat = "1.0.86"
+wit-bindgen = "0.17.0"
+wit-component = "0.20.2"
 
 # Other shared external dependencies
-anyhow = "1"
+anyhow = "=1.0.72"
 approx = "0.5"
+bytes = "1.5"
 chrono = { version = "0.4.26", features = ["serde"] }
 envoy-control-plane = { version = "0.4.0", features = ["grpc"] }
+forwarded-header-value = "0.1.1"
 futures = "0.3"
-http = "0.2"
+http = "1.0"
 metrics = "0.21.1"
 r2d2 = "0.8.10"
 redis = { version = "0.23.0", features = [
@@ -114,7 +126,7 @@ redis = { version = "0.23.0", features = [
 reqwest = { version = "0.11.14", features = ["rustls-tls", "blocking"] }
 serde = { version = "1.0.149", features = ["std", "serde_derive"] }
 serde_json = "1.0.93"
-thiserror = "1.0.37"
+thiserror = "=1.0.43"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "tracing"] }
 toml = { version = "0.8.6", features = ["preserve_order"] }
 tonic = "0.6.2"

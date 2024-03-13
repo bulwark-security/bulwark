@@ -5,6 +5,7 @@ use sfv::{BareItem, Decimal, Dictionary, FromPrimitive, Item, List, ListEntry, S
 // TODO: should this error for invalid Decision values?
 
 /// Serialize a combined [`Decision`] into a [SFV](sfv) header value to be sent with the request to the interior service.
+#[allow(dead_code)] // TODO: remove once moved to ext-auth
 pub(crate) fn serialize_decision_sfv(
     decision: Decision,
     outcome: Outcome,
@@ -34,6 +35,7 @@ pub(crate) fn serialize_decision_sfv(
 }
 
 /// Serialize a tag [`Vec`] into a [SFV](sfv) header value to be sent with the request to the interior service.
+#[allow(dead_code)] // TODO: remove once moved to ext-auth
 pub(crate) fn serialize_tags_sfv(tags: Vec<String>) -> std::result::Result<String, &'static str> {
     let list: List = tags
         .iter()

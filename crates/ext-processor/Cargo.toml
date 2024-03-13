@@ -19,19 +19,18 @@ bulwark-wasm-host = { workspace = true }
 bulwark-wasm-sdk = { workspace = true }
 
 envoy-control-plane = { workspace = true }
+forwarded-header-value = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 metrics = { workspace = true }
 r2d2 = { workspace = true }
 redis = { workspace = true }
-reqwest = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 tracing = { workspace = true }
 
 bytes = "1"
-forwarded-header-value = "0.1.1"
 json = "0.12.4"
 matchit = "0.7.0"
 prost = "0.12"

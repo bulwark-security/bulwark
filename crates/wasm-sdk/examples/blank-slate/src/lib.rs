@@ -1,33 +1,46 @@
 use bulwark_wasm_sdk::*;
+use std::collections::HashMap;
 
 pub struct BlankSlate;
 
 #[bulwark_plugin]
-impl Handlers for BlankSlate {
-    fn on_request() -> Result {
+impl HttpHandlers for BlankSlate {
+    fn handle_request_enrichment(
+        _request: Request,
+        _params: HashMap<String, String>,
+    ) -> Result<HashMap<String, String>, Error> {
         // Cross-plugin communication logic goes here, or leave as a no-op.
-        Ok(())
+        Ok(HashMap::new())
     }
 
-    fn on_request_decision() -> Result {
-        let _request = get_request();
-        set_decision(Decision {
-            accept: 0.0,
-            restrict: 0.0,
-            unknown: 1.0,
-        })?;
-        set_tags(["blank-slate"]);
-        Ok(())
+    fn handle_request_decision(
+        _request: Request,
+        _params: HashMap<String, String>,
+    ) -> Result<HandlerOutput, Error> {
+        let mut output = HandlerOutput::default();
+        // Main detection logic goes here.
+        output.decision = Decision::restricted(0.0);
+        output.tags = vec!["blank-slate".to_string()];
+        Ok(output)
     }
 
-    fn on_response_decision() -> Result {
-        // Process responses from the interior service, or leave as a no-op.
-        let _request = get_request();
-        let _response = get_response();
-        Ok(())
+    fn handle_response_decision(
+        _request: Request,
+        _response: Response,
+        _params: HashMap<String, String>,
+    ) -> Result<HandlerOutput, Error> {
+        let mut output = HandlerOutput::default();
+        // Process responses from the interior service here, or leave as a no-op.
+        output.decision = Decision::restricted(0.0);
+        Ok(output)
     }
 
-    fn on_decision_feedback() -> Result {
+    fn handle_decision_feedback(
+        _request: Request,
+        _response: Response,
+        _params: HashMap<String, String>,
+        _verdict: Verdict,
+    ) -> Result<(), Error> {
         // Feedback loop implementations go here, or leave as a no-op.
         Ok(())
     }

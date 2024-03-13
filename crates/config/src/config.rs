@@ -1,6 +1,6 @@
 //! The config module provides the internal representation of Bulwark's configuration.
 
-use crate::{ConfigSerializationError, ResolutionError};
+use crate::ResolutionError;
 use itertools::Itertools;
 use regex::Regex;
 use serde::Serialize;
@@ -14,7 +14,7 @@ lazy_static! {
 /// The root of a Bulwark configuration.
 ///
 /// Wraps all child configuration structures and provides the internal representation of Bulwark's configuration.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Config {
     /// Configuration for the services being launched.
     pub service: Service,
@@ -64,7 +64,7 @@ impl Config {
 }
 
 /// Configuration for the services being launched.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Service {
     /// The port for the primary service.
     pub port: u16,
@@ -107,7 +107,7 @@ impl Default for Service {
 }
 
 /// Configuration for the runtime environment.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Runtime {
     /// The maximum number of concurrent incoming requests that the runtime will process before blocking.
     pub max_concurrent_requests: usize,
@@ -234,14 +234,6 @@ pub struct Plugin {
 
 /// The default [`Plugin::weight`] value.
 pub const DEFAULT_PLUGIN_WEIGHT: f64 = 1.0;
-
-impl Plugin {
-    /// Serializes the [`config`](Plugin::config) value to JSON bytes.
-    pub fn config_to_json(&self) -> Result<Vec<u8>, ConfigSerializationError> {
-        let obj = serde_json::Value::Object(self.config.clone());
-        Ok(serde_json::to_vec(&obj)?)
-    }
-}
 
 /// The permissions granted to an associated plugin.
 #[derive(Debug, Clone, Default)]

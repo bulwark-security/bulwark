@@ -2,12 +2,11 @@
 
 pub use bulwark_wasm_sdk_macros::{bulwark_plugin, handler};
 
-// Each macro invocation has to be scoped to its own mod to avoid fixed constant name collisions
-#[allow(unused_macros)]
+/// Internally used bindings.
 #[doc(hidden)]
-pub mod bulwark_host {
+pub mod wit {
     wit_bindgen::generate!({
-        world: "bulwark:plugin/host-api"
+        world: "bulwark:plugin/platform",
     });
 }
 
@@ -17,7 +16,12 @@ pub mod bulwark_host {
 mod errors;
 mod from;
 mod host_api;
+pub mod redis;
 
 pub use bulwark_decision::*;
 pub use errors::*;
 pub use host_api::*;
+
+/// Make wit_bindgen accessible to the macro crate, ensuring that the correct version is used.
+#[doc(hidden)]
+pub use wit_bindgen;

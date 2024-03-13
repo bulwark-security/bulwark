@@ -1,37 +1,40 @@
 //! The service module contains the main Envoy external processor service implementation.
 
-use {
-    crate::{
-        serialize_decision_sfv, serialize_tags_sfv, PluginGroupInstantiationError,
-        ProcessingMessageError, RequestError, ResponseError, SfvError,
-    },
-    bulwark_config::Config,
-    bulwark_wasm_host::{
-        DecisionComponents, ForwardedIP, Plugin, PluginExecutionError, PluginInstance,
-        PluginLoadError, RedisInfo, RequestContext, ScriptRegistry,
-    },
-    bulwark_wasm_sdk::{BodyChunk, Decision, Outcome},
-    envoy_control_plane::envoy::{
-        config::core::v3::{HeaderMap, HeaderValue, HeaderValueOption},
-        extensions::filters::http::ext_proc::v3::{processing_mode, ProcessingMode},
-        r#type::v3::HttpStatus,
-        service::ext_proc::v3::{
-            external_processor_server::ExternalProcessor, processing_request, processing_response,
-            BodyResponse, CommonResponse, HeaderMutation, HeadersResponse, HttpBody, HttpHeaders,
-            ImmediateResponse, ProcessingRequest, ProcessingResponse,
-        },
-    },
-    forwarded_header_value::ForwardedHeaderValue,
-    futures::lock::Mutex,
-    futures::{channel::mpsc::UnboundedSender, SinkExt, Stream},
-    matchit::Router,
-    std::{
-        collections::HashSet, net::IpAddr, pin::Pin, str, str::FromStr, sync::Arc, time::Duration,
-    },
-    tokio::{sync::RwLock, sync::Semaphore, task::JoinSet, time::timeout},
-    tonic::Streaming,
-    tracing::{debug, error, info, instrument, warn, Instrument},
+use crate::{PluginGroupInstantiationError, ProcessingMessageError, RequestError, ResponseError};
+use bulwark_config::Config;
+use bulwark_wasm_sdk::Verdict;
+
+use bulwark_wasm_host::{
+    ForwardedIP, HandlerOutput, Plugin, PluginContext, PluginExecutionError, PluginInstance,
+    PluginLoadError, RedisInfo, ScriptRegistry,
 };
+use bulwark_wasm_sdk::Decision;
+use envoy_control_plane::envoy::{
+    config::core::v3::HeaderMap,
+    extensions::filters::http::ext_proc::v3::{processing_mode, ProcessingMode},
+    r#type::v3::HttpStatus,
+    service::ext_proc::v3::{
+        external_processor_server::ExternalProcessor, processing_request, processing_response,
+        BodyResponse, CommonResponse, HeadersResponse, HttpBody, HttpHeaders, ImmediateResponse,
+        ProcessingRequest, ProcessingResponse,
+    },
+};
+use forwarded_header_value::ForwardedHeaderValue;
+use futures::lock::Mutex;
+use futures::{channel::mpsc::UnboundedSender, SinkExt, Stream};
+use matchit::Router;
+use std::{
+    collections::{HashMap, HashSet},
+    net::IpAddr,
+    pin::Pin,
+    str,
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
+};
+use tokio::{sync::RwLock, sync::Semaphore, task::JoinSet, time::timeout};
+use tonic::Streaming;
+use tracing::{debug, error, info, instrument, trace, warn, Instrument};
 
 extern crate redis;
 
@@ -48,23 +51,38 @@ struct RouteTarget {
 }
 
 /// Helper function that joins everything in a joinset, ignoring success and raising warnings as needed
-async fn join_all(mut join_set: JoinSet<Result<(), tokio::time::error::Elapsed>>) {
+async fn join_all<T, F>(
+    mut join_set: JoinSet<Result<Result<T, PluginExecutionError>, tokio::time::error::Elapsed>>,
+    mut success: F,
+) where
+    F: FnMut(T),
+    T: 'static,
+{
     // efficiently hand execution off to the the tasks we're joining
     tokio::task::yield_now().await;
 
     while let Some(r) = join_set.join_next().await {
         match r {
-            Ok(Ok(_)) => {}
-            Ok(Err(e)) => {
-                warn!(
-                    message = "timeout on plugin execution",
-                    elapsed = ?e,
+            Ok(Ok(Ok(params))) => success(params),
+            Ok(Ok(Err(err))) => {
+                // This error is only logged, not bubbled up
+                error!(
+                    message = "plugin execution error",
+                    elapsed = ?err,
                 );
             }
-            Err(e) => {
+            Ok(Err(err)) => {
+                // This error is only logged, not bubbled up
+                warn!(
+                    message = "timeout on plugin execution",
+                    elapsed = ?err,
+                );
+            }
+            Err(err) => {
+                // This error is only logged, not bubbled up
                 warn!(
                     message = "join error on plugin execution",
-                    error_message = ?e,
+                    error_message = ?err,
                 );
             }
         }
@@ -79,7 +97,6 @@ pub struct BulwarkProcessor {
     // TODO: may need to have a plugin registry at some point
     router: Arc<RwLock<Router<RouteTarget>>>,
     redis_info: Option<Arc<RedisInfo>>,
-    http_client: Arc<reqwest::blocking::Client>,
     request_semaphore: Arc<tokio::sync::Semaphore>,
     plugin_semaphore: Arc<tokio::sync::Semaphore>,
     thresholds: bulwark_config::Thresholds,
@@ -97,91 +114,108 @@ impl ExternalProcessor for BulwarkProcessor {
         &self,
         tonic_request: tonic::Request<Streaming<ProcessingRequest>>,
     ) -> Result<tonic::Response<ExternalProcessorStream>, tonic::Status> {
-        // Clone to allow the processor to move into a task
         let bulwark_processor = self.clone();
+        let thresholds = self.thresholds;
+        let proxy_hops = self.proxy_hops;
+        let plugin_semaphore = self.plugin_semaphore.clone();
 
-        let mut stream = tonic_request.into_inner();
-        if let Ok(http_req) = self.prepare_request(&mut stream).await {
-            let http_req = Arc::new(http_req);
+        let stream = tonic_request.into_inner();
+        let (sender, receiver) = futures::channel::mpsc::unbounded();
 
-            info!(
-                message = "process request",
-                method = http_req.method().to_string(),
-                uri = http_req.uri().to_string(),
-                user_agent = http_req
-                    .headers()
-                    .get("User-Agent")
-                    .map(|ua: &http::HeaderValue| ua.to_str().unwrap_or_default())
-            );
+        let arc_sender = Arc::new(Mutex::new(sender));
+        let arc_stream = Arc::new(Mutex::new(stream));
 
-            let child_span = tracing::info_span!("route request");
-            let (sender, receiver) = futures::channel::mpsc::unbounded();
-            let permit = self
-                .request_semaphore
-                .clone()
-                .acquire_owned()
+        let child_span = tracing::info_span!("route request");
+        let permit = self
+            .request_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("semaphore closed");
+        tokio::task::spawn(
+            async move {
+                if let Ok(request) = ProcessorContext::prepare_request(
+                    arc_sender.clone(),
+                    arc_stream.clone(),
+                    proxy_hops,
+                )
                 .await
-                .expect("semaphore closed");
-            tokio::task::spawn(
-                async move {
-                    let http_req = http_req.clone();
+                {
+                    let request = Arc::new(request);
+
+                    info!(
+                        message = "process request",
+                        method = request.method().to_string(),
+                        uri = request.uri().to_string(),
+                        user_agent = request
+                            .headers()
+                            .get("User-Agent")
+                            .map(|ua: &http::HeaderValue| ua.to_str().unwrap_or_default())
+                    );
+
                     let router = bulwark_processor.router.read().await;
-                    let route_result = router.at(http_req.uri().path());
+                    let route_result = router.at(request.uri().path());
                     // TODO: router needs to point to a struct that bundles the plugin set and associated config like timeout duration
                     // TODO: put default timeout in a constant somewhere central
                     let mut timeout_duration = Duration::from_millis(10);
                     match route_result {
                         Ok(route_match) => {
                             // TODO: may want to expose params to logging after redaction
+                            let mut params = HashMap::new();
+                            for (key, value) in route_match.params.iter() {
+                                params.insert(format!("param.{}", key), value.to_string());
+                            }
+
                             let route_target = route_match.value;
-                            // TODO: figure out how to bubble the error out of the task and up to the parent
+                            // TODO: figure out how best to bubble the error out of the task and up to the parent
                             // TODO: figure out if tonic-error or some other option is the best way to convert to a tonic Status error
+                            // TODO: we probably want to be initializing only when necessary now rather than on every request
                             let plugin_instances = bulwark_processor
-                                .instantiate_plugins(
-                                    &route_target.plugins,
-                                    http_req.clone(),
-                                    route_match.params,
-                                )
+                                .instantiate_plugins(&route_target.plugins)
                                 .await
                                 .unwrap();
                             if let Some(millis) = route_match.value.timeout {
                                 timeout_duration = Duration::from_millis(millis);
                             }
 
-                            bulwark_processor
-                                .execute_init_phase(plugin_instances.clone(), timeout_duration)
-                                .await;
+                            let mut ctx = ProcessorContext {
+                                sender: arc_sender,
+                                stream: arc_stream,
+                                plugin_semaphore,
+                                plugin_instances: plugin_instances.clone(),
+                                params,
+                                request: request.clone(),
+                                response: None,
+                                verdict: None,
+                                combined_output: HandlerOutput::default(),
+                                plugin_outputs: HashMap::new(),
+                                thresholds,
+                                timeout_duration,
+                            };
 
-                            let combined = bulwark_processor
-                                .execute_request_phase(plugin_instances.clone(), timeout_duration)
-                                .await;
+                            ctx.execute_init_phase().await;
 
-                            bulwark_processor
-                                .handle_request_phase_decision(
-                                    sender,
-                                    stream,
-                                    http_req.clone(),
-                                    combined,
-                                    plugin_instances,
-                                    timeout_duration,
-                                )
-                                .await;
+                            ctx.execute_request_enrichment_phase().await;
+                            ctx.execute_request_decision_phase().await;
+
+                            ctx.complete_request_phase().await;
                         }
                         Err(_) => {
                             // TODO: figure out how best to handle trailing slash errors, silent failure is probably undesirable
-                            error!(uri = http_req.uri().to_string(), message = "match error");
+                            error!(uri = request.uri().to_string(), message = "match error");
                             // TODO: panic is undesirable, need to figure out if we should be returning a Status or changing the response or doing something else
                             panic!("match error");
                         }
                     };
-                    drop(permit);
                 }
-                .instrument(child_span.or_current()),
-            );
-            return Ok(tonic::Response::new(Box::pin(receiver)));
-        }
-        // By default, just close the stream.
-        Ok(tonic::Response::new(Box::pin(futures::stream::empty())))
+                drop(permit);
+            }
+            .instrument(child_span.or_current()),
+        );
+        return Ok(tonic::Response::new(Box::pin(receiver)));
+
+        // // By default, just close the stream.
+        // Ok(tonic::Response::new(Box::pin(futures::stream::empty())))
     }
 }
 
@@ -243,7 +277,7 @@ impl BulwarkProcessor {
                     path = plugin_config.path,
                     resource = resource.route
                 );
-                let plugin = Plugin::from_file(plugin_config.path.clone(), plugin_config)?;
+                let plugin = Plugin::from_file(plugin_config.path.clone(), &config, plugin_config)?;
                 plugins.push(Arc::new(plugin));
             }
             router
@@ -260,7 +294,6 @@ impl BulwarkProcessor {
         Ok(Self {
             router: Arc::new(RwLock::new(router)),
             redis_info,
-            http_client: Arc::new(reqwest::blocking::Client::new()),
             request_semaphore: Arc::new(Semaphore::new(config.runtime.max_concurrent_requests)),
             plugin_semaphore: Arc::new(Semaphore::new(config.runtime.max_plugin_tasks)),
             thresholds: config.thresholds,
@@ -268,11 +301,187 @@ impl BulwarkProcessor {
         })
     }
 
-    async fn prepare_request(
+    async fn instantiate_plugins(
         &self,
-        stream: &mut Streaming<ProcessingRequest>,
+        plugins: &PluginList,
+    ) -> Result<Vec<Arc<Mutex<PluginInstance>>>, PluginGroupInstantiationError> {
+        let mut plugin_instances = Vec::with_capacity(plugins.len());
+        for plugin in plugins {
+            let mut environment = HashMap::new();
+            for key in &plugin.permissions().env {
+                match std::env::var(key) {
+                    Ok(value) => {
+                        environment.insert(key.clone(), value);
+                    }
+                    Err(err) => {
+                        warn!("plugin requested environment variable '{}' but it could not be provided: {}", key, err);
+                    }
+                }
+            }
+            let request_context =
+                PluginContext::new(plugin.clone(), environment, self.redis_info.clone())?;
+            plugin_instances.push(Arc::new(Mutex::new(
+                PluginInstance::new(plugin.clone(), request_context).await?,
+            )));
+        }
+        Ok(plugin_instances)
+    }
+
+    async fn dispatch_init(
+        plugin_instance: Arc<Mutex<PluginInstance>>,
+    ) -> Result<(), PluginExecutionError> {
+        let mut plugin_instance = plugin_instance.lock().await;
+        let result = plugin_instance.handle_init().await;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_wasm_on_init",
+                "ref" => plugin_instance.plugin_reference(),
+                "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_wasm_on_init",
+                "ref" => plugin_instance.plugin_reference(),
+                "result" => "error"
+            ),
+        }
+        result
+    }
+
+    async fn dispatch_request_enrichment(
+        plugin_instance: Arc<Mutex<PluginInstance>>,
+        request: Arc<bulwark_wasm_sdk::Request>,
+        params: HashMap<String, String>,
+    ) -> Result<HashMap<String, String>, PluginExecutionError> {
+        let mut plugin_instance = plugin_instance.lock().await;
+        let result = plugin_instance
+            .handle_request_enrichment(request, params)
+            .await;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_wasm_on_request",
+                "ref" => plugin_instance.plugin_reference(),
+                "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_wasm_on_request",
+                "ref" => plugin_instance.plugin_reference(),
+                "result" => "error"
+            ),
+        }
+        result
+    }
+
+    async fn dispatch_request_decision(
+        plugin_instance: Arc<Mutex<PluginInstance>>,
+        request: Arc<bulwark_wasm_sdk::Request>,
+        params: HashMap<String, String>,
+    ) -> Result<HandlerOutput, PluginExecutionError> {
+        let mut plugin_instance = plugin_instance.lock().await;
+        let result = plugin_instance
+            .handle_request_decision(request, params)
+            .await;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_wasm_on_request_decision",
+                "ref" => plugin_instance.plugin_reference(),
+                "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_wasm_on_request_decision",
+                "ref" => plugin_instance.plugin_reference(),
+                "result" => "error"
+            ),
+        }
+        result
+    }
+
+    async fn dispatch_response_decision(
+        plugin_instance: Arc<Mutex<PluginInstance>>,
+        request: Arc<bulwark_wasm_sdk::Request>,
+        response: Arc<bulwark_wasm_sdk::Response>,
+        params: HashMap<String, String>,
+    ) -> Result<HandlerOutput, PluginExecutionError> {
+        let mut plugin_instance = plugin_instance.lock().await;
+        let result = plugin_instance
+            .handle_response_decision(request, response, params)
+            .await;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_wasm_on_response_decision",
+                "ref" => plugin_instance.plugin_reference(),
+                "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_wasm_on_response_decision",
+                "ref" => plugin_instance.plugin_reference(),
+                "result" => "error"
+            ),
+        }
+        result
+    }
+
+    async fn dispatch_decision_feedback(
+        plugin_instance: Arc<Mutex<PluginInstance>>,
+        request: Arc<bulwark_wasm_sdk::Request>,
+        response: Arc<bulwark_wasm_sdk::Response>,
+        params: HashMap<String, String>,
+        verdict: bulwark_wasm_sdk::Verdict,
+    ) -> Result<(), PluginExecutionError> {
+        let mut plugin_instance = plugin_instance.lock().await;
+        let result = plugin_instance
+            .handle_decision_feedback(request, response, params, verdict)
+            .await;
+        match result {
+            Ok(_) => metrics::increment_counter!(
+                "plugin_wasm_on_decision_feedback",
+                "ref" => plugin_instance.plugin_reference(),
+                "result" => "ok"
+            ),
+            Err(_) => metrics::increment_counter!(
+                "plugin_wasm_on_decision_feedback",
+                "ref" => plugin_instance.plugin_reference(),
+                "result" => "error"
+            ),
+        }
+        result
+    }
+}
+
+/// The `ProcessorContext` wraps values associated with a single request/response cycle.
+struct ProcessorContext {
+    sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
+    stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
+    plugin_semaphore: Arc<tokio::sync::Semaphore>,
+    plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
+    params: HashMap<String, String>,
+    request: Arc<bulwark_wasm_sdk::Request>,
+    response: Option<Arc<bulwark_wasm_sdk::Response>>,
+    verdict: Option<Verdict>,
+    combined_output: HandlerOutput,
+    plugin_outputs: HashMap<String, HandlerOutput>,
+    thresholds: bulwark_config::Thresholds,
+    timeout_duration: Duration,
+}
+
+impl ProcessorContext {
+    async fn prepare_request(
+        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
+        stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
+        proxy_hops: usize,
     ) -> Result<bulwark_wasm_sdk::Request, RequestError> {
-        if let Some(header_msg) = Self::get_request_headers(stream).await {
+        if let Some(header_msg) = Self::get_request_header_message(stream.clone()).await? {
+            // If there is no body, we have to skip these to avoid Envoy errors.
+            let body = if !header_msg.end_of_stream {
+                // We have to send a reply back before we can retrieve the request body
+                Self::send_request_headers_message(sender).await?;
+
+                Self::get_request_body_message(stream)
+                    .await?
+                    .map(|body_msg| body_msg.body)
+            } else {
+                None
+            };
+
             // TODO: currently this information isn't used and isn't accessible to the plugin environment yet
             // TODO: does this go into a request extension?
             // TODO: :protocol?
@@ -288,11 +497,10 @@ impl BulwarkProcessor {
             let request_uri = Self::get_header_value(&header_msg.headers, ":path")
                 .ok_or(RequestError::MissingPath)?;
             let mut request = http::Request::builder();
-            let request_chunk = if header_msg.end_of_stream {
-                bulwark_wasm_sdk::NO_BODY
+            let request_chunk = if let Some(body) = body {
+                bytes::Bytes::from(body)
             } else {
-                // Have to obtain this from envoy later if we need it
-                bulwark_wasm_sdk::UNAVAILABLE_BODY
+                bytes::Bytes::new()
             };
             // No current access to HTTP version information via Envoy external processor
             request = request.method(method).uri(request_uri);
@@ -311,13 +519,13 @@ impl BulwarkProcessor {
             // TODO: remote IP should probably be received via an external attribute, but that doesn't seem to be currently supported by envoy?
             // NOTE: header keys must be sent in lower case
             if let Some(forwarded) = Self::get_header_value(&header_msg.headers, "forwarded") {
-                if let Some(ip_addr) = Self::parse_forwarded_ip(forwarded, self.proxy_hops) {
+                if let Some(ip_addr) = Self::parse_forwarded_ip(forwarded, proxy_hops) {
                     request = request.extension(ForwardedIP(ip_addr));
                 }
             } else if let Some(forwarded) =
                 Self::get_header_value(&header_msg.headers, "x-forwarded-for")
             {
-                if let Some(ip_addr) = Self::parse_x_forwarded_for_ip(forwarded, self.proxy_hops) {
+                if let Some(ip_addr) = Self::parse_x_forwarded_for_ip(forwarded, proxy_hops) {
                     request = request.extension(ForwardedIP(ip_addr));
                 }
             }
@@ -327,58 +535,30 @@ impl BulwarkProcessor {
         Err(RequestError::MissingHeaders)
     }
 
-    async fn merge_request_body(
-        &self,
-        http_req: Arc<bulwark_wasm_sdk::Request>,
-        stream: &mut Streaming<ProcessingRequest>,
-    ) -> Arc<bulwark_wasm_sdk::Request> {
-        if let Some(body_msg) = Self::get_request_body(stream).await {
-            let mut merged_req = http::Request::builder();
-            let request_chunk = BodyChunk {
-                received: true,
-                start: 0,
-                size: body_msg.body.len() as u64,
-                end_of_stream: body_msg.end_of_stream,
-                content: body_msg.body,
+    async fn prepare_response(&mut self) -> Result<bulwark_wasm_sdk::Response, ResponseError> {
+        if let Some(header_msg) = Self::get_response_headers_message(self.stream.clone()).await? {
+            // If there is no body, we have to skip these to avoid Envoy errors.
+            let body = if !header_msg.end_of_stream {
+                // We have to send a reply back before we can retrieve the response body
+                Self::send_response_headers_message(self.sender.clone()).await?;
+
+                Self::get_response_body_message(self.stream.clone())
+                    .await?
+                    .map(|body_msg| body_msg.body)
+            } else {
+                None
             };
-            merged_req = merged_req
-                .method(http_req.method())
-                .uri(http_req.uri())
-                .version(http_req.version());
-            for (name, value) in http_req.headers() {
-                merged_req = merged_req.header(name, value);
-            }
-            if let Some(forwarded_ext) = http_req.extensions().get::<ForwardedIP>().copied() {
-                merged_req = merged_req.extension(forwarded_ext);
-            }
 
-            return Arc::new(
-                merged_req
-                    .body(request_chunk)
-                    .expect("request should already have validated"),
-            );
-        }
-        // No body received, use the original request
-        http_req
-    }
-
-    async fn prepare_response(
-        &self,
-        stream: &mut Streaming<ProcessingRequest>,
-        version: http::Version,
-    ) -> Result<bulwark_wasm_sdk::Response, ResponseError> {
-        if let Some(header_msg) = Self::get_response_headers(stream).await {
             let status = Self::get_header_value(&header_msg.headers, ":status")
                 .ok_or(ResponseError::MissingStatus)?;
 
             let mut response = http::Response::builder();
-            let response_chunk = if header_msg.end_of_stream {
-                bulwark_wasm_sdk::NO_BODY
+            let response_chunk = if let Some(body) = body {
+                bytes::Bytes::from(body)
             } else {
-                // Have to obtain this from envoy later if we need it
-                bulwark_wasm_sdk::UNAVAILABLE_BODY
+                bytes::Bytes::new()
             };
-            response = response.status(status).version(version);
+            response = response.status(status).version(self.request.version());
             match &header_msg.headers {
                 Some(headers) => {
                     for header in &headers.headers {
@@ -395,73 +575,10 @@ impl BulwarkProcessor {
         Err(ResponseError::MissingHeaders)
     }
 
-    async fn merge_response_body(
-        &self,
-        http_resp: Arc<bulwark_wasm_sdk::Response>,
-        stream: &mut Streaming<ProcessingRequest>,
-    ) -> Arc<bulwark_wasm_sdk::Response> {
-        if let Some(body_msg) = Self::get_response_body(stream).await {
-            let mut merged_resp = http::Response::builder();
-            let response_chunk = BodyChunk {
-                received: true,
-                start: 0,
-                size: body_msg.body.len() as u64,
-                end_of_stream: body_msg.end_of_stream,
-                content: body_msg.body,
-            };
-            merged_resp = merged_resp
-                .status(http_resp.status())
-                .version(http_resp.version());
-            for (name, value) in http_resp.headers() {
-                merged_resp = merged_resp.header(name, value);
-            }
-            return Arc::new(
-                merged_resp
-                    .body(response_chunk)
-                    .expect("response should already have validated"),
-            );
-        }
-        // No body received, use the original request
-        http_resp
-    }
-
-    async fn instantiate_plugins(
-        &self,
-        plugins: &PluginList,
-        http_req: Arc<bulwark_wasm_sdk::Request>,
-        params: matchit::Params<'_, '_>,
-    ) -> Result<Vec<Arc<Mutex<PluginInstance>>>, PluginGroupInstantiationError> {
-        let mut plugin_instances = Vec::with_capacity(plugins.len());
-        let mut shared_params = bulwark_wasm_sdk::Map::new();
-        for (key, value) in params.iter() {
-            let wrapped_value = bulwark_wasm_sdk::Value::String(value.to_string());
-            shared_params.insert(format!("param.{}", key), wrapped_value);
-        }
-        // Host environment needs a sync mutex
-        let shared_params = Arc::new(std::sync::Mutex::new(shared_params));
-        for plugin in plugins {
-            let request_context = RequestContext::new(
-                plugin.clone(),
-                self.redis_info.clone(),
-                self.http_client.clone(),
-                shared_params.clone(),
-                http_req.clone(),
-            )?;
-            plugin_instances.push(Arc::new(Mutex::new(
-                PluginInstance::new(plugin.clone(), request_context).await?,
-            )));
-        }
-        Ok(plugin_instances)
-    }
-
-    async fn execute_init_phase(
-        &self,
-        plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-        timeout_duration: std::time::Duration,
-    ) {
+    async fn execute_init_phase(&self) {
         let mut init_phase_tasks = JoinSet::new();
-        for plugin_instance in plugin_instances.iter().cloned() {
-            let init_phase_child_span = tracing::info_span!("execute on_init",);
+        for plugin_instance in self.plugin_instances.iter().cloned() {
+            let init_phase_child_span = tracing::info_span!("execute handle_init",);
             let permit = self
                 .plugin_semaphore
                 .clone()
@@ -469,296 +586,273 @@ impl BulwarkProcessor {
                 .await
                 .expect("semaphore closed");
             init_phase_tasks.spawn(
-                timeout(timeout_duration, async move {
-                    // TODO: avoid unwraps
-                    Self::execute_on_init(plugin_instance).await.unwrap();
+                timeout(self.timeout_duration, async move {
+                    let result = BulwarkProcessor::dispatch_init(plugin_instance).await;
                     drop(permit);
+                    result
                 })
                 .instrument(init_phase_child_span.or_current()),
             );
         }
-        join_all(init_phase_tasks).await;
+        join_all(init_phase_tasks, |_| {}).await;
     }
 
-    async fn execute_request_phase(
-        &self,
-        plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-        timeout_duration: std::time::Duration,
-    ) -> DecisionComponents {
-        self.execute_request_enrichment_phase(plugin_instances.clone(), timeout_duration)
-            .await;
-        self.execute_request_decision_phase(plugin_instances, timeout_duration)
-            .await
-    }
-
-    async fn execute_request_enrichment_phase(
-        &self,
-        plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-        timeout_duration: std::time::Duration,
-    ) {
+    async fn execute_request_enrichment_phase(&mut self) {
         let mut enrichment_phase_tasks = JoinSet::new();
-        for plugin_instance in plugin_instances.iter().cloned() {
-            let enrichment_phase_child_span = tracing::info_span!("execute on_request",);
+        for plugin_instance in self.plugin_instances.iter().cloned() {
+            let enrichment_phase_child_span =
+                tracing::info_span!("execute handle_request_enrichment",);
             let permit = self
                 .plugin_semaphore
                 .clone()
                 .acquire_owned()
                 .await
                 .expect("semaphore closed");
+            let request = self.request.clone();
+            let params = self.params.clone();
             enrichment_phase_tasks.spawn(
-                timeout(timeout_duration, async move {
-                    // TODO: avoid unwraps
-                    Self::execute_on_request(plugin_instance).await.unwrap();
+                timeout(self.timeout_duration, async move {
+                    let result = BulwarkProcessor::dispatch_request_enrichment(
+                        plugin_instance,
+                        request,
+                        params,
+                    )
+                    .await;
                     drop(permit);
+                    result
                 })
                 .instrument(enrichment_phase_child_span.or_current()),
             );
         }
-        join_all(enrichment_phase_tasks).await;
+
+        let mut params = self.params.clone();
+        join_all(enrichment_phase_tasks, |new_params| {
+            // Merge params from each plugin
+            params.extend(new_params);
+        })
+        .await;
+        self.params = params;
     }
 
-    async fn execute_request_decision_phase(
-        &self,
-        plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-        timeout_duration: std::time::Duration,
-    ) -> DecisionComponents {
-        let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
+    async fn execute_request_decision_phase(&mut self) {
+        let outputs: Arc<Mutex<Vec<HandlerOutput>>> =
+            Arc::new(Mutex::new(Vec::with_capacity(self.plugin_instances.len())));
+        let plugin_outputs: Arc<Mutex<HashMap<String, HandlerOutput>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         let mut decision_phase_tasks = JoinSet::new();
-        for plugin_instance in plugin_instances {
-            let decision_phase_child_span = tracing::info_span!("execute on_request_decision",);
+        // The .iter().cloned() appears to be necessary
+        #[allow(clippy::unnecessary_to_owned)]
+        for plugin_instance in self.plugin_instances.iter().cloned() {
+            let decision_phase_child_span = tracing::info_span!("execute handle_request_decision",);
             let permit = self
                 .plugin_semaphore
                 .clone()
                 .acquire_owned()
                 .await
                 .expect("semaphore closed");
-            let decision_components = decision_components.clone();
+            let outputs = outputs.clone();
+            let plugin_outputs = plugin_outputs.clone();
+            let request = self.request.clone();
+            let params = self.params.clone();
             decision_phase_tasks.spawn(
-                timeout(timeout_duration, async move {
-                    let decision_result =
-                        Self::execute_on_request_decision(plugin_instance.clone()).await;
-                    if let Ok(mut decision_component) = decision_result {
-                        {
-                            // Re-weight the decision based on its weighting value from the configuration
-                            let plugin_instance = plugin_instance.lock().await;
-                            decision_component.decision =
-                                decision_component.decision.weight(plugin_instance.weight());
+                timeout(self.timeout_duration, async move {
+                    let output_result = BulwarkProcessor::dispatch_request_decision(
+                        plugin_instance.clone(),
+                        request,
+                        params,
+                    )
+                    .await;
+                    if let Ok(output) = &output_result {
+                        // Re-weight the decision based on its weighting value from the configuration
+                        let plugin_instance = plugin_instance.lock().await;
+                        let mut output = output.clone();
+                        output.decision = output.decision.weight(plugin_instance.weight());
 
-                            let decision = &decision_component.decision;
-                            info!(
-                                message = "plugin decision",
-                                name = plugin_instance.plugin_reference(),
-                                accept = decision.accept,
-                                restrict = decision.restrict,
-                                unknown = decision.unknown,
-                                score = decision.pignistic().restrict,
-                            );
-                        }
-                        let mut decision_components = decision_components.lock().await;
-                        decision_components.push(decision_component);
-                    } else if let Err(err) = decision_result {
+                        let decision = &output.decision;
+                        info!(
+                            message = "plugin decision",
+                            name = plugin_instance.plugin_reference(),
+                            accept = decision.accept,
+                            restrict = decision.restrict,
+                            unknown = decision.unknown,
+                            score = decision.pignistic().restrict,
+                            weight = plugin_instance.weight(),
+                        );
+
+                        let mut outputs = outputs.lock().await;
+                        outputs.push(output.clone());
+                        let mut plugin_outputs = plugin_outputs.lock().await;
+                        plugin_outputs.insert(plugin_instance.plugin_reference(), output);
+                    } else if let Err(err) = &output_result {
                         error!(message = "plugin error", error = err.to_string());
-                        let mut decision_components = decision_components.lock().await;
-                        decision_components.push(DecisionComponents {
+                        let mut outputs = outputs.lock().await;
+                        outputs.push(HandlerOutput {
                             decision: bulwark_wasm_sdk::UNKNOWN,
-                            tags: vec![String::from("error")],
+                            tags: HashSet::from([String::from("error")]),
+                            params: HashMap::new(),
                         });
                     }
                     drop(permit);
+                    output_result.map(|output| output.params)
                 })
                 .instrument(decision_phase_child_span.or_current()),
             );
         }
-        join_all(decision_phase_tasks).await;
+
+        let mut params = self.params.clone();
+        join_all(decision_phase_tasks, |new_params| {
+            // Merge params from each plugin
+            params.extend(new_params);
+        })
+        .await;
 
         let decision_vec: Vec<Decision>;
         let tags: HashSet<String>;
         {
-            let decision_components = decision_components.lock().await;
-            decision_vec = decision_components.iter().map(|dc| dc.decision).collect();
-            tags = decision_components
-                .iter()
-                .flat_map(|dc| dc.tags.clone())
-                .collect();
+            let outputs = outputs.lock().await;
+            decision_vec = outputs.iter().map(|dc| dc.decision).collect();
+            tags = outputs.iter().flat_map(|dc| dc.tags.clone()).collect();
         }
         let decision = Decision::combine_murphy(&decision_vec);
 
-        DecisionComponents {
+        let plugin_outputs = plugin_outputs.lock().await;
+        self.combined_output = HandlerOutput {
             decision,
             tags: tags.into_iter().collect(),
-        }
+            params,
+        };
+        self.plugin_outputs = plugin_outputs.clone();
     }
 
-    async fn execute_request_body_phase(
-        &self,
-        plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-        request: Arc<bulwark_wasm_sdk::Request>,
-        timeout_duration: std::time::Duration,
-    ) -> DecisionComponents {
-        let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
-        let mut decision_phase_tasks = JoinSet::new();
-        for plugin_instance in plugin_instances {
-            let decision_phase_child_span =
-                tracing::info_span!("execute on_request_body_decision",);
-            let permit = self
-                .plugin_semaphore
-                .clone()
-                .acquire_owned()
-                .await
-                .expect("semaphore closed");
-            {
-                // Update plugin instances with the new request and its body
-                let mut plugin_instance = plugin_instance.lock().await;
-                let request = request.clone();
-                plugin_instance.record_request(request);
-            }
-            let decision_components = decision_components.clone();
-            decision_phase_tasks.spawn(
-                timeout(timeout_duration, async move {
-                    let decision_result =
-                        Self::execute_on_request_body_decision(plugin_instance.clone()).await;
-                    if let Ok(mut decision_component) = decision_result {
-                        {
-                            // Re-weight the decision based on its weighting value from the configuration
-                            let plugin_instance = plugin_instance.lock().await;
-                            decision_component.decision =
-                                decision_component.decision.weight(plugin_instance.weight());
-
-                            let decision = &decision_component.decision;
-                            info!(
-                                message = "plugin decision",
-                                name = plugin_instance.plugin_reference(),
-                                accept = decision.accept,
-                                restrict = decision.restrict,
-                                unknown = decision.unknown,
-                                score = decision.pignistic().restrict,
-                            );
-                        }
-                        let mut decision_components = decision_components.lock().await;
-                        decision_components.push(decision_component);
-                    } else if let Err(err) = decision_result {
-                        error!(message = "plugin error", error = err.to_string());
-                        let mut decision_components = decision_components.lock().await;
-                        decision_components.push(DecisionComponents {
-                            decision: bulwark_wasm_sdk::UNKNOWN,
-                            tags: vec![String::from("error")],
-                        });
-                    }
-                    drop(permit);
-                })
-                .instrument(decision_phase_child_span.or_current()),
-            );
-        }
-        join_all(decision_phase_tasks).await;
-
-        let decision_vec: Vec<Decision>;
-        let tags: HashSet<String>;
-        {
-            let decision_components = decision_components.lock().await;
-            decision_vec = decision_components.iter().map(|dc| dc.decision).collect();
-            tags = decision_components
-                .iter()
-                .flat_map(|dc| dc.tags.clone())
-                .collect();
-        }
-        let decision = Decision::combine_murphy(&decision_vec);
-
-        DecisionComponents {
-            decision,
-            tags: tags.into_iter().collect(),
-        }
-    }
-
-    async fn execute_response_phase(
-        &self,
-        plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-        response: Arc<http::Response<BodyChunk>>,
-        timeout_duration: std::time::Duration,
-    ) -> DecisionComponents {
-        let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
+    async fn execute_response_phase(&mut self) {
+        let outputs: Arc<Mutex<Vec<HandlerOutput>>> =
+            Arc::new(Mutex::new(Vec::with_capacity(self.plugin_instances.len())));
+        let new_plugin_outputs: Arc<Mutex<HashMap<String, HandlerOutput>>> =
+            Arc::new(Mutex::new(self.plugin_outputs.clone()));
         let mut response_phase_tasks = JoinSet::new();
-        for plugin_instance in plugin_instances {
-            let response_phase_child_span = tracing::info_span!("execute on_response_decision",);
-            let permit = self
-                .plugin_semaphore
-                .clone()
-                .acquire_owned()
-                .await
-                .expect("semaphore closed");
-            {
-                // Make sure the plugin instance knows about the response
-                let mut plugin_instance = plugin_instance.lock().await;
-                let response = response.clone();
-                plugin_instance.record_response(response);
-            }
-            let decision_components = decision_components.clone();
-            response_phase_tasks.spawn(
-                timeout(timeout_duration, async move {
-                    let decision_result =
-                        Self::execute_on_response_decision(plugin_instance.clone()).await;
-                    if let Ok(mut decision_component) = decision_result {
-                        {
-                            // Re-weight the decision based on its weighting value from the configuration
-                            let plugin_instance = plugin_instance.lock().await;
-                            decision_component.decision =
-                                decision_component.decision.weight(plugin_instance.weight());
-
-                            let decision = &decision_component.decision;
-                            info!(
-                                message = "plugin decision",
-                                name = plugin_instance.plugin_reference(),
-                                accept = decision.accept,
-                                restrict = decision.restrict,
-                                unknown = decision.unknown,
-                                score = decision.pignistic().restrict,
-                            );
-                        }
-                        let mut decision_components = decision_components.lock().await;
-                        decision_components.push(decision_component);
-                    } else if let Err(err) = decision_result {
-                        error!(message = "plugin error", error = err.to_string());
-                        let mut decision_components = decision_components.lock().await;
-                        decision_components.push(DecisionComponents {
-                            decision: bulwark_wasm_sdk::UNKNOWN,
-                            tags: vec![String::from("error")],
-                        });
-                    }
-                    drop(permit);
-                })
-                .instrument(response_phase_child_span.or_current()),
-            );
-        }
-        join_all(response_phase_tasks).await;
-
-        let decision_vec: Vec<Decision>;
-        let tags: HashSet<String>;
-        {
-            let decision_components = decision_components.lock().await;
-            decision_vec = decision_components.iter().map(|dc| dc.decision).collect();
-            tags = decision_components
-                .iter()
-                .flat_map(|dc| dc.tags.clone())
-                .collect();
-        }
-        let decision = Decision::combine_murphy(&decision_vec);
-
-        DecisionComponents {
-            decision,
-            tags: tags.into_iter().collect(),
-        }
-    }
-
-    async fn execute_response_body_phase(
-        &self,
-        plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-        response: Arc<http::Response<BodyChunk>>,
-        timeout_duration: std::time::Duration,
-    ) -> DecisionComponents {
-        let decision_components = Arc::new(Mutex::new(Vec::with_capacity(plugin_instances.len())));
-        let mut response_phase_tasks = JoinSet::new();
-        for plugin_instance in plugin_instances {
+        // The .iter().cloned() appears to be necessary
+        #[allow(clippy::unnecessary_to_owned)]
+        for plugin_instance in self.plugin_instances.iter().cloned() {
             let response_phase_child_span =
-                tracing::info_span!("execute on_response_body_decision",);
+                tracing::info_span!("execute handle_response_decision",);
+            let permit = self
+                .plugin_semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .expect("semaphore closed");
+            let request = self.request.clone();
+            let response = self
+                .response
+                .clone()
+                .expect("cannot execute response phase without response");
+            let params = self.params.clone();
+            let outputs = outputs.clone();
+            let new_plugin_outputs = new_plugin_outputs.clone();
+            let prior_plugin_outputs = self
+                .plugin_outputs
+                .get(&plugin_instance.lock().await.plugin_reference())
+                .cloned();
+            response_phase_tasks.spawn(
+                timeout(self.timeout_duration, async move {
+                    let output_result = BulwarkProcessor::dispatch_response_decision(
+                        plugin_instance.clone(),
+                        request,
+                        response,
+                        params,
+                    )
+                    .await;
+                    if let Ok(output) = &output_result {
+                        // Re-weight the decision based on its weighting value from the configuration
+                        let plugin_instance = plugin_instance.lock().await;
+                        let mut output = output.clone();
+                        output.decision = output.decision.weight(plugin_instance.weight());
+
+                        let decision = &output.decision;
+                        info!(
+                            message = "plugin decision",
+                            name = plugin_instance.plugin_reference(),
+                            accept = decision.accept,
+                            restrict = decision.restrict,
+                            unknown = decision.unknown,
+                            score = decision.pignistic().restrict,
+                            weight = plugin_instance.weight(),
+                        );
+
+                        if let Some(prior_plugin_outputs) = prior_plugin_outputs {
+                            // If the prior output was non-zero and the new output was zero, then keep the prior output.
+                            if !prior_plugin_outputs.decision.is_unknown()
+                                && output.decision.is_unknown()
+                            {
+                                // The prior decision was already weighted and does not need to have weights applied.
+                                output.decision = prior_plugin_outputs.decision;
+                            }
+                        }
+
+                        let mut outputs = outputs.lock().await;
+                        outputs.push(output.clone());
+                        let mut new_plugin_outputs = new_plugin_outputs.lock().await;
+                        new_plugin_outputs.insert(plugin_instance.plugin_reference(), output);
+                    } else if let Err(err) = &output_result {
+                        error!(message = "plugin error", error = err.to_string());
+                        let mut outputs = outputs.lock().await;
+                        outputs.push(HandlerOutput {
+                            decision: bulwark_wasm_sdk::UNKNOWN,
+                            tags: HashSet::from([String::from("error")]),
+                            params: HashMap::new(),
+                        });
+                    }
+                    drop(permit);
+                    output_result.map(|output| output.params)
+                })
+                .instrument(response_phase_child_span.or_current()),
+            );
+        }
+
+        let mut params = self.params.clone();
+        join_all(response_phase_tasks, |new_params| {
+            // Merge params from each plugin
+            params.extend(new_params);
+        })
+        .await;
+
+        let decision_vec: Vec<Decision>;
+        let tags: HashSet<String>;
+        {
+            let outputs = outputs.lock().await;
+            decision_vec = outputs.iter().map(|dc| dc.decision).collect();
+            tags = outputs.iter().flat_map(|dc| dc.tags.clone()).collect();
+        }
+        let decision = Decision::combine_murphy(&decision_vec);
+
+        let new_plugin_outputs = new_plugin_outputs.lock().await;
+        self.combined_output = HandlerOutput {
+            decision,
+            tags: tags.into_iter().collect(),
+            params,
+        };
+        self.plugin_outputs = new_plugin_outputs.clone();
+    }
+
+    async fn execute_decision_feedback(&mut self) {
+        let verdict = self
+            .verdict
+            .as_ref()
+            .expect("cannot execute feedback phase without verdict");
+        metrics::increment_counter!(
+            "combined_decision",
+            "outcome" => verdict.outcome.to_string(),
+        );
+        metrics::histogram!(
+            "combined_decision_score",
+            verdict.decision.pignistic().restrict
+        );
+
+        let mut decisions: Vec<Decision> = Vec::with_capacity(self.plugin_instances.len());
+        let mut feedback_phase_tasks = JoinSet::new();
+        for plugin_instance in self.plugin_instances.iter().cloned() {
+            let response_phase_child_span =
+                tracing::info_span!("execute handle_decision_feedback",);
             let permit = self
                 .plugin_semaphore
                 .clone()
@@ -766,208 +860,60 @@ impl BulwarkProcessor {
                 .await
                 .expect("semaphore closed");
             {
-                // Make sure the plugin instance knows about the updated response
-                let mut plugin_instance = plugin_instance.lock().await;
-                let response = response.clone();
-                plugin_instance.record_response(response);
+                // Make sure the plugin instance knows about the final combined decision
+                let plugin_instance = plugin_instance.lock().await;
+                let decision = self
+                    .plugin_outputs
+                    .get(&plugin_instance.plugin_reference())
+                    .expect("missing plugin output")
+                    .decision;
+                metrics::histogram!(
+                    "decision_score",
+                    decision.pignistic().restrict,
+                    "ref" => plugin_instance.plugin_reference(),
+                );
+                // Measure the conflict between each individual decision and the combined decision
+                metrics::histogram!(
+                    "decision_conflict",
+                    Decision::conflict(&[decision, verdict.decision]),
+                    "ref" => plugin_instance.plugin_reference(),
+                );
+                decisions.push(decision);
             }
-            let decision_components = decision_components.clone();
-            response_phase_tasks.spawn(
-                timeout(timeout_duration, async move {
-                    let decision_result =
-                        Self::execute_on_response_body_decision(plugin_instance.clone()).await;
-                    if let Ok(mut decision_component) = decision_result {
-                        {
-                            // Re-weight the decision based on its weighting value from the configuration
-                            let plugin_instance = plugin_instance.lock().await;
-                            decision_component.decision =
-                                decision_component.decision.weight(plugin_instance.weight());
-
-                            let decision = &decision_component.decision;
-                            info!(
-                                message = "plugin decision",
-                                name = plugin_instance.plugin_reference(),
-                                accept = decision.accept,
-                                restrict = decision.restrict,
-                                unknown = decision.unknown,
-                                score = decision.pignistic().restrict,
-                            );
-                        }
-                        let mut decision_components = decision_components.lock().await;
-                        decision_components.push(decision_component);
-                    } else if let Err(err) = decision_result {
-                        error!(message = "plugin error", error = err.to_string());
-                        let mut decision_components = decision_components.lock().await;
-                        decision_components.push(DecisionComponents {
-                            decision: bulwark_wasm_sdk::UNKNOWN,
-                            tags: vec![String::from("error")],
-                        });
-                    }
+            let request = self.request.clone();
+            let response = self
+                .response
+                .clone()
+                .expect("cannot execute feedback phase without response");
+            let params = self.params.clone();
+            let verdict = verdict.clone();
+            feedback_phase_tasks.spawn(
+                timeout(self.timeout_duration, async move {
+                    let result = BulwarkProcessor::dispatch_decision_feedback(
+                        plugin_instance,
+                        request,
+                        response,
+                        params,
+                        verdict,
+                    )
+                    .await;
                     drop(permit);
+                    result
                 })
                 .instrument(response_phase_child_span.or_current()),
             );
         }
-        join_all(response_phase_tasks).await;
+        join_all(feedback_phase_tasks, |_| {}).await;
 
-        let decision_vec: Vec<Decision>;
-        let tags: HashSet<String>;
-        {
-            let decision_components = decision_components.lock().await;
-            decision_vec = decision_components.iter().map(|dc| dc.decision).collect();
-            tags = decision_components
-                .iter()
-                .flat_map(|dc| dc.tags.clone())
-                .collect();
-        }
-        let decision = Decision::combine_murphy(&decision_vec);
+        // Measure total conflict in the combined decision
+        metrics::histogram!("combined_conflict", Decision::conflict(&decisions));
 
-        DecisionComponents {
-            decision,
-            tags: tags.into_iter().collect(),
-        }
+        // Capturing stdio is always the last thing that happens and feedback should always be the second-to-last.
+        self.capture_stdio().await;
     }
 
-    async fn execute_on_init(
-        plugin_instance: Arc<Mutex<PluginInstance>>,
-    ) -> Result<(), PluginExecutionError> {
-        let mut plugin_instance = plugin_instance.lock().await;
-        let result = plugin_instance.handle_init().await;
-        match result {
-            Ok(_) => metrics::increment_counter!(
-                "plugin_wasm_on_init",
-                "ref" => plugin_instance.plugin_reference(), "result" => "ok"
-            ),
-            Err(_) => metrics::increment_counter!(
-                "plugin_wasm_on_init",
-                "ref" => plugin_instance.plugin_reference(), "result" => "error"
-            ),
-        }
-        result
-    }
-
-    async fn execute_on_request(
-        plugin_instance: Arc<Mutex<PluginInstance>>,
-    ) -> Result<(), PluginExecutionError> {
-        let mut plugin_instance = plugin_instance.lock().await;
-        let result = plugin_instance.handle_request().await;
-        match result {
-            Ok(_) => metrics::increment_counter!(
-                "plugin_wasm_on_request",
-                "ref" => plugin_instance.plugin_reference(), "result" => "ok"
-            ),
-            Err(_) => metrics::increment_counter!(
-                "plugin_wasm_on_request",
-                "ref" => plugin_instance.plugin_reference(), "result" => "error"
-            ),
-        }
-        result
-    }
-
-    async fn execute_on_request_decision(
-        plugin_instance: Arc<Mutex<PluginInstance>>,
-    ) -> Result<DecisionComponents, PluginExecutionError> {
-        let mut plugin_instance = plugin_instance.lock().await;
-        let result = plugin_instance.handle_request_decision().await;
-        match result {
-            Ok(_) => metrics::increment_counter!(
-                "plugin_wasm_on_request_decision",
-                "ref" => plugin_instance.plugin_reference(), "result" => "ok"
-            ),
-            Err(_) => metrics::increment_counter!(
-                "plugin_wasm_on_request_decision",
-                "ref" => plugin_instance.plugin_reference(), "result" => "error"
-            ),
-        }
-        result?;
-        Ok(plugin_instance.decision())
-    }
-
-    async fn execute_on_request_body_decision(
-        plugin_instance: Arc<Mutex<PluginInstance>>,
-    ) -> Result<DecisionComponents, PluginExecutionError> {
-        let mut plugin_instance = plugin_instance.lock().await;
-        let result = plugin_instance.handle_request_body_decision().await;
-        match result {
-            Ok(_) => metrics::increment_counter!(
-                "plugin_wasm_on_request_body_decision",
-                "ref" => plugin_instance.plugin_reference(), "result" => "ok"
-            ),
-            Err(_) => metrics::increment_counter!(
-                "plugin_wasm_on_request_body_decision",
-                "ref" => plugin_instance.plugin_reference(), "result" => "error"
-            ),
-        }
-        result?;
-        Ok(plugin_instance.decision())
-    }
-
-    async fn execute_on_response_decision(
-        plugin_instance: Arc<Mutex<PluginInstance>>,
-    ) -> Result<DecisionComponents, PluginExecutionError> {
-        let mut plugin_instance = plugin_instance.lock().await;
-        let result = plugin_instance.handle_response_decision().await;
-        match result {
-            Ok(_) => metrics::increment_counter!(
-                "plugin_wasm_on_response_decision",
-                "ref" => plugin_instance.plugin_reference(), "result" => "ok"
-            ),
-            Err(_) => metrics::increment_counter!(
-                "plugin_wasm_on_response_decision",
-                "ref" => plugin_instance.plugin_reference(), "result" => "error"
-            ),
-        }
-        result?;
-        Ok(plugin_instance.decision())
-    }
-
-    async fn execute_on_response_body_decision(
-        plugin_instance: Arc<Mutex<PluginInstance>>,
-    ) -> Result<DecisionComponents, PluginExecutionError> {
-        let mut plugin_instance = plugin_instance.lock().await;
-        let result = plugin_instance.handle_response_body_decision().await;
-        match result {
-            Ok(_) => metrics::increment_counter!(
-                "plugin_wasm_on_response_body_decision",
-                "ref" => plugin_instance.plugin_reference(), "result" => "ok"
-            ),
-            Err(_) => metrics::increment_counter!(
-                "plugin_wasm_on_response_body_decision",
-                "ref" => plugin_instance.plugin_reference(), "result" => "error"
-            ),
-        }
-        result?;
-        Ok(plugin_instance.decision())
-    }
-
-    async fn execute_on_decision_feedback(
-        plugin_instance: Arc<Mutex<PluginInstance>>,
-    ) -> Result<(), PluginExecutionError> {
-        let mut plugin_instance = plugin_instance.lock().await;
-        let result = plugin_instance.handle_decision_feedback().await;
-        match result {
-            Ok(_) => metrics::increment_counter!(
-                "plugin_wasm_on_decision_feedback",
-                "ref" => plugin_instance.plugin_reference(), "result" => "ok"
-            ),
-            Err(_) => metrics::increment_counter!(
-                "plugin_wasm_on_decision_feedback",
-                "ref" => plugin_instance.plugin_reference(), "result" => "error"
-            ),
-        }
-        result
-    }
-
-    async fn handle_request_phase_decision(
-        &self,
-        sender: UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
-        mut stream: Streaming<ProcessingRequest>,
-        http_req: Arc<bulwark_wasm_sdk::Request>,
-        decision_components: DecisionComponents,
-        plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-        timeout_duration: std::time::Duration,
-    ) {
-        let decision = decision_components.decision;
+    async fn complete_request_phase(&mut self) {
+        let decision = self.combined_output.decision;
         let outcome = decision
             .outcome(
                 self.thresholds.trust,
@@ -985,7 +931,8 @@ impl BulwarkProcessor {
             outcome = outcome.to_string(),
             observe_only = self.thresholds.observe_only,
             // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
-            tags = decision_components
+            tags = self
+                .combined_output
                 .tags
                 .iter()
                 .map(|s| s.as_str())
@@ -999,207 +946,93 @@ impl BulwarkProcessor {
             "observe_only" => self.thresholds.observe_only.to_string(),
         );
 
-        let mut receive_request_body = false;
-        // Don't check if there's no body to process
-        if !(http_req.body().received
-            && http_req.body().end_of_stream
-            && http_req.body().size == 0
-            && http_req.body().start == 0)
-        {
-            // Iterator with `any` could be cleaner, but there's an async lock.
-            for plugin_instance in &plugin_instances {
-                let plugin_instance = plugin_instance.lock().await;
-                receive_request_body =
-                    receive_request_body || plugin_instance.receive_request_body();
-                if receive_request_body {
-                    break;
-                }
-            }
-        }
-
         let mut restricted = false;
+        let end_of_stream = self.request.body().is_empty();
         match outcome {
             bulwark_wasm_sdk::Outcome::Trusted
             | bulwark_wasm_sdk::Outcome::Accepted
             // suspected requests are monitored but not rejected
             | bulwark_wasm_sdk::Outcome::Suspected => {
-                let result = Self::allow_request(&sender, &decision_components, &outcome, receive_request_body).await;
+                let result = Self::send_allow_request_message(self.sender.clone(), end_of_stream).await;
                 // TODO: must perform proper error handling on sender results, sending can fail
                 if let Err(err) = result {
-                    debug!(message = format!("send error: {}", err));
+                    error!(message = format!("send error: {}", err));
                 }
             },
             bulwark_wasm_sdk::Outcome::Restricted => {
                 restricted = true;
                 if !self.thresholds.observe_only {
                     info!(message = "process response", status = 403);
-                    let result = Self::block_request(&sender, &decision_components).await;
-                    // TODO: must perform proper error handling on sender results, sending can fail
-                    if let Err(err) = result {
-                        debug!(message = format!("send error: {}", err));
+                    match Self::send_block_request_message(self.sender.clone()).await {
+                        Ok(response) => {
+                            // Normally we initiate feedback after the response phase, but if we're blocking the request
+                            // in the request phase, we're also skipping the response phase and we need to do it here
+                            // instead.
+                            let verdict = Verdict {
+                                decision,
+                                outcome,
+                                tags: self.combined_output.tags.iter().cloned().collect(),
+                            };
+                            self.response = Some(Arc::new(response));
+                            self.verdict = Some(verdict);
+                            self.execute_decision_feedback().await;
+                        },
+                        Err(err) => {
+                            // TODO: must perform proper error handling on sender results, sending can fail
+                            error!(message = format!("send error: {}", err));
+                        },
                     }
 
-                    // Normally we initiate feedback after the response phase, but if we skip the response phase
-                    // we need to do it here instead.
-                    self.handle_decision_feedback(
-                        decision_components,
-                        outcome,
-                        plugin_instances.clone(),
-                        timeout_duration,
-                    ).await;
                     // Short-circuit if restricted, we can skip the response phase
                     return;
                 } else {
-                    // Don't receive a body when we would have otherwise blocked if we weren't in monitor-only mode
-                    let result = Self::allow_request(&sender, &decision_components, &outcome,  false).await;
-                    // TODO: must perform proper error handling on sender results, sending can fail
-                    if let Err(err) = result {
-                        debug!(message = format!("send error: {}", err));
-                    }
+                    // In observe-only mode, we still perform decision feedback, but there won't be a response.
+                    let verdict = Verdict {
+                        decision,
+                        outcome,
+                        tags: self.combined_output.tags.iter().cloned().collect(),
+                    };
+                    self.verdict = Some(verdict);
+
+                    // We need to set a response or decision feedback will panic.
+                    // This response is what would have been sent if we had blocked, rather than what will actually
+                    // be sent, since we're about to call send_allow_request_message and that instructs envoy that
+                    // the processor no longer needs to continue processing the request or response.
+                    let code: i32 = 403;
+                    let body = "Access Denied\n";
+                    // The generate function should be infallible here.
+                    let response = Self::generate_block_response(code, body).expect("could not generate block response");
+                    self.response = Some(Arc::new(response));
+
+                    self.execute_decision_feedback().await;
                 }
-            },
-        }
 
-        // This will still be false if there's no body to process, causing the body phase to be skipped.
-        // Skip request body processing if we've already blocked or if observe-only mode is on or we would have.
-        if receive_request_body && !restricted {
-            let http_req = self.merge_request_body(http_req, &mut stream).await;
-            self.handle_request_body_phase_decision(
-                sender,
-                stream,
-                http_req.clone(),
-                self.execute_request_body_phase(
-                    plugin_instances.clone(),
-                    http_req,
-                    timeout_duration,
-                )
-                .await,
-                plugin_instances,
-                timeout_duration,
-            )
-            .await;
-        } else if let Ok(http_resp) = self.prepare_response(&mut stream, http_req.version()).await {
-            let http_resp = Arc::new(http_resp);
-            self.handle_response_phase_decision(
-                sender,
-                stream,
-                http_resp.clone(),
-                self.execute_response_phase(plugin_instances.clone(), http_resp, timeout_duration)
-                    .await,
-                plugin_instances,
-                timeout_duration,
-            )
-            .await;
-        }
-    }
-
-    async fn handle_request_body_phase_decision(
-        &self,
-        sender: UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
-        mut stream: Streaming<ProcessingRequest>,
-        http_req: Arc<bulwark_wasm_sdk::Request>,
-        decision_components: DecisionComponents,
-        plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-        timeout_duration: std::time::Duration,
-    ) {
-        let decision = decision_components.decision;
-        let outcome = decision
-            .outcome(
-                self.thresholds.trust,
-                self.thresholds.suspicious,
-                self.thresholds.restrict,
-            )
-            .unwrap();
-
-        info!(
-            message = "combine decision",
-            accept = decision.accept,
-            restrict = decision.restrict,
-            unknown = decision.unknown,
-            score = decision.pignistic().restrict,
-            outcome = outcome.to_string(),
-            observe_only = self.thresholds.observe_only,
-            // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
-            tags = decision_components
-                .tags
-                .iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<&str>>()
-                .to_vec()
-                .join(","),
-        );
-        metrics::increment_counter!(
-            "plugin_request_body_phase_decision",
-            "outcome" => outcome.to_string(),
-            "observe_only" => self.thresholds.observe_only.to_string(),
-        );
-
-        match outcome {
-            bulwark_wasm_sdk::Outcome::Trusted
-            | bulwark_wasm_sdk::Outcome::Accepted
-            // suspected requests are monitored but not rejected
-            | bulwark_wasm_sdk::Outcome::Suspected => {
-                let result = Self::allow_request_body(&sender).await;
+                let result = Self::send_allow_request_message(self.sender.clone(), end_of_stream).await;
                 // TODO: must perform proper error handling on sender results, sending can fail
                 if let Err(err) = result {
-                    debug!(message = format!("send error: {}", err));
-                }
-            },
-            bulwark_wasm_sdk::Outcome::Restricted => {
-                if !self.thresholds.observe_only {
-                    info!(message = "process response", status = 403);
-                    let result = Self::block_request_body(&sender).await;
-                    // TODO: must perform proper error handling on sender results, sending can fail
-                    if let Err(err) = result {
-                        debug!(message = format!("send error: {}", err));
-                    }
-
-                    // Normally we initiate feedback after the response phase, but if we skip the response phase
-                    // we need to do it here instead.
-                    self.handle_decision_feedback(
-                        decision_components,
-                        outcome,
-                        plugin_instances.clone(),
-                        timeout_duration,
-                    ).await;
-                    // Short-circuit if restricted, we can skip the response phase
-                    return;
-                } else {
-                    // Don't receive a body when we would have otherwise blocked if we weren't in monitor-only mode
-                    let result = Self::allow_request_body(&sender).await;
-                    // TODO: must perform proper error handling on sender results, sending can fail
-                    if let Err(err) = result {
-                        debug!(message = format!("send error: {}", err));
-                    }
+                    error!(message = format!("send error: {}", err));
                 }
             },
         }
 
-        if let Ok(http_resp) = self.prepare_response(&mut stream, http_req.version()).await {
-            let http_resp = Arc::new(http_resp);
-            self.handle_response_phase_decision(
-                sender,
-                stream,
-                http_resp.clone(),
-                self.execute_response_phase(plugin_instances.clone(), http_resp, timeout_duration)
-                    .await,
-                plugin_instances,
-                timeout_duration,
-            )
-            .await;
+        // There's only a response phase if we haven't blocked.
+        // Observe-only mode should also behave the same way as normal mode here.
+        if !restricted {
+            match self.prepare_response().await {
+                Ok(response) => {
+                    self.response = Some(Arc::new(response));
+                    self.execute_response_phase().await;
+                    self.complete_response_phase().await;
+                }
+                Err(err) => {
+                    error!(message = format!("response error: {}", err));
+                }
+            }
         }
     }
 
-    async fn handle_response_phase_decision(
-        &self,
-        sender: UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
-        mut stream: Streaming<ProcessingRequest>,
-        http_resp: Arc<bulwark_wasm_sdk::Response>,
-        decision_components: DecisionComponents,
-        plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-        timeout_duration: std::time::Duration,
-    ) {
-        let decision = decision_components.decision;
+    async fn complete_response_phase(&mut self) {
+        let decision = self.combined_output.decision;
         let outcome = decision
             .outcome(
                 self.thresholds.trust,
@@ -1217,7 +1050,8 @@ impl BulwarkProcessor {
             outcome = outcome.to_string(),
             observe_only = self.thresholds.observe_only,
             // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
-            tags = decision_components
+            tags = self
+                .combined_output
                 .tags
                 .iter()
                 .map(|s| s.as_str())
@@ -1231,233 +1065,56 @@ impl BulwarkProcessor {
             "observe_only" => self.thresholds.observe_only.to_string(),
         );
 
-        // Iterator with `any` would be cleaner, but there's an async lock.
-        let mut receive_response_body = false;
-        if !(http_resp.body().received
-            && http_resp.body().end_of_stream
-            && http_resp.body().size == 0
-            && http_resp.body().start == 0)
-        {
-            for plugin_instance in &plugin_instances {
-                let plugin_instance = plugin_instance.lock().await;
-                receive_response_body =
-                    receive_response_body || plugin_instance.receive_response_body();
-                if receive_response_body {
-                    break;
-                }
-            }
-        }
-
-        let mut restricted = false;
+        let response = self
+            .response
+            .clone()
+            .expect("cannot complete response phase without response");
+        let end_of_stream = response.body().is_empty();
         match outcome {
             bulwark_wasm_sdk::Outcome::Trusted
             | bulwark_wasm_sdk::Outcome::Accepted
             // suspected requests are monitored but not rejected
             | bulwark_wasm_sdk::Outcome::Suspected => {
-                info!(message = "process response", status = u16::from(http_resp.status()));
-                let result = Self::allow_response(&sender, &decision_components, receive_response_body).await;
+                info!(message = "process response", status = u16::from(response.status()));
+                let result = Self::send_allow_response_message(self.sender.clone(), end_of_stream).await;
                 // TODO: must perform proper error handling on sender results, sending can fail
                 if let Err(err) = result {
-                    debug!(message = format!("send error: {}", err));
-                }
-            },
-            bulwark_wasm_sdk::Outcome::Restricted => {
-                restricted = true;
-                if !self.thresholds.observe_only {
-                    info!(message = "process response", status = 403);
-                    let result = Self::block_response(&sender, &decision_components).await;
-                    // TODO: must perform proper error handling on sender results, sending can fail
-                    if let Err(err) = result {
-                        debug!(message = format!("send error: {}", err));
-                    }
-                } else {
-                    info!(message = "process response", status = u16::from(http_resp.status()));
-                    // Don't receive a body when we would have otherwise blocked if we weren't in monitor-only mode
-                    let result = Self::allow_response(&sender, &decision_components, false).await;
-                    // TODO: must perform proper error handling on sender results, sending can fail
-                    if let Err(err) = result {
-                        debug!(message = format!("send error: {}", err));
-                    }
-                }
-            }
-        }
-
-        // This will still be false if there's no body to process, causing the body phase to be skipped.
-        // Skip response body processing if we've already blocked or if observe-only mode is on or we would have.
-        if receive_response_body && !restricted {
-            let http_resp = self.merge_response_body(http_resp, &mut stream).await;
-            self.handle_response_body_phase_decision(
-                sender,
-                http_resp.clone(),
-                self.execute_response_body_phase(
-                    plugin_instances.clone(),
-                    http_resp,
-                    timeout_duration,
-                )
-                .await,
-                plugin_instances,
-                timeout_duration,
-            )
-            .await;
-        } else {
-            self.handle_decision_feedback(
-                decision_components,
-                outcome,
-                plugin_instances.clone(),
-                timeout_duration,
-            )
-            .await;
-        }
-    }
-
-    async fn handle_response_body_phase_decision(
-        &self,
-        sender: UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
-        http_resp: Arc<bulwark_wasm_sdk::Response>,
-        decision_components: DecisionComponents,
-        plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-        timeout_duration: std::time::Duration,
-    ) {
-        let decision = decision_components.decision;
-        let outcome = decision
-            .outcome(
-                self.thresholds.trust,
-                self.thresholds.suspicious,
-                self.thresholds.restrict,
-            )
-            .unwrap();
-
-        info!(
-            message = "combine decision",
-            accept = decision.accept,
-            restrict = decision.restrict,
-            unknown = decision.unknown,
-            score = decision.pignistic().restrict,
-            outcome = outcome.to_string(),
-            observe_only = self.thresholds.observe_only,
-            // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
-            tags = decision_components
-                .tags
-                .iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<&str>>()
-                .to_vec()
-                .join(","),
-        );
-        metrics::increment_counter!(
-            "plugin_response_body_phase_decision",
-            "outcome" => outcome.to_string(),
-            "observe_only" => self.thresholds.observe_only.to_string(),
-        );
-
-        match outcome {
-            bulwark_wasm_sdk::Outcome::Trusted
-            | bulwark_wasm_sdk::Outcome::Accepted
-            // suspected requests are monitored but not rejected
-            | bulwark_wasm_sdk::Outcome::Suspected => {
-                info!(message = "process response", status = u16::from(http_resp.status()));
-                let result = Self::allow_response_body(&sender).await;
-                // TODO: must perform proper error handling on sender results, sending can fail
-                if let Err(err) = result {
-                    debug!(message = format!("send error: {}", err));
+                    error!(message = format!("send error: {}", err));
                 }
             },
             bulwark_wasm_sdk::Outcome::Restricted => {
                 if !self.thresholds.observe_only {
                     info!(message = "process response", status = 403);
-                    let result = Self::block_response_body(&sender).await;
+                    let result = Self::send_block_response_message(self.sender.clone()).await;
                     // TODO: must perform proper error handling on sender results, sending can fail
                     if let Err(err) = result {
-                        debug!(message = format!("send error: {}", err));
+                        error!(message = format!("send error: {}", err));
                     }
                 } else {
-                    info!(message = "process response", status = u16::from(http_resp.status()));
+                    info!(message = "process response", status = u16::from(response.status()));
                     // Don't receive a body when we would have otherwise blocked if we weren't in monitor-only mode
-                    let result = Self::allow_response_body(&sender).await;
+                    let result = Self::send_allow_response_message(self.sender.clone(), end_of_stream).await;
                     // TODO: must perform proper error handling on sender results, sending can fail
                     if let Err(err) = result {
-                        debug!(message = format!("send error: {}", err));
+                        error!(message = format!("send error: {}", err));
                     }
                 }
             }
         }
 
-        self.handle_decision_feedback(
-            decision_components,
+        let verdict = bulwark_wasm_sdk::Verdict {
+            decision,
             outcome,
-            plugin_instances.clone(),
-            timeout_duration,
-        )
-        .await;
+            tags: self.combined_output.tags.iter().cloned().collect(),
+        };
+        self.verdict = Some(verdict);
+        self.execute_decision_feedback().await;
     }
 
-    async fn handle_decision_feedback(
-        &self,
-        decision_components: DecisionComponents,
-        outcome: bulwark_wasm_sdk::Outcome,
-        plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-        timeout_duration: std::time::Duration,
-    ) {
-        metrics::increment_counter!(
-            "combined_decision",
-            "outcome" => outcome.to_string(),
-        );
-        metrics::histogram!(
-            "combined_decision_score",
-            decision_components.decision.pignistic().restrict
-        );
-
-        let mut decisions: Vec<Decision> = Vec::with_capacity(plugin_instances.len());
-        let mut feedback_phase_tasks = JoinSet::new();
-        for plugin_instance in plugin_instances.iter().cloned() {
-            let response_phase_child_span = tracing::info_span!("execute on_decision_feedback",);
-            let permit = self
-                .plugin_semaphore
-                .clone()
-                .acquire_owned()
-                .await
-                .expect("semaphore closed");
-            {
-                // Make sure the plugin instance knows about the final combined decision
-                let mut plugin_instance = plugin_instance.lock().await;
-                plugin_instance.record_combined_decision(&decision_components, outcome);
-                let decision = plugin_instance.decision().decision;
-                metrics::histogram!(
-                    "decision_score",
-                    decision.pignistic().restrict,
-                    "ref" => plugin_instance.plugin_reference(),
-                );
-                // Measure the conflict between each individual decision and the combined decision
-                metrics::histogram!(
-                    "decision_conflict",
-                    Decision::conflict(&[decision, decision_components.decision]),
-                    "ref" => plugin_instance.plugin_reference(),
-                );
-                decisions.push(decision);
-            }
-            feedback_phase_tasks.spawn(
-                timeout(timeout_duration, async move {
-                    Self::execute_on_decision_feedback(plugin_instance)
-                        .await
-                        .ok();
-                    drop(permit);
-                })
-                .instrument(response_phase_child_span.or_current()),
-            );
-        }
-        join_all(feedback_phase_tasks).await;
-
-        // Measure total conflict in the combined decision
-        metrics::histogram!("combined_conflict", Decision::conflict(&decisions));
-
-        // Capturing stdio is always the last thing that happens and feedback should always be the second-to-last.
-        Self::capture_stdio(plugin_instances).await;
-    }
-
-    #[instrument(name = "plugin output", skip(plugin_instances))]
-    async fn capture_stdio(plugin_instances: Vec<Arc<Mutex<PluginInstance>>>) {
+    #[instrument(name = "plugin output", skip(self))]
+    async fn capture_stdio(&self) {
         // TODO: refactor to process one plugin at a time and try to avoid having handle_decision_feedback join_all
-        for plugin_instance in plugin_instances {
+        for plugin_instance in self.plugin_instances.iter() {
             let plugin_instance = plugin_instance.lock().await;
             let stdout = plugin_instance.stdio().stdout_buffer();
             let stderr = plugin_instance.stdio().stderr_buffer();
@@ -1484,215 +1141,221 @@ impl BulwarkProcessor {
         }
     }
 
-    async fn allow_request(
-        mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
-        decision_components: &DecisionComponents,
-        decision_outcome: &Outcome,
-        receive_request_body: bool,
+    /// Generates a response indicating the request has been blocked.
+    fn generate_block_response(
+        code: i32,
+        body: &str,
+    ) -> Result<bulwark_wasm_sdk::Response, http::Error> {
+        http::response::Builder::new()
+            .status(code as u16)
+            .body(bytes::Bytes::from(body.to_string()))
+    }
+
+    async fn send_allow_request_message(
+        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
+        end_of_stream: bool,
     ) -> Result<(), ProcessingMessageError> {
-        // Send back a response that changes the request header for the HTTP target.
-        let mut req_headers_cr = CommonResponse::default();
-        Self::add_set_header(
-            &mut req_headers_cr,
-            "Bulwark-Decision",
-            &serialize_decision_sfv(decision_components.decision, decision_outcome.to_owned())
-                .map_err(|err| SfvError::Serialization(err.to_string()))?,
-        );
-        if !decision_components.tags.is_empty() {
-            Self::add_set_header(
-                &mut req_headers_cr,
-                "Bulwark-Tags",
-                &serialize_tags_sfv(decision_components.tags.clone())
-                    .map_err(|err| SfvError::Serialization(err.to_string()))?,
-            );
+        let mut sender = sender.lock().await;
+
+        trace!("send_allow_request_message (ProcessingResponse)");
+        let processing_reply = ProcessingResponse {
+            // If the request did not have a body, we're responding to a
+            // RequestHeaders message, otherwise we're responding to a
+            // RequestBody message.
+            response: if end_of_stream {
+                Some(processing_response::Response::RequestHeaders(
+                    HeadersResponse {
+                        response: Some(CommonResponse::default()),
+                    },
+                ))
+            } else {
+                Some(processing_response::Response::RequestBody(
+                    BodyResponse::default(),
+                ))
+            },
+            ..Default::default()
+        };
+        Ok(sender.send(Ok(processing_reply)).await?)
+    }
+
+    async fn send_block_request_message(
+        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
+    ) -> Result<bulwark_wasm_sdk::Response, ProcessingMessageError> {
+        let mut sender = sender.lock().await;
+
+        trace!("send_block_request_message (ProcessingResponse)");
+        // TODO: better default response + customizability
+        let code: i32 = 403;
+        let body = "Access Denied\n";
+        let response = Self::generate_block_response(code, body)?;
+
+        let processing_reply = ProcessingResponse {
+            response: Some(processing_response::Response::ImmediateResponse(
+                ImmediateResponse {
+                    status: Some(HttpStatus { code }),
+                    // TODO: add decision debug
+                    details: "blocked by bulwark".to_string(),
+                    body: body.to_string(),
+                    headers: None,
+                    grpc_status: None,
+                },
+            )),
+            ..Default::default()
+        };
+        sender.send(Ok(processing_reply)).await?;
+        Ok(response)
+    }
+
+    async fn send_allow_response_message(
+        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
+        end_of_stream: bool,
+    ) -> Result<(), ProcessingMessageError> {
+        let mut sender = sender.lock().await;
+
+        trace!("send_allow_response_message (ProcessingResponse)");
+        let processing_reply = ProcessingResponse {
+            // If the response did not have a body, we're responding to a
+            // ResponseHeaders message, otherwise we're responding to a
+            // ResponseBody message.
+            response: if end_of_stream {
+                Some(processing_response::Response::ResponseHeaders(
+                    HeadersResponse::default(),
+                ))
+            } else {
+                Some(processing_response::Response::ResponseBody(
+                    BodyResponse::default(),
+                ))
+            },
+            ..Default::default()
+        };
+        Ok(sender.send(Ok(processing_reply)).await?)
+    }
+
+    async fn send_block_response_message(
+        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
+    ) -> Result<bulwark_wasm_sdk::Response, ProcessingMessageError> {
+        let mut sender = sender.lock().await;
+
+        trace!("send_block_response_message (ProcessingResponse)");
+        // Send back a response indicating the request has been blocked.
+        let code: i32 = 403;
+        // TODO: better default response + customizability
+        let body = "Access Denied\n";
+        let response: bulwark_wasm_sdk::Response = http::response::Builder::new()
+            .status(code as u16)
+            .body(bytes::Bytes::from(body))?;
+        let processing_reply = ProcessingResponse {
+            response: Some(processing_response::Response::ImmediateResponse(
+                ImmediateResponse {
+                    status: Some(HttpStatus { code }),
+                    // TODO: add decision debug
+                    details: "blocked by bulwark".to_string(),
+                    body: body.to_string(),
+                    headers: None,
+                    grpc_status: None,
+                },
+            )),
+            ..Default::default()
+        };
+        sender.send(Ok(processing_reply)).await?;
+        Ok(response)
+    }
+
+    async fn get_request_header_message(
+        stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
+    ) -> Result<Option<HttpHeaders>, tonic::Status> {
+        let mut stream = stream.lock().await;
+
+        trace!("get_request_header_message (ProcessingRequest)");
+        // TODO: if request attributes are eventually supported, we may need to extract both instead of just headers
+        if let Some(next_msg) = stream.message().await? {
+            if let Some(processing_request::Request::RequestHeaders(hdrs)) = next_msg.request {
+                return Ok(Some(hdrs));
+            }
         }
-        let mut req_headers_resp = ProcessingResponse {
+        Ok(None)
+    }
+
+    async fn send_request_headers_message(
+        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
+    ) -> Result<(), futures::channel::mpsc::SendError> {
+        let mut sender = sender.lock().await;
+
+        trace!("send_request_headers_message (ProcessingResponse)");
+        let processing_reply = ProcessingResponse {
             response: Some(processing_response::Response::RequestHeaders(
                 HeadersResponse {
-                    response: Some(req_headers_cr),
+                    response: Some(CommonResponse::default()),
                 },
             )),
-            ..Default::default()
-        };
-        if receive_request_body {
-            req_headers_resp.mode_override = Some(ProcessingMode {
+            mode_override: Some(ProcessingMode {
                 request_body_mode: processing_mode::BodySendMode::BufferedPartial as i32,
                 ..Default::default()
-            });
+            }),
+            ..Default::default()
+        };
+        sender.send(Ok(processing_reply)).await
+    }
+
+    async fn get_request_body_message(
+        stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
+    ) -> Result<Option<HttpBody>, tonic::Status> {
+        let mut stream = stream.lock().await;
+
+        trace!("get_request_body_message (ProcessingRequest)");
+        if let Some(next_msg) = stream.message().await? {
+            if let Some(processing_request::Request::RequestBody(body)) = next_msg.request {
+                return Ok(Some(body));
+            }
         }
-        Ok(sender.send(Ok(req_headers_resp)).await?)
+        Ok(None)
     }
 
-    async fn block_request(
-        mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
-        // TODO: this will be used in the future
-        _decision_components: &DecisionComponents,
-    ) -> Result<(), ProcessingMessageError> {
-        // Send back a response indicating the request has been blocked.
-        let req_headers_resp = ProcessingResponse {
-            response: Some(processing_response::Response::ImmediateResponse(
-                ImmediateResponse {
-                    status: Some(HttpStatus { code: 403 }),
-                    // TODO: add decision debug
-                    details: "blocked by bulwark".to_string(),
-                    // TODO: better default response + customizability
-                    body: "Access Denied\n".to_string(),
-                    headers: None,
-                    grpc_status: None,
-                },
-            )),
-            ..Default::default()
-        };
-        Ok(sender.send(Ok(req_headers_resp)).await?)
+    async fn get_response_headers_message(
+        stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
+    ) -> Result<Option<HttpHeaders>, tonic::Status> {
+        let mut stream = stream.lock().await;
+
+        trace!("get_response_headers_message (ProcessingRequest)");
+        if let Some(next_msg) = stream.message().await? {
+            if let Some(processing_request::Request::ResponseHeaders(hdrs)) = next_msg.request {
+                return Ok(Some(hdrs));
+            }
+        }
+        Ok(None)
     }
 
-    async fn allow_request_body(
-        mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
-    ) -> Result<(), ProcessingMessageError> {
-        let req_body_resp = ProcessingResponse {
-            response: Some(processing_response::Response::RequestBody(
-                BodyResponse::default(),
-            )),
-            ..Default::default()
-        };
-        Ok(sender.send(Ok(req_body_resp)).await?)
-    }
+    async fn send_response_headers_message(
+        sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
+    ) -> Result<(), futures::channel::mpsc::SendError> {
+        let mut sender = sender.lock().await;
 
-    async fn block_request_body(
-        mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
-    ) -> Result<(), ProcessingMessageError> {
-        // Send back a response indicating the request has been blocked.
-        let req_body_resp = ProcessingResponse {
-            response: Some(processing_response::Response::ImmediateResponse(
-                ImmediateResponse {
-                    status: Some(HttpStatus { code: 403 }),
-                    // TODO: add decision debug
-                    details: "blocked by bulwark".to_string(),
-                    // TODO: better default response + customizability
-                    body: "Access Denied\n".to_string(),
-                    headers: None,
-                    grpc_status: None,
-                },
-            )),
-            ..Default::default()
-        };
-        Ok(sender.send(Ok(req_body_resp)).await?)
-    }
-
-    async fn allow_response(
-        mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
-        // TODO: this will be used in the future
-        _decision_components: &DecisionComponents,
-        receive_response_body: bool,
-    ) -> Result<(), ProcessingMessageError> {
-        let mut resp_headers_resp = ProcessingResponse {
+        trace!("send_response_headers_message (ProcessingResponse)");
+        let processing_reply = ProcessingResponse {
             response: Some(processing_response::Response::ResponseHeaders(
                 HeadersResponse::default(),
             )),
-            ..Default::default()
-        };
-        if receive_response_body {
-            resp_headers_resp.mode_override = Some(ProcessingMode {
+            mode_override: Some(ProcessingMode {
                 response_body_mode: processing_mode::BodySendMode::BufferedPartial as i32,
                 ..Default::default()
-            });
-        }
-        Ok(sender.send(Ok(resp_headers_resp)).await?)
-    }
-
-    async fn block_response(
-        mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
-        // TODO: this will be used in the future
-        _decision_components: &DecisionComponents,
-    ) -> Result<(), ProcessingMessageError> {
-        // Send back a response indicating the request has been blocked.
-        let resp_headers_resp = ProcessingResponse {
-            response: Some(processing_response::Response::ImmediateResponse(
-                ImmediateResponse {
-                    status: Some(HttpStatus { code: 403 }),
-                    // TODO: add decision debug
-                    details: "blocked by bulwark".to_string(),
-                    // TODO: better default response + customizability
-                    body: "Access Denied\n".to_string(),
-                    headers: None,
-                    grpc_status: None,
-                },
-            )),
+            }),
             ..Default::default()
         };
-        Ok(sender.send(Ok(resp_headers_resp)).await?)
+        sender.send(Ok(processing_reply)).await
     }
 
-    async fn allow_response_body(
-        mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
-    ) -> Result<(), ProcessingMessageError> {
-        let resp_body_resp = ProcessingResponse {
-            response: Some(processing_response::Response::ResponseBody(
-                BodyResponse::default(),
-            )),
-            ..Default::default()
-        };
-        Ok(sender.send(Ok(resp_body_resp)).await?)
-    }
+    async fn get_response_body_message(
+        stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
+    ) -> Result<Option<HttpBody>, tonic::Status> {
+        let mut stream = stream.lock().await;
 
-    async fn block_response_body(
-        mut sender: &UnboundedSender<Result<ProcessingResponse, tonic::Status>>,
-    ) -> Result<(), ProcessingMessageError> {
-        // Send back a response indicating the request has been blocked.
-        let resp_body_resp = ProcessingResponse {
-            response: Some(processing_response::Response::ImmediateResponse(
-                ImmediateResponse {
-                    status: Some(HttpStatus { code: 403 }),
-                    // TODO: add decision debug
-                    details: "blocked by bulwark".to_string(),
-                    // TODO: better default response + customizability
-                    body: "Access Denied\n".to_string(),
-                    headers: None,
-                    grpc_status: None,
-                },
-            )),
-            ..Default::default()
-        };
-        Ok(sender.send(Ok(resp_body_resp)).await?)
-    }
-
-    async fn get_request_headers(stream: &mut Streaming<ProcessingRequest>) -> Option<HttpHeaders> {
-        // TODO: if request attributes are eventually supported, we may need to extract both instead of just headers
-        if let Ok(Some(next_msg)) = stream.message().await {
-            if let Some(processing_request::Request::RequestHeaders(hdrs)) = next_msg.request {
-                return Some(hdrs);
-            }
-        }
-        None
-    }
-
-    async fn get_request_body(stream: &mut Streaming<ProcessingRequest>) -> Option<HttpBody> {
-        if let Ok(Some(next_msg)) = stream.message().await {
-            if let Some(processing_request::Request::RequestBody(body)) = next_msg.request {
-                return Some(body);
-            }
-        }
-        None
-    }
-
-    async fn get_response_headers(
-        stream: &mut Streaming<ProcessingRequest>,
-    ) -> Option<HttpHeaders> {
-        if let Ok(Some(next_msg)) = stream.message().await {
-            if let Some(processing_request::Request::ResponseHeaders(hdrs)) = next_msg.request {
-                return Some(hdrs);
-            }
-        }
-        None
-    }
-
-    async fn get_response_body(stream: &mut Streaming<ProcessingRequest>) -> Option<HttpBody> {
-        if let Ok(Some(next_msg)) = stream.message().await {
+        trace!("get_response_body_message (ProcessingRequest)");
+        if let Some(next_msg) = stream.message().await? {
             if let Some(processing_request::Request::ResponseBody(body)) = next_msg.request {
-                return Some(body);
+                return Ok(Some(body));
             }
         }
-        None
+        Ok(None)
     }
 
     fn get_header_value<'a>(header_map: &'a Option<HeaderMap>, name: &str) -> Option<&'a str> {
@@ -1706,24 +1369,6 @@ impl BulwarkProcessor {
                 None
             }
             None => None,
-        }
-    }
-
-    fn add_set_header(cr: &mut CommonResponse, key: &str, value: &str) {
-        let new_header = HeaderValueOption {
-            header: Some(HeaderValue {
-                key: key.into(),
-                value: value.into(),
-            }),
-            ..Default::default()
-        };
-        match &mut cr.header_mutation {
-            Some(hm) => hm.set_headers.push(new_header),
-            None => {
-                let mut new_hm = HeaderMutation::default();
-                new_hm.set_headers.push(new_header);
-                cr.header_mutation = Some(new_hm);
-            }
         }
     }
 
@@ -1791,7 +1436,7 @@ mod tests {
         ];
 
         for (forwarded, hops, expected) in test_cases {
-            let parsed = BulwarkProcessor::parse_forwarded_ip(forwarded, hops);
+            let parsed = ProcessorContext::parse_forwarded_ip(forwarded, hops);
             assert_eq!(parsed, expected);
         }
 
@@ -1829,7 +1474,7 @@ mod tests {
         ];
 
         for (forwarded, hops, expected) in test_cases {
-            let parsed = BulwarkProcessor::parse_x_forwarded_for_ip(forwarded, hops);
+            let parsed = ProcessorContext::parse_x_forwarded_for_ip(forwarded, hops);
             assert_eq!(parsed, expected);
         }
 

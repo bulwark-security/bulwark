@@ -1,7 +1,6 @@
-mod admin;
-mod build;
-mod ecs;
-mod errors;
+pub mod admin;
+pub mod ecs;
+pub mod errors;
 
 use {
     crate::admin::{AdminState, HealthState, MetricsState},
@@ -240,16 +239,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 service_tasks.spawn(async move {
                     // And run our service using `hyper`.
                     let addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::UNSPECIFIED), admin_port));
-                    let app = NormalizePathLayer::trim_trailing_slash().layer(
-                        Router::new()
-                            .route("/health", get(admin::default_probe_handler)) // :probe is optional and defaults to liveness probe
-                            .route("/health/:probe", get(admin::probe_handler))
-                            .route("/metrics", get(admin::metrics_handler))
-                            .with_state(admin_state),
+                    let app = ServiceExt::<axum::extract::Request>::into_make_service(
+                        NormalizePathLayer::trim_trailing_slash().layer(
+                            Router::new()
+                                .route("/health", get(admin::default_probe_handler)) // :probe is optional and defaults to liveness probe
+                                .route("/health/:probe", get(admin::probe_handler))
+                                .route("/metrics", get(admin::metrics_handler))
+                                .with_state(admin_state),
+                        ),
                     );
 
-                    axum::Server::bind(&addr)
-                        .serve(app.into_make_service())
+                    let listener = tokio::net::TcpListener::bind(&addr).await?;
+                    axum::serve(listener, app)
                         .await
                         .map_err(ServiceError::AdminService)
                 });
@@ -296,7 +297,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let current_dir = std::env::current_dir()?;
             let path = path.clone().unwrap_or(current_dir.clone());
-            let wasm_filename = crate::build::wasm_filename(&path)?;
+            let wasm_filename = bulwark_build::wasm_filename(&path)?;
             // Defaults to joining with the current working directory, not the input path
             let mut output = output
                 .clone()
@@ -304,7 +305,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if output.is_dir() {
                 output = output.join(wasm_filename);
             }
-            crate::build::build_plugin(&path, output, compiler_args)?;
+            bulwark_build::interactive_build_plugin(&path, output, compiler_args)?;
         }
     }
 

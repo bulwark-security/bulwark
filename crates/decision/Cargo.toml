@@ -16,11 +16,10 @@ maintenance = { status = "experimental" }
 [dependencies]
 thiserror = { workspace = true }
 validator = { workspace = true }
+approx = { workspace = true }
 
 strum = "0.25"
 strum_macros = "0.25"
 
 [dev-dependencies]
-approx = { workspace = true }
-
 cfg-if = "1.0"

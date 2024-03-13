@@ -1,1 +1,1 @@
-../../wasm-sdk/examples/target/wasm32-wasi/release/bulwark_blank_slate.wasm
+../../../tests/dist/plugins/bulwark_blank_slate.wasm

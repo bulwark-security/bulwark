@@ -34,7 +34,7 @@ pub enum Outcome {
 /// This data structure is a two-state [Dempster-Shafer](https://en.wikipedia.org/wiki/Dempster%E2%80%93Shafer_theory)
 /// mass function, with the power set represented by the `unknown` value. This enables the use of combination rules
 /// to aggregate decisions from multiple sources. However, knowledge of Dempster-Shafer theory should not be necessary.
-#[derive(Debug, Validate, Copy, Clone)]
+#[derive(Debug, Validate, Copy, Clone, PartialEq)]
 #[validate(schema(function = "validate_sum", skip_on_field_errors = false))]
 pub struct Decision {
     #[validate(range(min = 0.0, max = 1.0))]
@@ -89,6 +89,60 @@ fn validate_sum(decision: &Decision) -> Result<(), ValidationError> {
 }
 
 impl Decision {
+    /// Converts a simple scalar value into a `Decision` using the value as the `accept` component.
+    ///
+    /// This function is sugar for `Decision { accept, 0.0, 0.0 }.scale())`.
+    ///
+    /// # Arguments
+    ///
+    /// * `accept` - The `accept` value to set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use approx::assert_relative_eq;
+    /// use bulwark_decision::Decision;
+    ///
+    /// assert_relative_eq!(Decision::accepted(1.0), Decision { accept: 1.0, restrict: 0.0, unknown: 0.0 });
+    /// assert_relative_eq!(Decision::accepted(0.5), Decision { accept: 0.5, restrict: 0.0, unknown: 0.5 });
+    /// assert_relative_eq!(Decision::accepted(0.0), Decision { accept: 0.0, restrict: 0.0, unknown: 1.0 });
+    /// ```
+    pub fn accepted(accept: f64) -> Self {
+        Self {
+            accept,
+            restrict: 0.0,
+            unknown: 0.0,
+        }
+        .scale()
+    }
+
+    /// Converts a simple scalar value into a `Decision` using the value as the `restrict` component.
+    ///
+    /// This function is sugar for `Decision { 0.0, restrict, 0.0 }.scale())`.
+    ///
+    /// # Arguments
+    ///
+    /// * `restrict` - The `restrict` value to set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use approx::assert_relative_eq;
+    /// use bulwark_decision::Decision;
+    ///
+    /// assert_relative_eq!(Decision::restricted(1.0), Decision { accept: 0.0, restrict: 1.0, unknown: 0.0 });
+    /// assert_relative_eq!(Decision::restricted(0.5), Decision { accept: 0.0, restrict: 0.5, unknown: 0.5 });
+    /// assert_relative_eq!(Decision::restricted(0.0), Decision { accept: 0.0, restrict: 0.0, unknown: 1.0 });
+    /// ```
+    pub fn restricted(restrict: f64) -> Self {
+        Self {
+            accept: 0.0,
+            restrict,
+            unknown: 0.0,
+        }
+        .scale()
+    }
+
     /// Reassigns unknown mass evenly to accept and restrict.
     ///
     /// This function is used to convert to a form that is useful in producing a final outcome.
@@ -106,9 +160,19 @@ impl Decision {
     /// # Arguments
     ///
     /// * `threshold` - The minimum value required to accept a [`Decision`].
-    pub fn accepted(&self, threshold: f64) -> bool {
+    pub fn is_accepted(&self, threshold: f64) -> bool {
         let p = self.pignistic();
         p.accept >= threshold
+    }
+
+    /// Checks that the [`unknown`](Decision::unknown) value is non-zero while
+    /// [`accept`](Decision::accept) and [`restrict`](Decision::restrict) are both zero.
+    pub fn is_unknown(&self) -> bool {
+        self.unknown >= f64::EPSILON
+            && self.accept >= 0.0
+            && self.accept <= f64::EPSILON
+            && self.restrict >= 0.0
+            && self.restrict <= f64::EPSILON
     }
 
     /// Checks the [`restrict`](Decision::restrict) value after [`pignistic`](Decision::pignistic)
@@ -414,6 +478,49 @@ impl Decision {
         } else {
             f64::INFINITY
         }
+    }
+}
+
+impl approx::AbsDiffEq for Decision {
+    type Epsilon = <f64 as approx::AbsDiffEq>::Epsilon;
+
+    fn default_epsilon() -> Self::Epsilon {
+        <f64 as approx::AbsDiffEq>::default_epsilon()
+    }
+
+    fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
+        f64::abs_diff_eq(&self.accept, &other.accept, epsilon)
+            && f64::abs_diff_eq(&self.restrict, &other.restrict, epsilon)
+            && f64::abs_diff_eq(&self.unknown, &other.unknown, epsilon)
+    }
+}
+
+impl approx::RelativeEq for Decision {
+    fn default_max_relative() -> Self::Epsilon {
+        <f64 as approx::RelativeEq>::default_max_relative()
+    }
+
+    fn relative_eq(
+        &self,
+        other: &Self,
+        epsilon: Self::Epsilon,
+        max_relative: Self::Epsilon,
+    ) -> bool {
+        f64::relative_eq(&self.accept, &other.accept, epsilon, max_relative)
+            && f64::relative_eq(&self.restrict, &other.restrict, epsilon, max_relative)
+            && f64::relative_eq(&self.unknown, &other.unknown, epsilon, max_relative)
+    }
+}
+
+impl approx::UlpsEq for Decision {
+    fn default_max_ulps() -> u32 {
+        <f64 as approx::UlpsEq>::default_max_ulps()
+    }
+
+    fn ulps_eq(&self, other: &Self, epsilon: Self::Epsilon, max_ulps: u32) -> bool {
+        f64::ulps_eq(&self.accept, &other.accept, epsilon, max_ulps)
+            && f64::ulps_eq(&self.restrict, &other.restrict, epsilon, max_ulps)
+            && f64::ulps_eq(&self.unknown, &other.unknown, epsilon, max_ulps)
     }
 }
 
@@ -960,27 +1067,58 @@ mod tests {
     );
 
     #[test]
-    fn decision_accepted() {
+    fn decision_is_accepted() {
         let d = Decision {
             accept: 0.25,
             restrict: 0.2,
             unknown: 0.55,
         };
-        assert!(d.accepted(0.5));
+        assert!(d.is_accepted(0.5));
 
         let d = Decision {
             accept: 0.25,
             restrict: 0.25,
             unknown: 0.50,
         };
-        assert!(d.accepted(0.5));
+        assert!(d.is_accepted(0.5));
 
         let d = Decision {
             accept: 0.2,
             restrict: 0.25,
             unknown: 0.55,
         };
-        assert!(!d.accepted(0.5));
+        assert!(!d.is_accepted(0.5));
+    }
+
+    #[test]
+    fn decision_is_unknown() {
+        let d = Decision {
+            accept: 0.0,
+            restrict: 0.2,
+            unknown: 0.8,
+        };
+        assert!(!d.is_unknown());
+
+        let d = Decision {
+            accept: 0.2,
+            restrict: 0.0,
+            unknown: 0.8,
+        };
+        assert!(!d.is_unknown());
+
+        let d = Decision {
+            accept: 0.0,
+            restrict: 0.0,
+            unknown: 1.0,
+        };
+        assert!(d.is_unknown());
+
+        let d = Decision {
+            accept: 0.0,
+            restrict: 0.0,
+            unknown: 0.1,
+        };
+        assert!(d.is_unknown());
     }
 
     #[test]

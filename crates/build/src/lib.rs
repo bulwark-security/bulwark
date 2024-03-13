@@ -1,4 +1,7 @@
-use crate::errors::BuildError;
+mod errors;
+
+pub use crate::errors::*;
+
 use cargo_metadata::MetadataCommand;
 use std::collections::HashMap;
 use std::io::prelude::*;
@@ -18,7 +21,7 @@ fn plugin_name(path: impl AsRef<Path>) -> Result<String, BuildError> {
 }
 
 /// Returns the filename that the compiled plugin will use.
-pub(crate) fn wasm_filename(path: impl AsRef<Path>) -> Result<String, BuildError> {
+pub fn wasm_filename(path: impl AsRef<Path>) -> Result<String, BuildError> {
     let plugin_name = plugin_name(path)?;
     Ok(format!("{}.wasm", plugin_name.replace('-', "_")))
 }
@@ -68,40 +71,20 @@ fn install_wasm32_wasi_target() -> Result<(), BuildError> {
     Ok(())
 }
 
-/// Replace the plugin's vendored plugin.wit file with the one embedded in this binary.
-/// This ensures that the plugin.wit file is always in sync with the version of the CLI that's
-/// performing the build.
-///
-/// Needed to make wit-bindgen work.
-fn replace_plugin_wit_files(root_path: impl AsRef<Path>) -> Result<(), BuildError> {
-    let plugin_wit = include_bytes!("../wit/plugin.wit");
-    let plugin_wit_dest_path = root_path.as_ref().join(Path::new("wit/plugin.wit"));
-    std::fs::create_dir_all(root_path.as_ref().join(Path::new("wit/")))?;
-    std::fs::write(plugin_wit_dest_path, plugin_wit)?;
-    Ok(())
-}
-
 /// Builds a plugin.
 ///
-/// Compiles the plugin with the `wasm32-wasi` target, and installs it if it is missing.
+/// Compiles the plugin with the `wasm32-wasi` target, and prompts to install it if it is missing.
 /// Uses an embeded adapter WASM file to adapt from preview 1 to preview 2 for the component
 /// model.
 ///
 /// Calls out to `cargo` via [`Command`], so `cargo` must be available on the path for this
 /// function to work.
-pub(crate) fn build_plugin(
+pub fn interactive_build_plugin(
     path: impl AsRef<Path>,
     output: impl AsRef<Path>,
     additional_args: &[String],
 ) -> Result<(), BuildError> {
-    // TODO: install wasm32-wasi target if missing
-    let adapter_bytes = include_bytes!("../adapter/wasi_snapshot_preview1.reactor.wasm");
-    let path = path.as_ref();
-    let output = output.as_ref();
-    let output_dir = output.parent().ok_or(BuildError::MissingParent)?;
-
-    replace_plugin_wit_files(path)?;
-
+    let mut install_missing = false;
     let installed_targets = installed_targets()?;
     let wasi_installed = installed_targets.get("wasm32-wasi");
     if !wasi_installed.unwrap_or(&false) {
@@ -112,6 +95,38 @@ pub(crate) fn build_plugin(
         std::io::stdin().read_line(&mut input)?;
         let input = input.trim().to_ascii_lowercase();
         if &input == "y" || &input == "yes" {
+            install_missing = true;
+        } else {
+            return Err(BuildError::MissingTarget);
+        }
+    }
+    build_plugin(path, output, additional_args, install_missing)
+}
+
+/// Builds a plugin.
+///
+/// Compiles the plugin with the `wasm32-wasi` target, and installs it if it is missing.
+/// Uses an embeded adapter WASM file to adapt from preview 1 to preview 2 for the component
+/// model.
+///
+/// Calls out to `cargo` via [`Command`], so `cargo` must be available on the path for this
+/// function to work.
+pub fn build_plugin(
+    path: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    additional_args: &[String],
+    install_missing: bool,
+) -> Result<(), BuildError> {
+    // TODO: install wasm32-wasi target if missing
+    let adapter_bytes = include_bytes!("../../../adapter/wasi_snapshot_preview1.reactor.wasm");
+    let path = path.as_ref();
+    let output = output.as_ref();
+    let output_dir = output.parent().ok_or(BuildError::MissingParent)?;
+
+    let installed_targets = installed_targets()?;
+    let wasi_installed = installed_targets.get("wasm32-wasi");
+    if !wasi_installed.unwrap_or(&false) {
+        if install_missing {
             install_wasm32_wasi_target()?;
         } else {
             return Err(BuildError::MissingTarget);
@@ -151,7 +166,7 @@ mod tests {
     #[test]
     fn test_plugin_name() -> Result<(), Box<dyn std::error::Error>> {
         let bulwark_plugin_name = plugin_name(std::env::current_dir()?)?;
-        assert_eq!(bulwark_plugin_name, "bulwark-cli");
+        assert_eq!(bulwark_plugin_name, "bulwark-build");
         Ok(())
     }
 
@@ -159,7 +174,7 @@ mod tests {
     fn test_wasm_filename() -> Result<(), Box<dyn std::error::Error>> {
         // Doesn't matter that this particular crate isn't a plugin, if it works here it'll work for a real plugin.
         let wasm_filename = wasm_filename(std::env::current_dir()?)?;
-        assert_eq!(wasm_filename, "bulwark_cli.wasm");
+        assert_eq!(wasm_filename, "bulwark_build.wasm");
         Ok(())
     }
 }

@@ -1,0 +1,63 @@
+interface types {
+    /// A `Decision` represents evidence in favor of either accepting or restricting an operation under consideration.
+    ///
+    /// It is composed of three values: `accept`, `restrict` and `unknown`. Each must be between 0.0 and 1.0 inclusive
+    /// and the sum of all three must equal 1.0. The `unknown` value represents uncertainty about the evidence, with
+    /// a 1.0 `unknown` value indicating total uncertainty or a "no opinion" verdict. Similarly, a 1.0 `accept` or
+    /// `restrict` value indicates total certainty that the verdict should be to accept or to restrict, respectively.
+    ///
+    /// This representation allows for a fairly intuitive way of characterizing evidence in favor of or against
+    /// blocking an operation, while still capturing any uncertainty. Limiting to two states rather than a wider range of
+    /// classification possibilities allows for better performance optimizations, simplifies code readability, and
+    /// enables useful transformations like reweighting a `Decision`.
+    ///
+    /// This data structure is a two-state [Dempster-Shafer](https://en.wikipedia.org/wiki/Dempster%E2%80%93Shafer_theory)
+    /// mass function, with the power set represented by the `unknown` value. This enables the use of combination rules
+    /// to aggregate decisions from multiple sources. However, knowledge of Dempster-Shafer theory should not be necessary.
+    record decision {
+        /// The `accepted` value represents evidence in favor of accepting the operation.
+        accepted: float64,
+        /// The `restricted` value represents evidence in favor of restricting the operation.
+        restricted: float64,
+        /// The `unknown` value represents uncertainty about whether to accept or restrict the operation.
+        unknown: float64,
+    }
+
+    /// An `Outcome` represents a verdict after it's been compared to configured decision thresholds.
+    enum outcome {
+        /// The `restricted` outcome indicates that the operation should be restricted, usually by blocking the request.
+        restricted,
+        /// The `suspected` outcome indicates that the operation may not be safe, but no action was taken.
+        suspected,
+        /// The `accepted` outcome indicates that the operation is likely safe and the request will be allowed.
+        accepted,
+        /// The `trusted` outcome indicates that the operation is very likely safe and the request will be allowed.
+        trusted,
+    }
+
+    /// A `HandlerOutput` represents the combined result of executing a detection's handlers.
+    record handler-output {
+        /// The `params` value represents parameters used to enrich the request with additional information.
+        params: list<param>,
+        /// The `decision` value represents the verdict of the handler.
+        decision: decision,
+        /// The `tags` value represents tags used to annotate the request.
+        tags: list<string>,
+    }
+
+    /// A `Verdict` represents a combined decision across multiple detections.
+    record verdict {
+        /// The `decision` value represents the combined numerical decision from multiple detections.
+        decision: decision,
+        /// The `outcome` value represents a comparison of the numerical decision against a set of thresholds.
+        outcome: outcome,
+        /// The `tags` value represents the merged tags used to annotate the request.
+        tags: list<string>,
+    }
+
+    /// A `Param` maps a parameter name to a parameter value.
+    ///
+    /// Parameters are used to represent arbitrary information about a request. They may be application-specific and are
+    /// often produced by parsing the request, decrypting session cookies, or by calling out to an external service.
+    type param = tuple<string, string>;
+}

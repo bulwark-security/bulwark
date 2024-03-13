@@ -30,6 +30,8 @@ pub enum PluginInstantiationError {
 #[derive(thiserror::Error, Debug)]
 pub enum PluginExecutionError {
     #[error(transparent)]
+    HandlerError(#[from] crate::bindings::exports::bulwark::plugin::http_handlers::Error),
+    #[error(transparent)]
     WasiError(#[from] wasi_common::Error),
     #[error(transparent)]
     StringArray(#[from] wasi_common::StringArrayError),
