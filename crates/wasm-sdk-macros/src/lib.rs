@@ -65,7 +65,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
             return syn::Error::new(
                 path.span(),
                 format!(
-                    "`bulwark_plugin` encountered unexpected trait `{}` for the impl",
+                    "`bulwark_plugin` expected `HttpHandlers` trait, encountered unexpected trait `{}` for the impl",
                     trait_name
                 ),
             )
