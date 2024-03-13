@@ -78,9 +78,10 @@ pub fn get_i64<K: AsRef<str>>(key: K) -> Result<Option<i64>, crate::RemoteStateE
 ///
 /// * `key` - The key name corresponding to the state value.
 /// * `value` - The value to record. Values are byte strings, but may be interpreted differently by Redis depending on context.
-pub fn set<K: AsRef<str>>(key: K, value: Vec<u8>) -> Result<(), crate::RemoteStateError> {
+pub fn set<K: AsRef<str>, V: AsRef<[u8]>>(key: K, value: V) -> Result<(), crate::RemoteStateError> {
     let key: &str = key.as_ref();
-    Ok(crate::wit::bulwark::plugin::redis::set(key, &value)?)
+    let value: &[u8] = value.as_ref();
+    Ok(crate::wit::bulwark::plugin::redis::set(key, value)?)
 }
 
 /// Set a named string value in Redis.
