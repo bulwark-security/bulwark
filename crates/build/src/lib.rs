@@ -62,7 +62,7 @@ fn installed_targets() -> Result<HashMap<String, bool>, BuildError> {
 
 fn install_wasm32_wasi_target() -> Result<(), BuildError> {
     let mut command = Command::new("rustup")
-        .args(["target", "install", "wasm32-wasi"])
+        .args(["target", "add", "wasm32-wasi"])
         .spawn()?;
     let exit_status = command.wait()?;
     if !exit_status.success() {
