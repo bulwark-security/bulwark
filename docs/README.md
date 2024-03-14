@@ -14,14 +14,12 @@ detections rapidly, without making changes to the underlying application.
 
 - **Open Source.** Freely available under a permissive Apache 2.0 license. We're committed to keeping it that way.
 - **Extensible.** Define custom detection logic using the SDK, or customize reusable parameterized detections to
-    your needs, without writing code. Security investments can be reused across multiple applications instead of
-    recreating controls per application, improving ROI.
+    your needs, without writing code.
 - **Observable.** Gain deep visibility into both your traffic and the operation of your detections with built-in
     observability features. Enrich your traffic data for improved context.
 - **Flexible.** Bulwark's plugin API enables detections to interact with Redis state and other services, including
     machine learning models. Plugins can perform their detections collaboratively using Bulwark's ensemble decisions.
-    Plugins can perform many operations traditionally limited to application logic because Bulwark supports decryption
-    of request cookies.
+    Securely decrypt session cookies to operate on application-level information.
 - **Testable.** Detections can have automated tests. Prevent misclassifications from making it to production.
 - **Accurate.** Bulwark has built-in mechanisms to help tune detections for high accuracy, minimize false
     positives, and quickly remediate accuracy issues if they occur. Meet compliance requirements for detective controls
@@ -49,9 +47,6 @@ detections rapidly, without making changes to the underlying application.
 - **Combine Fraud Signals:** Take advantage of Bulwark's caching and its ability to access external services to
     seamlessly combine fraud scoring from independent vendors. Protect interior services from high-volume
     automated fraud like card testing that may otherwise affect availability.
-- **Advanced Load-Shedding:** Flexible rate-limiting and circuit-breaking policies can be defined using separate
-    soft and hard limits, keyed on any request attribute visible to Bulwark's plugin system, including user ID.
-    Surgically shed the traffic most responsible for the overload conditions, while allowing other traffic through.
 
 ## 💻 Installation
 
