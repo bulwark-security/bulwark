@@ -77,7 +77,9 @@ envoy -c envoy.yaml
 
 Bulwark's own [configuration file](https://docs.bulwark.security/ops/configuration) is a TOML file that defines
 which detection plugins should be used to process a request, as well as details like the listening port and the address
-for the Redis server. Bulwark is launched with the following command:
+for the Redis server. The listening port in Bulwark's configuration must match the port number given for the
+corresponding external processing filter section in Envoy's configuration. Bulwark is launched with the following
+command:
 
 ```bash
 bulwark-cli ext-processor -c bulwark.toml
