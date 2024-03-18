@@ -62,8 +62,9 @@ In a Bulwark deployment, there are several pieces working together. In the curre
 [external processing API][ext-proc] to hook that processing and perform security decision-making on the traffic.
 In most configurations, there will be an interior service that handles the actual business logic of the
 web application and Envoy will be configured to send the traffic onwards once Bulwark has made its decision.
-It's recommended to use Bulwark in conjunction with a Redis server to maintain state across multiple Bulwark
-instances, although this is not strictly necessary if Bulwark is only used with stateless detection plugins.
+It's recommended to use Bulwark in conjunction with a [Redis server](https://redis.io/) to maintain state across
+multiple Bulwark instances, although this is not strictly necessary if Bulwark is only used with stateless detection
+plugins.
 
 [ext-proc]: https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/http/ext_proc/v3/ext_proc.proto
 
