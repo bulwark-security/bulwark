@@ -6,7 +6,7 @@ Automated security decision-making under uncertainty.
 
 ## 🏰 What is Bulwark?
 
-Bulwark is a fast, modern, open-source web application firewall and API security gateway that simplifies the
+Bulwark is a fast, modern, open-source web application firewall (WAF) and API security gateway. It simplifies the
 implementation of detective security controls while offering comprehensive visibility into your web services. Bulwark's
 detection-as-code approach to rule definition offers security teams higher confidence in their response to persistent
 and adaptive threats. Bulwark plugins offer a wide range of capabilities, enabling security teams to define and evolve
@@ -48,6 +48,8 @@ detections rapidly, without making changes to the underlying application.
 - **Combine Fraud Signals:** Take advantage of Bulwark's ability to access external services to
     seamlessly combine fraud scoring from independent vendors. Protect interior services from high-volume
     automated fraud like card testing that may otherwise affect availability.
+- **Block Exploits:** Bulwark can be used as a WAF to detect and block exploits targeting XSS, SQL injection, and
+    other common vulnerabilities.
 
 ## 💻 Installation
 
