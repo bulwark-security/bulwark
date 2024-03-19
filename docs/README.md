@@ -55,7 +55,7 @@ detections rapidly, without making changes to the underlying application.
 2. Install the `wasm32-wasi` target needed to build plugins: `rustup target add wasm32-wasi`
 3. Install Bulwark: `cargo install bulwark-cli`
 
-## 💨 Quickstart
+## 🚀 Quickstart
 
 In a Bulwark deployment, there are several pieces working together. In the current version of Bulwark,
 [Envoy](https://www.envoyproxy.io/) handles the initial HTTP request processing. Bulwark uses Envoy's
