@@ -28,7 +28,7 @@ detections rapidly, without making changes to the underlying application.
     detection logic, and ensuring that access never exceeds its permissions grants.
 - **Safe.** Deploy in observe-only mode and build confidence in the system before enabling request blocking.
 - **Commercially Supported.** Bulwark is actively developed and supported by
-    [Bulwark Security PBC](https://bulwark.security/). We intend to offer a freely-available
+    [Bulwark Security PBC](https://bulwark.security/). We intend to offer a freely available
     [community ruleset](https://github.com/bulwark-security/bulwark-community-ruleset), an
     advanced commercial ruleset, paid support, and professional services, in addition to a Bulwark cloud admin
     application. Contact us ([sales@bulwark.security](mailto:sales@bulwark.security)) if you are interested in
