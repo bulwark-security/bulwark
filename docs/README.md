@@ -15,7 +15,7 @@ detections rapidly, without making changes to the underlying application.
 - **Open Source.** Freely available under a permissive Apache 2.0 license. We're committed to keeping it that way.
 - **Extensible.** Define custom detection logic using the SDK, or customize reusable parameterized detections to
     your needs, without writing code.
-- **Observable.** Gain deep visibility into both your traffic and the operation of your detections with built-in
+- **Observable.** Gain comprehensive visibility into both your traffic and the operation of your detections with built-in
     observability features. Enrich your traffic data for improved context.
 - **Flexible.** Bulwark's plugin API enables detections to interact with Redis state and other services, including
     machine learning models. Plugins can perform their detections collaboratively using Bulwark's ensemble decisions.
@@ -28,7 +28,7 @@ detections rapidly, without making changes to the underlying application.
     detection logic, and ensuring that access never exceeds its permissions grants.
 - **Safe.** Deploy in observe-only mode and build confidence in the system before enabling request blocking.
 - **Commercially Supported.** Bulwark is actively developed and supported by
-    [Bulwark Security PBC](https://bulwark.security/). We intend to offer a freely-available
+    [Bulwark Security PBC](https://bulwark.security/). We intend to offer a freely available
     [community ruleset](https://github.com/bulwark-security/bulwark-community-ruleset), an
     advanced commercial ruleset, paid support, and professional services, in addition to a Bulwark cloud admin
     application. Contact us ([sales@bulwark.security](mailto:sales@bulwark.security)) if you are interested in
@@ -62,7 +62,7 @@ In a Bulwark deployment, there are several pieces working together. In the curre
 [external processing API][ext-proc] to hook that processing and perform security decision-making on the traffic.
 In most configurations, there will be an interior service that handles the actual business logic of the
 web application and Envoy will be configured to send the traffic onwards once Bulwark has made its decision.
-It's recommended to use Bulwark in conjunction with a [Redis server](https://redis.io/) to maintain state across
+It's recommended to use Bulwark alongside a [Redis server](https://redis.io/) to maintain state across
 multiple Bulwark instances, although this is not strictly necessary if Bulwark is only used with stateless detection
 plugins.
 
