@@ -15,7 +15,7 @@ detections rapidly, without making changes to the underlying application.
 - **Open Source.** Freely available under a permissive Apache 2.0 license. We're committed to keeping it that way.
 - **Extensible.** Define custom detection logic using the SDK, or customize reusable parameterized detections to
     your needs, without writing code.
-- **Observable.** Gain deep visibility into both your traffic and the operation of your detections with built-in
+- **Observable.** Gain comprehensive visibility into both your traffic and the operation of your detections with built-in
     observability features. Enrich your traffic data for improved context.
 - **Flexible.** Bulwark's plugin API enables detections to interact with Redis state and other services, including
     machine learning models. Plugins can perform their detections collaboratively using Bulwark's ensemble decisions.
