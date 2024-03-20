@@ -1,6 +1,6 @@
 [service]
 port = 10002
-remote_state_uri = "redis://127.0.0.1:6379"
+redis_uri = "redis://127.0.0.1:6379"
 
 [metrics]
 statsd_host = "10.0.0.2"

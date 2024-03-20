@@ -342,7 +342,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
             Ok(
                 // Inner function to permit ? operator
                 || -> Result<Option<Vec<u8>>, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                    verify_redis_prefixes(&self.permissions.state, &key)?;
 
                     if let Some(redis_info) = self.redis_info.clone() {
                         let mut conn = redis_info.pool.get().map_err(|err| {
@@ -387,7 +387,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
             Ok(
                 // Inner function to permit ? operator
                 || -> Result<(), crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                    verify_redis_prefixes(&self.permissions.state, &key)?;
 
                     if let Some(redis_info) = self.redis_info.clone() {
                         let mut conn = redis_info.pool.get().map_err(|err| {
@@ -436,7 +436,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
                 // Inner function to permit ? operator
                 || -> Result<u32, crate::bindings::bulwark::plugin::redis::Error> {
                     for key in keys.iter() {
-                        verify_remote_state_prefixes(&self.permissions.state, key)?;
+                        verify_redis_prefixes(&self.permissions.state, key)?;
                     }
 
                     if let Some(redis_info) = self.redis_info.clone() {
@@ -507,7 +507,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
             Ok(
                 // Inner function to permit ? operator
                 || -> Result<i64, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                    verify_redis_prefixes(&self.permissions.state, &key)?;
 
                     if let Some(redis_info) = self.redis_info.clone() {
                         let mut conn = redis_info.pool.get().map_err(|err| {
@@ -553,7 +553,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
             Ok(
                 // Inner function to permit ? operator
                 || -> Result<u32, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                    verify_redis_prefixes(&self.permissions.state, &key)?;
 
                     if let Some(redis_info) = self.redis_info.clone() {
                         let mut conn = redis_info.pool.get().map_err(|err| {
@@ -595,7 +595,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
             Ok(
                 // Inner function to permit ? operator
                 || -> Result<Vec<String>, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                    verify_redis_prefixes(&self.permissions.state, &key)?;
 
                     if let Some(redis_info) = self.redis_info.clone() {
                         let mut conn = redis_info.pool.get().map_err(|err| {
@@ -641,7 +641,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
             Ok(
                 // Inner function to permit ? operator
                 || -> Result<u32, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                    verify_redis_prefixes(&self.permissions.state, &key)?;
 
                     if let Some(redis_info) = self.redis_info.clone() {
                         let mut conn = redis_info.pool.get().map_err(|err| {
@@ -684,7 +684,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
             Ok(
                 // Inner function to permit ? operator
                 || -> Result<(), crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                    verify_redis_prefixes(&self.permissions.state, &key)?;
 
                     if let Some(redis_info) = self.redis_info.clone() {
                         let mut conn = redis_info.pool.get().map_err(|err| {
@@ -727,7 +727,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
             Ok(
                 // Inner function to permit ? operator
                 || -> Result<(), crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                    verify_redis_prefixes(&self.permissions.state, &key)?;
 
                     if let Some(redis_info) = self.redis_info.clone() {
                         let mut conn = redis_info.pool.get().map_err(|err| {
@@ -774,7 +774,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
             Ok(
                 // Inner function to permit ? operator
                 || -> Result<crate::bindings::bulwark::plugin::redis::Rate, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                    verify_redis_prefixes(&self.permissions.state, &key)?;
 
                     if delta < 0 {
                         return Err(crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
@@ -842,7 +842,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
             Ok(
             // Inner function to permit ? operator
             || -> Result<crate::bindings::bulwark::plugin::redis::Rate, crate::bindings::bulwark::plugin::redis::Error> {
-                verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                verify_redis_prefixes(&self.permissions.state, &key)?;
 
                 if let Some(redis_info) = self.redis_info.clone() {
                     let mut conn = redis_info
@@ -901,7 +901,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
             Ok(
                 // Inner function to permit ? operator
                 || -> Result<crate::bindings::bulwark::plugin::redis::Breaker, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                    verify_redis_prefixes(&self.permissions.state, &key)?;
 
                     if success_delta < 0 {
                         return Err(crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
@@ -987,7 +987,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
             Ok(
                 // Inner function to permit ? operator
                 || -> Result<crate::bindings::bulwark::plugin::redis::Breaker, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_remote_state_prefixes(&self.permissions.state, &key)?;
+                    verify_redis_prefixes(&self.permissions.state, &key)?;
 
                     if let Some(redis_info) = self.redis_info.clone() {
                         let mut conn = redis_info
@@ -1051,7 +1051,7 @@ fn verify_http_domains(
 }
 
 /// Ensures that access to any remote state key has the appropriate permissions set.
-fn verify_remote_state_prefixes(
+fn verify_redis_prefixes(
     // TODO: BTreeSet<String> instead, all the way up
     allowed_key_prefixes: &[String],
     key: &str,

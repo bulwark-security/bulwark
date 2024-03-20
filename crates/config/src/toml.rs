@@ -43,10 +43,10 @@ struct Service {
     admin_port: u16,
     #[serde(default = "default_admin")]
     admin_enabled: bool,
-    #[serde(default = "default_remote_state_uri")]
-    remote_state_uri: Option<String>,
-    #[serde(default = "default_remote_state_pool_size")]
-    remote_state_pool_size: u32,
+    #[serde(default = "default_redis_uri")]
+    redis_uri: Option<String>,
+    #[serde(default = "default_redis_pool_size")]
+    redis_pool_size: u32,
     #[serde(default = "default_proxy_hops")]
     proxy_hops: u8,
 }
@@ -71,13 +71,13 @@ fn default_admin() -> bool {
 }
 
 /// The default for the network address to access remote state.
-fn default_remote_state_uri() -> Option<String> {
+fn default_redis_uri() -> Option<String> {
     None
 }
 
 /// The default for the remote state connection pool size.
-fn default_remote_state_pool_size() -> u32 {
-    crate::DEFAULT_REMOTE_STATE_POOL_SIZE
+fn default_redis_pool_size() -> u32 {
+    crate::DEFAULT_REDIS_POOL_SIZE
 }
 
 /// The default number of internal proxy hops expected in front of Bulwark.
@@ -91,8 +91,8 @@ impl Default for Service {
             port: default_port(),
             admin_port: default_admin_port(),
             admin_enabled: default_admin(),
-            remote_state_uri: default_remote_state_uri(),
-            remote_state_pool_size: default_remote_state_pool_size(),
+            redis_uri: default_redis_uri(),
+            redis_pool_size: default_redis_pool_size(),
             proxy_hops: default_proxy_hops(),
         }
     }
@@ -104,8 +104,8 @@ impl From<Service> for crate::Service {
             port: service.port,
             admin_port: service.admin_port,
             admin_enabled: service.admin_enabled,
-            remote_state_uri: service.remote_state_uri.clone(),
-            remote_state_pool_size: service.remote_state_pool_size,
+            redis_uri: service.redis_uri.clone(),
+            redis_pool_size: service.redis_pool_size,
             proxy_hops: service.proxy_hops,
         }
     }
@@ -595,7 +595,7 @@ mod tests {
             r#"
         [service]
         port = 10002
-        remote_state_uri = "redis://10.0.0.1:6379"
+        redis_uri = "redis://10.0.0.1:6379"
 
         [metrics]
         statsd_host = "10.0.0.2"
@@ -625,7 +625,7 @@ mod tests {
         assert_eq!(root.service.port, 10002); // non-default
         assert_eq!(root.service.admin_port, crate::DEFAULT_ADMIN_PORT);
         assert_eq!(
-            root.service.remote_state_uri,
+            root.service.redis_uri,
             Some(String::from("redis://10.0.0.1:6379"))
         );
 
