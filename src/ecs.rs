@@ -330,7 +330,6 @@ impl EcsFormatter {
                     let unquoted_tags = quoted_string::to_content::<TraceQuoteSpec>(field.value())
                         .map_err(|_| fmt::Error)?;
                     let tags: Vec<String> = unquoted_tags
-                        .to_string()
                         .split(',')
                         .map(|s| s.trim().to_ascii_lowercase())
                         .filter(|s| !s.is_empty())

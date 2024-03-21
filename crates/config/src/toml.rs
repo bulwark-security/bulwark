@@ -13,7 +13,7 @@ lazy_static! {
     static ref RE_VALID_REFERENCE: Regex = Regex::new(r"^[_a-z]+$").unwrap();
 }
 
-/// The TOML serialization for a Config structure.
+/// The TOML serialization for a [Config](crate::Config) structure.
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
     #[serde(default)]
@@ -21,9 +21,11 @@ struct Config {
     #[serde(default)]
     runtime: Runtime,
     #[serde(default)]
-    metrics: Metrics,
+    state: State,
     #[serde(default)]
     thresholds: Thresholds,
+    #[serde(default)]
+    metrics: Metrics,
     #[serde(default, rename(serialize = "include", deserialize = "include"))]
     includes: Vec<Include>,
     #[serde(default, rename(serialize = "plugin", deserialize = "plugin"))]
@@ -34,7 +36,7 @@ struct Config {
     resources: Vec<Resource>,
 }
 
-/// The TOML serialization for a Service config structure.
+/// The TOML serialization for a [Service](crate::Service) config structure.
 #[derive(Serialize, Deserialize)]
 struct Service {
     #[serde(default = "default_port")]
@@ -43,10 +45,6 @@ struct Service {
     admin_port: u16,
     #[serde(default = "default_admin")]
     admin_enabled: bool,
-    #[serde(default = "default_remote_state_uri")]
-    remote_state_uri: Option<String>,
-    #[serde(default = "default_remote_state_pool_size")]
-    remote_state_pool_size: u32,
     #[serde(default = "default_proxy_hops")]
     proxy_hops: u8,
 }
@@ -70,16 +68,6 @@ fn default_admin() -> bool {
     true
 }
 
-/// The default for the network address to access remote state.
-fn default_remote_state_uri() -> Option<String> {
-    None
-}
-
-/// The default for the remote state connection pool size.
-fn default_remote_state_pool_size() -> u32 {
-    crate::DEFAULT_REMOTE_STATE_POOL_SIZE
-}
-
 /// The default number of internal proxy hops expected in front of Bulwark.
 fn default_proxy_hops() -> u8 {
     0
@@ -91,8 +79,6 @@ impl Default for Service {
             port: default_port(),
             admin_port: default_admin_port(),
             admin_enabled: default_admin(),
-            remote_state_uri: default_remote_state_uri(),
-            remote_state_pool_size: default_remote_state_pool_size(),
             proxy_hops: default_proxy_hops(),
         }
     }
@@ -104,14 +90,12 @@ impl From<Service> for crate::Service {
             port: service.port,
             admin_port: service.admin_port,
             admin_enabled: service.admin_enabled,
-            remote_state_uri: service.remote_state_uri.clone(),
-            remote_state_pool_size: service.remote_state_pool_size,
             proxy_hops: service.proxy_hops,
         }
     }
 }
 
-/// The TOML serialization for a Runtime config structure.
+/// The TOML serialization for a [Runtime](crate::Runtime) config structure.
 #[derive(Serialize, Deserialize)]
 struct Runtime {
     #[serde(default = "default_max_concurrent_requests")]
@@ -152,59 +136,44 @@ impl From<Runtime> for crate::Runtime {
     }
 }
 
-/// The TOML serialization for a Metrics structure.
+/// The TOML serialization for a [State](crate::State) config structure.
 #[derive(Serialize, Deserialize)]
-struct Metrics {
-    #[serde(default)]
-    statsd_host: Option<String>,
-    #[serde(default = "default_statsd_port")]
-    statsd_port: Option<u16>,
-    #[serde(default = "default_statsd_queue_size")]
-    statsd_queue_size: usize,
-    #[serde(default = "default_statsd_buffer_size")]
-    statsd_buffer_size: usize,
-    #[serde(default)]
-    statsd_prefix: String,
+struct State {
+    #[serde(default = "default_redis_uri")]
+    redis_uri: Option<String>,
+    #[serde(default = "default_redis_pool_size")]
+    redis_pool_size: u32,
 }
 
-fn default_statsd_port() -> Option<u16> {
-    crate::DEFAULT_STATSD_PORT
+/// The default for the network address to access remote state.
+fn default_redis_uri() -> Option<String> {
+    None
 }
 
-fn default_statsd_queue_size() -> usize {
-    crate::DEFAULT_STATSD_QUEUE_SIZE
+/// The default for the remote state connection pool size.
+fn default_redis_pool_size() -> u32 {
+    crate::DEFAULT_REDIS_POOL_SIZE
 }
 
-fn default_statsd_buffer_size() -> usize {
-    crate::DEFAULT_STATSD_BUFFER_SIZE
-}
-
-impl Default for Metrics {
-    /// Default metrics config
+impl Default for State {
     fn default() -> Self {
         Self {
-            statsd_host: None,
-            statsd_port: default_statsd_port(),
-            statsd_queue_size: default_statsd_queue_size(),
-            statsd_buffer_size: default_statsd_buffer_size(),
-            statsd_prefix: String::from(""),
+            redis_uri: default_redis_uri(),
+            redis_pool_size: default_redis_pool_size(),
         }
     }
 }
 
-impl From<Metrics> for crate::Metrics {
-    fn from(metrics: Metrics) -> Self {
+impl From<State> for crate::State {
+    fn from(state: State) -> Self {
         Self {
-            statsd_host: metrics.statsd_host.clone(),
-            statsd_port: metrics.statsd_port,
-            statsd_queue_size: metrics.statsd_queue_size,
-            statsd_buffer_size: metrics.statsd_buffer_size,
-            statsd_prefix: metrics.statsd_prefix,
+            redis_uri: state.redis_uri,
+            redis_pool_size: state.redis_pool_size,
         }
     }
 }
 
-/// The TOML serialization for a Thresholds structure.
+/// The TOML serialization for a [Thresholds](crate::Thresholds) structure.
 #[derive(Serialize, Deserialize)]
 struct Thresholds {
     #[serde(default = "default_observe_only")]
@@ -259,7 +228,59 @@ impl From<Thresholds> for crate::Thresholds {
     }
 }
 
-/// The TOML serialization for an Include structure.
+/// The TOML serialization for a [Metrics](crate::Metrics) structure.
+#[derive(Serialize, Deserialize)]
+struct Metrics {
+    #[serde(default)]
+    statsd_host: Option<String>,
+    #[serde(default = "default_statsd_port")]
+    statsd_port: Option<u16>,
+    #[serde(default = "default_statsd_queue_size")]
+    statsd_queue_size: usize,
+    #[serde(default = "default_statsd_buffer_size")]
+    statsd_buffer_size: usize,
+    #[serde(default)]
+    statsd_prefix: String,
+}
+
+fn default_statsd_port() -> Option<u16> {
+    crate::DEFAULT_STATSD_PORT
+}
+
+fn default_statsd_queue_size() -> usize {
+    crate::DEFAULT_STATSD_QUEUE_SIZE
+}
+
+fn default_statsd_buffer_size() -> usize {
+    crate::DEFAULT_STATSD_BUFFER_SIZE
+}
+
+impl Default for Metrics {
+    /// Default metrics config
+    fn default() -> Self {
+        Self {
+            statsd_host: None,
+            statsd_port: default_statsd_port(),
+            statsd_queue_size: default_statsd_queue_size(),
+            statsd_buffer_size: default_statsd_buffer_size(),
+            statsd_prefix: String::from(""),
+        }
+    }
+}
+
+impl From<Metrics> for crate::Metrics {
+    fn from(metrics: Metrics) -> Self {
+        Self {
+            statsd_host: metrics.statsd_host.clone(),
+            statsd_port: metrics.statsd_port,
+            statsd_queue_size: metrics.statsd_queue_size,
+            statsd_buffer_size: metrics.statsd_buffer_size,
+            statsd_prefix: metrics.statsd_prefix,
+        }
+    }
+}
+
+/// The TOML serialization for an [Include](crate::Include) structure.
 #[derive(Serialize, Deserialize)]
 struct Include {
     path: String,
@@ -344,7 +365,7 @@ fn toml_value_to_json(value: toml::Value) -> serde_json::Value {
     }
 }
 
-/// The TOML serialization for a Permissions structure.
+/// The TOML serialization for a [Permissions](crate::Permissions) structure.
 #[derive(Serialize, Deserialize, Clone, Default)]
 struct TomlPermissions {
     #[serde(default)]
@@ -365,7 +386,7 @@ impl From<TomlPermissions> for crate::config::Permissions {
     }
 }
 
-/// The TOML serialization for a Preset structure.
+/// The TOML serialization for a [Preset](crate::Preset) structure.
 #[derive(Validate, Serialize, Deserialize, Clone)]
 struct Preset {
     #[serde(rename(serialize = "ref", deserialize = "ref"))]
@@ -375,7 +396,7 @@ struct Preset {
     plugins: Vec<String>,
 }
 
-/// The TOML serialization for a Resource structure.
+/// The TOML serialization for a [Resource](crate::Resource) structure.
 #[derive(Serialize, Deserialize, Clone)]
 struct Resource {
     route: String,
@@ -519,8 +540,9 @@ where
     let config = crate::Config {
         service: root.service.into(),
         runtime: root.runtime.into(),
-        metrics: root.metrics.into(),
+        state: root.state.into(),
         thresholds: root.thresholds.into(),
+        metrics: root.metrics.into(),
         plugins: root.plugins.iter().map(|plugin| plugin.into()).collect(),
         presets: root
             .presets
@@ -595,14 +617,16 @@ mod tests {
             r#"
         [service]
         port = 10002
-        remote_state_uri = "redis://10.0.0.1:6379"
+
+        [state]
+        redis_uri = "redis://10.0.0.1:6379"
+
+        [thresholds]
+        restrict = 0.75
 
         [metrics]
         statsd_host = "10.0.0.2"
         statsd_prefix = "bulwark_"
-
-        [thresholds]
-        restrict = 0.75
 
         [[include]]
         path = "default.toml"
@@ -625,7 +649,7 @@ mod tests {
         assert_eq!(root.service.port, 10002); // non-default
         assert_eq!(root.service.admin_port, crate::DEFAULT_ADMIN_PORT);
         assert_eq!(
-            root.service.remote_state_uri,
+            root.state.redis_uri,
             Some(String::from("redis://10.0.0.1:6379"))
         );
 
@@ -676,6 +700,12 @@ mod tests {
 
         assert_eq!(root.service.port, 10002); // non-default
         assert_eq!(root.service.admin_port, crate::DEFAULT_ADMIN_PORT);
+
+        assert_eq!(
+            root.state.redis_uri,
+            Some(String::from("redis://127.0.0.1:6379"))
+        );
+        assert_eq!(root.state.redis_pool_size, crate::DEFAULT_REDIS_POOL_SIZE);
 
         assert_eq!(root.metrics.statsd_host, Some(String::from("10.0.0.2")));
         assert_eq!(root.metrics.statsd_port, Some(8125));

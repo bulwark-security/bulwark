@@ -19,8 +19,9 @@ fn test_blank_slate_exec() -> Result<(), Box<dyn std::error::Error>> {
         &bulwark_config::Config {
             service: bulwark_config::Service::default(),
             runtime: bulwark_config::Runtime::default(),
-            metrics: bulwark_config::Metrics::default(),
+            state: bulwark_config::State::default(),
             thresholds: bulwark_config::Thresholds::default(),
+            metrics: bulwark_config::Metrics::default(),
             plugins: vec![],
             presets: vec![],
             resources: vec![],
@@ -109,8 +110,9 @@ fn test_evil_bit_benign_exec() -> Result<(), Box<dyn std::error::Error>> {
         &bulwark_config::Config {
             service: bulwark_config::Service::default(),
             runtime: bulwark_config::Runtime::default(),
-            metrics: bulwark_config::Metrics::default(),
+            state: bulwark_config::State::default(),
             thresholds: bulwark_config::Thresholds::default(),
+            metrics: bulwark_config::Metrics::default(),
             plugins: vec![],
             presets: vec![],
             resources: vec![],
@@ -198,8 +200,9 @@ fn test_evil_bit_evil_exec() -> Result<(), Box<dyn std::error::Error>> {
         &bulwark_config::Config {
             service: bulwark_config::Service::default(),
             runtime: bulwark_config::Runtime::default(),
-            metrics: bulwark_config::Metrics::default(),
+            state: bulwark_config::State::default(),
             thresholds: bulwark_config::Thresholds::default(),
+            metrics: bulwark_config::Metrics::default(),
             plugins: vec![],
             presets: vec![],
             resources: vec![],

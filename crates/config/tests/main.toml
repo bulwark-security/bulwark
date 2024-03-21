@@ -1,13 +1,15 @@
 [service]
 port = 10002
-remote_state_uri = "redis://127.0.0.1:6379"
+
+[state]
+redis_uri = "redis://127.0.0.1:6379"
+
+[thresholds]
+restrict = 0.75
 
 [metrics]
 statsd_host = "10.0.0.2"
 statsd_prefix = "bulwark_"
-
-[thresholds]
-restrict = 0.75
 
 [[include]]
 path = "include.toml"
