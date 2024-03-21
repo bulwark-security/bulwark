@@ -245,8 +245,8 @@ impl BulwarkProcessor {
         );
         metrics::register_histogram!("combined_decision_score");
 
-        let redis_info = if let Some(redis_addr) = config.service.redis_uri.as_ref() {
-            let pool_size = config.service.redis_pool_size;
+        let redis_info = if let Some(redis_addr) = config.state.redis_uri.as_ref() {
+            let pool_size = config.state.redis_pool_size;
             // TODO: better error handling instead of unwrap/panic
             let client = redis::Client::open(redis_addr.as_str()).unwrap();
             // TODO: make pool size configurable

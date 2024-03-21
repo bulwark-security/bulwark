@@ -20,10 +20,12 @@ pub struct Config {
     pub service: Service,
     /// Configuration for the services being launched.
     pub runtime: Runtime,
-    /// Configuration for metrics collection.
-    pub metrics: Metrics,
+    /// Configuration for state managed by Bulwark plugins.
+    pub state: State,
     /// Configuration for the decision thresholds.
     pub thresholds: Thresholds,
+    /// Configuration for metrics collection.
+    pub metrics: Metrics,
     /// A list of configurations for individual plugins.
     pub plugins: Vec<Plugin>,
     /// A list of plugin groups that allows a plugin set to be loaded with a single reference.
@@ -72,10 +74,6 @@ pub struct Service {
     pub admin_port: u16,
     /// True if the admin service is enabled, false otherwise.
     pub admin_enabled: bool,
-    /// The URI for the external Redis state store.
-    pub redis_uri: Option<String>,
-    /// The size of the remote state connection pool.
-    pub redis_pool_size: u32,
     /// The number of trusted proxy hops expected to be exterior to Bulwark.
     ///
     /// This number does not include Bulwark or the proxy hosting it in the proxy hop count. Zero implies that
@@ -89,8 +87,6 @@ pub struct Service {
 pub const DEFAULT_PORT: u16 = 8089;
 /// The default [`Service::admin_port`] value.
 pub const DEFAULT_ADMIN_PORT: u16 = 8090;
-/// The default [`Service::redis_pool_size`] value.
-pub const DEFAULT_REDIS_POOL_SIZE: u32 = 16;
 
 impl Default for Service {
     /// Default service config
@@ -99,8 +95,6 @@ impl Default for Service {
             port: DEFAULT_PORT,
             admin_port: DEFAULT_ADMIN_PORT,
             admin_enabled: true,
-            redis_uri: None,
-            redis_pool_size: DEFAULT_REDIS_POOL_SIZE,
             proxy_hops: 0,
         }
     }
@@ -131,34 +125,24 @@ impl Default for Runtime {
     }
 }
 
-/// Configuration for metrics collection.
+/// Configuration for state managed by Bulwark plugins.
 #[derive(Debug, Clone)]
-pub struct Metrics {
-    pub statsd_host: Option<String>,
-    pub statsd_port: Option<u16>,
-    pub statsd_queue_size: usize,
-    pub statsd_buffer_size: usize,
-    pub statsd_prefix: String,
+pub struct State {
+    /// The URI for the external Redis state store.
+    pub redis_uri: Option<String>,
+    /// The size of the remote state connection pool.
+    pub redis_pool_size: u32,
 }
 
-/// The default [`Metrics::statsd_port`] value.
-pub const DEFAULT_STATSD_PORT: Option<u16> = Some(8125);
+/// The default [`Service::redis_pool_size`] value.
+pub const DEFAULT_REDIS_POOL_SIZE: u32 = 16;
 
-/// The default [`Metrics::statsd_queue_size`] value.
-pub const DEFAULT_STATSD_QUEUE_SIZE: usize = 5000;
-
-/// The default [`Metrics::statsd_buffer_size`] value.
-pub const DEFAULT_STATSD_BUFFER_SIZE: usize = 1024;
-
-impl Default for Metrics {
-    /// Default metrics config
+impl Default for State {
+    /// Default runtime config
     fn default() -> Self {
         Self {
-            statsd_host: None,
-            statsd_port: DEFAULT_STATSD_PORT,
-            statsd_queue_size: DEFAULT_STATSD_QUEUE_SIZE,
-            statsd_buffer_size: DEFAULT_STATSD_BUFFER_SIZE,
-            statsd_prefix: String::from(""),
+            redis_uri: None,
+            redis_pool_size: DEFAULT_REDIS_POOL_SIZE,
         }
     }
 }
@@ -199,6 +183,38 @@ impl Default for Thresholds {
             restrict: DEFAULT_RESTRICT_THRESHOLD,
             suspicious: DEFAULT_SUSPICIOUS_THRESHOLD,
             trust: DEFAULT_TRUST_THRESHOLD,
+        }
+    }
+}
+
+/// Configuration for metrics collection.
+#[derive(Debug, Clone)]
+pub struct Metrics {
+    pub statsd_host: Option<String>,
+    pub statsd_port: Option<u16>,
+    pub statsd_queue_size: usize,
+    pub statsd_buffer_size: usize,
+    pub statsd_prefix: String,
+}
+
+/// The default [`Metrics::statsd_port`] value.
+pub const DEFAULT_STATSD_PORT: Option<u16> = Some(8125);
+
+/// The default [`Metrics::statsd_queue_size`] value.
+pub const DEFAULT_STATSD_QUEUE_SIZE: usize = 5000;
+
+/// The default [`Metrics::statsd_buffer_size`] value.
+pub const DEFAULT_STATSD_BUFFER_SIZE: usize = 1024;
+
+impl Default for Metrics {
+    /// Default metrics config
+    fn default() -> Self {
+        Self {
+            statsd_host: None,
+            statsd_port: DEFAULT_STATSD_PORT,
+            statsd_queue_size: DEFAULT_STATSD_QUEUE_SIZE,
+            statsd_buffer_size: DEFAULT_STATSD_BUFFER_SIZE,
+            statsd_prefix: String::from(""),
         }
     }
 }
