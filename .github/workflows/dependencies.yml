@@ -1,4 +1,4 @@
-name: 'Dependency Review'
+name: 'Dependency Checks'
 on: [pull_request]
 
 permissions:
@@ -9,10 +9,20 @@ jobs:
   dependency-review:
     runs-on: ubuntu-latest
     steps:
-      - name: 'Checkout Repository'
-        uses: actions/checkout@v4
-      - name: 'Dependency Review'
-        uses: actions/dependency-review-action@v4
-        with:
-            comment-summary-in-pr: on-failure
-            deny-licenses: MS-LPL, BUSL-1.1, QPL-1.0, Sleepycat, SSPL-1.0, CPOL-1.02, AGPL-1.0-or-later, GPL-1.0-or-later, BSD-4-Clause-UC, NPOSL-3.0, NPL-1.1, JSON
+    - name: 'Checkout Repository'
+      uses: actions/checkout@v4
+    - name: 'Dependency Review'
+      uses: actions/dependency-review-action@v4
+      with:
+        comment-summary-in-pr: on-failure
+        deny-licenses: MS-LPL, BUSL-1.1, QPL-1.0, Sleepycat, SSPL-1.0, CPOL-1.02, AGPL-1.0-or-later, GPL-1.0-or-later, BSD-4-Clause-UC, NPOSL-3.0, NPL-1.1, JSON
+
+  cargo-deny:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: 'cargo deny'
+      uses: EmbarkStudios/cargo-deny-action@v1
+      with:
+        command: check
+        command-arguments: licenses
