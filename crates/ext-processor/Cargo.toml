@@ -18,12 +18,12 @@ bulwark-config = { workspace = true }
 bulwark-wasm-host = { workspace = true }
 bulwark-wasm-sdk = { workspace = true }
 
+bb8-redis = { workspace = true }
 envoy-control-plane = { workspace = true }
 forwarded-header-value = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 metrics = { workspace = true }
-r2d2 = { workspace = true }
 redis = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
@@ -36,6 +36,9 @@ matchit = "0.7.0"
 prost = "0.12"
 prost-wkt = "=0.3.0"
 sfv = "0.9.2"
+
+[dev-dependencies]
+redis-test = { workspace = true }
 
 [build-dependencies]
 # This dependency declaration and the other prost dependencies above prevent `cargo update`

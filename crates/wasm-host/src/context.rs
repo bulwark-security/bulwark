@@ -1,20 +1,20 @@
-use {
-    crate::{ContextInstantiationError, Plugin, PluginStdio},
-    ::redis::Commands,
-    chrono::Utc,
-    core::{future::Future, marker::Send, pin::Pin},
-    std::{collections::HashMap, ops::DerefMut, sync::Arc},
-    url::Url,
-    wasmtime::component::Resource,
-    wasmtime_wasi::preview2::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView},
-    wasmtime_wasi_http::{
-        types::{HostFutureIncomingResponse, HostIncomingResponse, OutgoingRequest},
-        WasiHttpCtx, WasiHttpView,
-    },
+use crate::{ContextInstantiationError, Plugin, PluginStdio};
+
+use bb8_redis::{bb8, RedisConnectionManager};
+use chrono::Utc;
+use core::{future::Future, marker::Send, pin::Pin};
+use redis::AsyncCommands;
+use std::{collections::HashMap, sync::Arc};
+use url::Url;
+use wasmtime::component::Resource;
+use wasmtime_wasi::preview2::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView};
+use wasmtime_wasi_http::{
+    types::{HostFutureIncomingResponse, HostIncomingResponse, OutgoingRequest},
+    WasiHttpCtx, WasiHttpView,
 };
 
-/// The PluginContext manages access to information that needs to cross the plugin sandbox boundary.
-pub struct PluginContext {
+/// The [PluginCtx] manages access to information that needs to cross the plugin sandbox boundary.
+pub struct PluginCtx {
     /// The WASI context that determines how things like stdio map to our buffers.
     wasi_ctx: WasiCtx,
     /// The WASI HTTP context that allows us to manage HTTP resources.
@@ -34,15 +34,16 @@ pub struct PluginContext {
     /// The set of permissions granted to a plugin.
     permissions: bulwark_config::Permissions,
     /// The Redis connection pool and its associated Lua scripts.
-    redis_info: Option<Arc<RedisInfo>>,
+    redis_ctx: RedisCtx,
 }
 
-/// Wraps a Redis connection pool and a registry of predefined Lua scripts.
-pub struct RedisInfo {
-    /// The connection pool
-    pub pool: r2d2::Pool<redis::Client>,
+/// Wraps a [Redis](redis) connection and a registry of predefined Lua scripts.
+#[derive(Clone)]
+pub struct RedisCtx {
     /// A Lua script registry
-    pub registry: ScriptRegistry,
+    pub registry: Arc<ScriptRegistry>,
+    /// The connection pool
+    pub pool: Option<Arc<bb8::Pool<RedisConnectionManager>>>,
 }
 
 /// A registry of predefined Lua scripts for execution within Redis.
@@ -166,19 +167,19 @@ impl Default for ScriptRegistry {
     }
 }
 
-impl PluginContext {
+impl PluginCtx {
     /// Creates a new `PluginContext`.
     ///
     /// # Arguments
     ///
     /// * `plugin` - The [`Plugin`] and its associated configuration.
-    /// * `redis_info` - The Redis connection pool.
+    /// * `redis_ctx` - The Redis connection pool.
     /// * `http_client` - The HTTP client used for outbound requests.
     pub fn new(
         plugin: Arc<Plugin>,
         environment: HashMap<String, String>,
-        redis_info: Option<Arc<RedisInfo>>,
-    ) -> Result<PluginContext, ContextInstantiationError> {
+        redis_ctx: RedisCtx,
+    ) -> Result<PluginCtx, ContextInstantiationError> {
         let stdio = PluginStdio::default();
         let wasi_ctx = WasiCtxBuilder::new()
             .stdout(stdio.stdout.clone())
@@ -192,7 +193,7 @@ impl PluginContext {
             )
             .build();
 
-        Ok(PluginContext {
+        Ok(PluginCtx {
             wasi_ctx,
             wasi_http: WasiHttpCtx,
             wasi_table: ResourceTable::new(),
@@ -200,7 +201,7 @@ impl PluginContext {
             host_config: Arc::new(plugin.host_config().clone()),
             guest_config: Arc::new(plugin.guest_config().clone()),
             permissions: plugin.permissions().clone(),
-            redis_info,
+            redis_ctx,
         })
     }
 
@@ -213,7 +214,7 @@ impl PluginContext {
     }
 }
 
-impl WasiView for PluginContext {
+impl WasiView for PluginCtx {
     fn table(&self) -> &ResourceTable {
         &self.wasi_table
     }
@@ -231,7 +232,7 @@ impl WasiView for PluginContext {
     }
 }
 
-impl WasiHttpView for PluginContext {
+impl WasiHttpView for PluginCtx {
     fn ctx(&mut self) -> &mut WasiHttpCtx {
         &mut self.wasi_http
     }
@@ -252,9 +253,9 @@ impl WasiHttpView for PluginContext {
     }
 }
 
-impl crate::bindings::bulwark::plugin::types::Host for PluginContext {}
+impl crate::bindings::bulwark::plugin::types::Host for PluginCtx {}
 
-impl crate::bindings::bulwark::plugin::config::Host for PluginContext {
+impl crate::bindings::bulwark::plugin::config::Host for PluginCtx {
     /// Returns all config key names.
     fn config_keys<'ctx, 'async_trait>(
         &'ctx mut self,
@@ -319,7 +320,7 @@ impl crate::bindings::bulwark::plugin::config::Host for PluginContext {
     }
 }
 
-impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
+impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
     /// Retrieves the value associated with the given key.
     fn get<'ctx, 'async_trait>(
         &'ctx mut self,
@@ -339,26 +340,22 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            Ok(
-                // Inner function to permit ? operator
-                || -> Result<Option<Vec<u8>>, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_redis_prefixes(&self.permissions.state, &key)?;
+            verify_redis_prefixes(&self.permissions.state, &key)?;
 
-                    if let Some(redis_info) = self.redis_info.clone() {
-                        let mut conn = redis_info.pool.get().map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?;
-
-                        Ok(conn.get(key).map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?)
-                    } else {
-                        Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                            "no remote state configured".to_string(),
-                        ))
-                    }
-                }(),
-            )
+            // Outer Ok is for the largely unused wasmtime::Result
+            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+                let mut conn = pool.get().await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?;
+                let value: Option<Vec<u8>> = conn.get(key).await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?;
+                Ok(value)
+            } else {
+                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                    "no remote state configured".to_string(),
+                ))
+            })
         })
     }
 
@@ -384,30 +381,24 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            Ok(
-                // Inner function to permit ? operator
-                || -> Result<(), crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_redis_prefixes(&self.permissions.state, &key)?;
+            verify_redis_prefixes(&self.permissions.state, &key)?;
 
-                    if let Some(redis_info) = self.redis_info.clone() {
-                        let mut conn = redis_info.pool.get().map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?;
-
-                        conn.set::<String, Vec<u8>, redis::Value>(key, value)
-                            .map_err(|err| {
-                                crate::bindings::bulwark::plugin::redis::Error::Remote(
-                                    err.to_string(),
-                                )
-                            })?;
-                        Ok(())
-                    } else {
-                        Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                            "no remote state configured".to_string(),
-                        ))
-                    }
-                }(),
-            )
+            // Outer Ok is for the largely unused wasmtime::Result
+            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+                let mut conn = pool.get().await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?;
+                conn.set::<String, Vec<u8>, redis::Value>(key, value)
+                    .await
+                    .map_err(|err| {
+                        crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                    })?;
+                Ok(())
+            } else {
+                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                    "no remote state configured".to_string(),
+                ))
+            })
         })
     }
 
@@ -432,28 +423,23 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            Ok(
-                // Inner function to permit ? operator
-                || -> Result<u32, crate::bindings::bulwark::plugin::redis::Error> {
-                    for key in keys.iter() {
-                        verify_redis_prefixes(&self.permissions.state, key)?;
-                    }
+            for key in keys.iter() {
+                verify_redis_prefixes(&self.permissions.state, key)?;
+            }
 
-                    if let Some(redis_info) = self.redis_info.clone() {
-                        let mut conn = redis_info.pool.get().map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?;
-
-                        Ok(conn.del(keys).map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?)
-                    } else {
-                        Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                            "no remote state configured".to_string(),
-                        ))
-                    }
-                }(),
-            )
+            // Outer Ok is for the largely unused wasmtime::Result
+            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+                let mut conn = pool.get().await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?;
+                Ok(conn.del(keys).await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?)
+            } else {
+                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                    "no remote state configured".to_string(),
+                ))
+            })
         })
     }
 
@@ -504,26 +490,21 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            Ok(
-                // Inner function to permit ? operator
-                || -> Result<i64, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_redis_prefixes(&self.permissions.state, &key)?;
+            verify_redis_prefixes(&self.permissions.state, &key)?;
 
-                    if let Some(redis_info) = self.redis_info.clone() {
-                        let mut conn = redis_info.pool.get().map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?;
-
-                        Ok(conn.incr(key, delta).map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?)
-                    } else {
-                        Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                            "no remote state configured".to_string(),
-                        ))
-                    }
-                }(),
-            )
+            // Outer Ok is for the largely unused wasmtime::Result
+            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+                let mut conn = pool.get().await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?;
+                Ok(conn.incr(key, delta).await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?)
+            } else {
+                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                    "no remote state configured".to_string(),
+                ))
+            })
         })
     }
 
@@ -550,26 +531,21 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            Ok(
-                // Inner function to permit ? operator
-                || -> Result<u32, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_redis_prefixes(&self.permissions.state, &key)?;
+            verify_redis_prefixes(&self.permissions.state, &key)?;
 
-                    if let Some(redis_info) = self.redis_info.clone() {
-                        let mut conn = redis_info.pool.get().map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?;
-
-                        Ok(conn.sadd(key, values).map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?)
-                    } else {
-                        Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                            "no remote state configured".to_string(),
-                        ))
-                    }
-                }(),
-            )
+            // Outer Ok is for the largely unused wasmtime::Result
+            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+                let mut conn = pool.get().await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?;
+                Ok(conn.sadd(key, values).await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?)
+            } else {
+                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                    "no remote state configured".to_string(),
+                ))
+            })
         })
     }
 
@@ -592,26 +568,21 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            Ok(
-                // Inner function to permit ? operator
-                || -> Result<Vec<String>, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_redis_prefixes(&self.permissions.state, &key)?;
+            verify_redis_prefixes(&self.permissions.state, &key)?;
 
-                    if let Some(redis_info) = self.redis_info.clone() {
-                        let mut conn = redis_info.pool.get().map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?;
-
-                        Ok(conn.smembers(key).map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?)
-                    } else {
-                        Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                            "no remote state configured".to_string(),
-                        ))
-                    }
-                }(),
-            )
+            // Outer Ok is for the largely unused wasmtime::Result
+            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+                let mut conn = pool.get().await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?;
+                Ok(conn.smembers(key).await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?)
+            } else {
+                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                    "no remote state configured".to_string(),
+                ))
+            })
         })
     }
 
@@ -638,26 +609,21 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            Ok(
-                // Inner function to permit ? operator
-                || -> Result<u32, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_redis_prefixes(&self.permissions.state, &key)?;
+            verify_redis_prefixes(&self.permissions.state, &key)?;
 
-                    if let Some(redis_info) = self.redis_info.clone() {
-                        let mut conn = redis_info.pool.get().map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?;
-
-                        Ok(conn.srem(key, values).map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?)
-                    } else {
-                        Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                            "no remote state configured".to_string(),
-                        ))
-                    }
-                }(),
-            )
+            // Outer Ok is for the largely unused wasmtime::Result
+            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+                let mut conn = pool.get().await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?;
+                Ok(conn.srem(key, values).await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?)
+            } else {
+                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                    "no remote state configured".to_string(),
+                ))
+            })
         })
     }
 
@@ -681,26 +647,29 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            Ok(
-                // Inner function to permit ? operator
-                || -> Result<(), crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_redis_prefixes(&self.permissions.state, &key)?;
+            verify_redis_prefixes(&self.permissions.state, &key)?;
 
-                    if let Some(redis_info) = self.redis_info.clone() {
-                        let mut conn = redis_info.pool.get().map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?;
-
-                        Ok(conn.expire(key, ttl as usize).map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?)
-                    } else {
-                        Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                            "no remote state configured".to_string(),
-                        ))
-                    }
-                }(),
-            )
+            // Outer Ok is for the largely unused wasmtime::Result
+            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+                let mut conn = pool.get().await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?;
+                Ok(conn
+                    .expire(
+                        key,
+                        ttl.try_into().map_err(|_| {
+                            crate::bindings::bulwark::plugin::redis::Error::TypeError
+                        })?,
+                    )
+                    .await
+                    .map_err(|err| {
+                        crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                    })?)
+            } else {
+                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                    "no remote state configured".to_string(),
+                ))
+            })
         })
     }
 
@@ -724,26 +693,29 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            Ok(
-                // Inner function to permit ? operator
-                || -> Result<(), crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_redis_prefixes(&self.permissions.state, &key)?;
+            verify_redis_prefixes(&self.permissions.state, &key)?;
 
-                    if let Some(redis_info) = self.redis_info.clone() {
-                        let mut conn = redis_info.pool.get().map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?;
-
-                        Ok(conn.expire_at(key, unix_time as usize).map_err(|err| {
-                            crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                        })?)
-                    } else {
-                        Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                            "no remote state configured".to_string(),
-                        ))
-                    }
-                }(),
-            )
+            // Outer Ok is for the largely unused wasmtime::Result
+            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+                let mut conn = pool.get().await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?;
+                Ok(conn
+                    .expire_at(
+                        key,
+                        unix_time.try_into().map_err(|_| {
+                            crate::bindings::bulwark::plugin::redis::Error::TypeError
+                        })?,
+                    )
+                    .await
+                    .map_err(|err| {
+                        crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                    })?)
+            } else {
+                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                    "no remote state configured".to_string(),
+                ))
+            })
         })
     }
 
@@ -771,49 +743,52 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            Ok(
-                // Inner function to permit ? operator
-                || -> Result<crate::bindings::bulwark::plugin::redis::Rate, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_redis_prefixes(&self.permissions.state, &key)?;
+            verify_redis_prefixes(&self.permissions.state, &key)?;
 
-                    if delta < 0 {
-                        return Err(crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
-                            "delta must be positive".to_string(),
-                        ));
-                    }
-                    if window < 0 {
-                        return Err(crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
-                            "window must be positive".to_string(),
-                        ));
-                    }
+            if delta < 0 {
+                return Ok(Err(
+                    crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
+                        "delta must be positive".to_string(),
+                    ),
+                ));
+            }
+            if window < 0 {
+                return Ok(Err(
+                    crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
+                        "window must be positive".to_string(),
+                    ),
+                ));
+            }
 
-                    if let Some(redis_info) = self.redis_info.clone() {
-                        let mut conn = redis_info
-                            .pool
-                            .get()
-                            .map_err(|err| crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string()))?;
-                        let dt = Utc::now();
-                        let timestamp: i64 = dt.timestamp();
-                        let script = redis_info.registry.increment_rate_limit.clone();
-                        // Invoke the script and map to our rate type
-                        let (attempts, expiration) = script
-                            .key(key)
-                            .arg(delta)
-                            .arg(window)
-                            .arg(timestamp)
-                            .invoke::<(i64, i64)>(conn.deref_mut())
-                            .map_err(|err| crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string()))?;
-                        Ok(crate::bindings::bulwark::plugin::redis::Rate {
-                            attempts,
-                            expiration,
-                        })
-                    } else {
-                        Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                            "no remote state configured".to_string(),
-                        ))
-                    }
-                }(),
-            )
+            // Outer Ok is for the largely unused wasmtime::Result
+            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+                let mut conn = pool.get().await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?;
+
+                let dt = Utc::now();
+                let timestamp: i64 = dt.timestamp();
+                let script = self.redis_ctx.registry.increment_rate_limit.clone();
+                // Invoke the script and map to our rate type
+                let (attempts, expiration) = script
+                    .key(key)
+                    .arg(delta)
+                    .arg(window)
+                    .arg(timestamp)
+                    .invoke_async::<redis::aio::MultiplexedConnection, (i64, i64)>(&mut conn)
+                    .await
+                    .map_err(|err| {
+                        crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                    })?;
+                Ok(crate::bindings::bulwark::plugin::redis::Rate {
+                    attempts,
+                    expiration,
+                })
+            } else {
+                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                    "no remote state configured".to_string(),
+                ))
+            })
         })
     }
 
@@ -839,36 +814,35 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            Ok(
-            // Inner function to permit ? operator
-            || -> Result<crate::bindings::bulwark::plugin::redis::Rate, crate::bindings::bulwark::plugin::redis::Error> {
-                verify_redis_prefixes(&self.permissions.state, &key)?;
+            verify_redis_prefixes(&self.permissions.state, &key)?;
 
-                if let Some(redis_info) = self.redis_info.clone() {
-                    let mut conn = redis_info
-                        .pool
-                        .get()
-                        .map_err(|err| crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string()))?;
-                    let dt = Utc::now();
-                    let timestamp: i64 = dt.timestamp();
-                    let script = redis_info.registry.check_rate_limit.clone();
-                    // Invoke the script and map to our rate type
-                    let (attempts, expiration) = script
-                        .key(key)
-                        .arg(timestamp)
-                        .invoke::<(i64, i64)>(conn.deref_mut())
-                        .map_err(|err| crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string()))?;
-                    Ok(crate::bindings::bulwark::plugin::redis::Rate {
-                        attempts,
-                        expiration,
-                    })
-                } else {
-                    Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                        "no remote state configured".to_string(),
-                    ))
-                }
-            }(),
-        )
+            // Outer Ok is for the largely unused wasmtime::Result
+            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+                let mut conn = pool.get().await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?;
+
+                let dt = Utc::now();
+                let timestamp: i64 = dt.timestamp();
+                let script = self.redis_ctx.registry.check_rate_limit.clone();
+                // Invoke the script and map to our rate type
+                let (attempts, expiration) = script
+                    .key(key)
+                    .arg(timestamp)
+                    .invoke_async::<redis::aio::MultiplexedConnection, (i64, i64)>(&mut conn)
+                    .await
+                    .map_err(|err| {
+                        crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                    })?;
+                Ok(crate::bindings::bulwark::plugin::redis::Rate {
+                    attempts,
+                    expiration,
+                })
+            } else {
+                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                    "no remote state configured".to_string(),
+                ))
+            })
         })
     }
 
@@ -898,66 +872,71 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            Ok(
-                // Inner function to permit ? operator
-                || -> Result<crate::bindings::bulwark::plugin::redis::Breaker, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_redis_prefixes(&self.permissions.state, &key)?;
+            verify_redis_prefixes(&self.permissions.state, &key)?;
 
-                    if success_delta < 0 {
-                        return Err(crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
-                            "success_delta must be positive".to_string(),
-                        ));
-                    }
-                    if failure_delta < 0 {
-                        return Err(crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
-                            "failure_delta must be positive".to_string(),
-                        ));
-                    }
-                    if window < 0 {
-                        return Err(crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
-                            "window must be positive".to_string(),
-                        ));
-                    }
+            if success_delta < 0 {
+                return Ok(Err(
+                    crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
+                        "success_delta must be positive".to_string(),
+                    ),
+                ));
+            }
+            if failure_delta < 0 {
+                return Ok(Err(
+                    crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
+                        "failure_delta must be positive".to_string(),
+                    ),
+                ));
+            }
+            if window < 0 {
+                return Ok(Err(
+                    crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
+                        "window must be positive".to_string(),
+                    ),
+                ));
+            }
 
-                    if let Some(redis_info) = self.redis_info.clone() {
-                        let mut conn = redis_info
-                            .pool
-                            .get()
-                            .map_err(|err| crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string()))?;
-                        let dt = Utc::now();
-                        let timestamp: i64 = dt.timestamp();
-                        let script = redis_info.registry.increment_breaker.clone();
-                        // Invoke the script and map to our breaker type
-                        let (
-                            generation,
-                            successes,
-                            failures,
-                            consecutive_successes,
-                            consecutive_failures,
-                            expiration,
-                        ) = script
-                            .key(key)
-                            .arg(success_delta)
-                            .arg(failure_delta)
-                            .arg(window)
-                            .arg(timestamp)
-                            .invoke::<(i64, i64, i64, i64, i64, i64)>(conn.deref_mut())
-                            .map_err(|err| crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string()))?;
-                        Ok(crate::bindings::bulwark::plugin::redis::Breaker {
-                            generation,
-                            successes,
-                            failures,
-                            consecutive_successes,
-                            consecutive_failures,
-                            expiration,
-                        })
-                    } else {
-                        Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                            "no remote state configured".to_string(),
-                        ))
-                    }
-                }(),
-            )
+            // Outer Ok is for the largely unused wasmtime::Result
+            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+                let mut conn = pool.get().await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?;
+
+                let dt = Utc::now();
+                let timestamp: i64 = dt.timestamp();
+                let script = self.redis_ctx.registry.increment_breaker.clone();
+                // Invoke the script and map to our breaker type
+                let (
+                    generation,
+                    successes,
+                    failures,
+                    consecutive_successes,
+                    consecutive_failures,
+                    expiration,
+                ) = script
+                    .key(key)
+                    .arg(success_delta)
+                    .arg(failure_delta)
+                    .arg(window)
+                    .arg(timestamp)
+                    .invoke_async::<redis::aio::MultiplexedConnection, (i64, i64, i64, i64, i64, i64)>(&mut conn)
+                    .await
+                    .map_err(|err| {
+                        crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                    })?;
+                Ok(crate::bindings::bulwark::plugin::redis::Breaker {
+                    generation,
+                    successes,
+                    failures,
+                    consecutive_successes,
+                    consecutive_failures,
+                    expiration,
+                })
+            } else {
+                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                    "no remote state configured".to_string(),
+                ))
+            })
         })
     }
 
@@ -984,47 +963,46 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginContext {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            Ok(
-                // Inner function to permit ? operator
-                || -> Result<crate::bindings::bulwark::plugin::redis::Breaker, crate::bindings::bulwark::plugin::redis::Error> {
-                    verify_redis_prefixes(&self.permissions.state, &key)?;
+            verify_redis_prefixes(&self.permissions.state, &key)?;
 
-                    if let Some(redis_info) = self.redis_info.clone() {
-                        let mut conn = redis_info
-                            .pool
-                            .get()
-                            .map_err(|err| crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string()))?;
-                        let dt = Utc::now();
-                        let timestamp: i64 = dt.timestamp();
-                        let script = redis_info.registry.check_breaker.clone();
-                        // Invoke the script and map to our breaker type
-                        let (
-                            generation,
-                            successes,
-                            failures,
-                            consecutive_successes,
-                            consecutive_failures,
-                            expiration,
-                        ) = script
-                            .key(key)
-                            .arg(timestamp)
-                            .invoke::<(i64, i64, i64, i64, i64, i64)>(conn.deref_mut())
-                            .map_err(|err| crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string()))?;
-                        Ok(crate::bindings::bulwark::plugin::redis::Breaker {
-                            generation,
-                            successes,
-                            failures,
-                            consecutive_successes,
-                            consecutive_failures,
-                            expiration,
-                        })
-                    } else {
-                        Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                            "no remote state configured".to_string(),
-                        ))
-                    }
-                }(),
-            )
+            // Outer Ok is for the largely unused wasmtime::Result
+            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+                let mut conn = pool.get().await.map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?;
+
+                let dt = Utc::now();
+                let timestamp: i64 = dt.timestamp();
+                let script = self.redis_ctx.registry.check_breaker.clone();
+                // Invoke the script and map to our breaker type
+                let (
+                    generation,
+                    successes,
+                    failures,
+                    consecutive_successes,
+                    consecutive_failures,
+                    expiration,
+                ) = script
+                    .key(key)
+                    .arg(timestamp)
+                    .invoke_async::<redis::aio::MultiplexedConnection, (i64, i64, i64, i64, i64, i64)>(&mut conn)
+                    .await
+                    .map_err(|err| {
+                        crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                    })?;
+                Ok(crate::bindings::bulwark::plugin::redis::Breaker {
+                    generation,
+                    successes,
+                    failures,
+                    consecutive_successes,
+                    consecutive_failures,
+                    expiration,
+                })
+            } else {
+                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                    "no remote state configured".to_string(),
+                ))
+            })
         })
     }
 }

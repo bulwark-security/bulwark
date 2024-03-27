@@ -256,7 +256,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
             }
 
-            let bulwark_processor = BulwarkProcessor::new(config_root)?;
+            let bulwark_processor = BulwarkProcessor::new(config_root).await?;
             let ext_processor = ExternalProcessorServer::new(bulwark_processor);
 
             {

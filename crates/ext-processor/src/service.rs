@@ -4,9 +4,10 @@ use crate::{PluginGroupInstantiationError, ProcessingMessageError, RequestError,
 use bulwark_config::Config;
 use bulwark_wasm_sdk::Verdict;
 
+use bb8_redis::{bb8, RedisConnectionManager};
 use bulwark_wasm_host::{
-    ForwardedIP, HandlerOutput, Plugin, PluginContext, PluginExecutionError, PluginInstance,
-    PluginLoadError, RedisInfo, ScriptRegistry,
+    ForwardedIP, HandlerOutput, Plugin, PluginCtx, PluginExecutionError, PluginInstance,
+    PluginLoadError, RedisCtx, ScriptRegistry,
 };
 use bulwark_wasm_sdk::Decision;
 use envoy_control_plane::envoy::{
@@ -96,7 +97,7 @@ async fn join_all<T, F>(
 pub struct BulwarkProcessor {
     // TODO: may need to have a plugin registry at some point
     router: Arc<RwLock<Router<RouteTarget>>>,
-    redis_info: Option<Arc<RedisInfo>>,
+    redis_ctx: RedisCtx,
     request_semaphore: Arc<tokio::sync::Semaphore>,
     plugin_semaphore: Arc<tokio::sync::Semaphore>,
     thresholds: bulwark_config::Thresholds,
@@ -225,7 +226,7 @@ impl BulwarkProcessor {
     /// # Arguments
     ///
     /// * `config` - The root of the Bulwark configuration structure to be used to initialize the service.
-    pub fn new(config: Config) -> Result<Self, PluginLoadError> {
+    pub async fn new(config: Config) -> Result<Self, PluginLoadError> {
         // Get all outcomes registered even if those outcomes don't happen immediately.
         metrics::register_counter!(
             "combined_decision",
@@ -245,21 +246,24 @@ impl BulwarkProcessor {
         );
         metrics::register_histogram!("combined_decision_score");
 
-        let redis_info = if let Some(redis_addr) = config.state.redis_uri.as_ref() {
-            let pool_size = config.state.redis_pool_size;
-            // TODO: better error handling instead of unwrap/panic
-            let client = redis::Client::open(redis_addr.as_str()).unwrap();
-            // TODO: make pool size configurable
-            Some(Arc::new(RedisInfo {
+        let redis_pool: Option<Arc<bb8::Pool<RedisConnectionManager>>> =
+            if let Some(redis_addr) = config.state.redis_uri.as_ref() {
+                let pool_size = config.state.redis_pool_size;
                 // TODO: better error handling instead of unwrap/panic
-                pool: r2d2::Pool::builder()
+                let connection_manager = RedisConnectionManager::new(redis_addr.as_str()).unwrap();
+                // TODO: make pool size configurable
+                let pool = bb8::Pool::builder()
                     .max_size(pool_size)
-                    .build(client)
-                    .unwrap(),
-                registry: ScriptRegistry::default(),
-            }))
-        } else {
-            None
+                    .build(connection_manager)
+                    .await
+                    .unwrap();
+                Some(Arc::new(pool))
+            } else {
+                None
+            };
+        let redis_ctx = RedisCtx {
+            pool: redis_pool,
+            registry: Arc::new(ScriptRegistry::default()),
         };
 
         let mut router: Router<RouteTarget> = Router::new();
@@ -293,11 +297,11 @@ impl BulwarkProcessor {
         }
         Ok(Self {
             router: Arc::new(RwLock::new(router)),
-            redis_info,
             request_semaphore: Arc::new(Semaphore::new(config.runtime.max_concurrent_requests)),
             plugin_semaphore: Arc::new(Semaphore::new(config.runtime.max_plugin_tasks)),
             thresholds: config.thresholds,
             proxy_hops: usize::from(config.service.proxy_hops),
+            redis_ctx,
         })
     }
 
@@ -319,7 +323,7 @@ impl BulwarkProcessor {
                 }
             }
             let request_context =
-                PluginContext::new(plugin.clone(), environment, self.redis_info.clone())?;
+                PluginCtx::new(plugin.clone(), environment, self.redis_ctx.clone())?;
             plugin_instances.push(Arc::new(Mutex::new(
                 PluginInstance::new(plugin.clone(), request_context).await?,
             )));

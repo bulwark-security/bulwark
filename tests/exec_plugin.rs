@@ -1,4 +1,4 @@
-use bulwark_wasm_host::{Plugin, PluginContext, PluginInstance};
+use bulwark_wasm_host::{Plugin, PluginCtx, PluginInstance, RedisCtx, ScriptRegistry};
 use std::{collections::HashMap, path::Path, sync::Arc};
 
 #[test]
@@ -35,8 +35,12 @@ fn test_blank_slate_exec() -> Result<(), Box<dyn std::error::Error>> {
             .version(http::Version::HTTP_11)
             .body(bytes::Bytes::new())?,
     );
-    let request_context = PluginContext::new(plugin.clone(), HashMap::new(), None)?;
-    let mut plugin_instance = tokio_test::block_on(PluginInstance::new(plugin, request_context))?;
+    let redis_ctx = RedisCtx {
+        pool: None,
+        registry: Arc::new(ScriptRegistry::default()),
+    };
+    let plugin_ctx = PluginCtx::new(plugin.clone(), HashMap::new(), redis_ctx)?;
+    let mut plugin_instance = tokio_test::block_on(PluginInstance::new(plugin, plugin_ctx))?;
 
     // Initialize the plugin.
     tokio_test::block_on(plugin_instance.handle_init())?;
@@ -126,8 +130,12 @@ fn test_evil_bit_benign_exec() -> Result<(), Box<dyn std::error::Error>> {
             .version(http::Version::HTTP_11)
             .body(bytes::Bytes::new())?,
     );
-    let request_context = PluginContext::new(plugin.clone(), HashMap::new(), None)?;
-    let mut plugin_instance = tokio_test::block_on(PluginInstance::new(plugin, request_context))?;
+    let redis_ctx = RedisCtx {
+        pool: None,
+        registry: Arc::new(ScriptRegistry::default()),
+    };
+    let plugin_ctx = PluginCtx::new(plugin.clone(), HashMap::new(), redis_ctx)?;
+    let mut plugin_instance = tokio_test::block_on(PluginInstance::new(plugin, plugin_ctx))?;
 
     // Initialize the plugin.
     tokio_test::block_on(plugin_instance.handle_init())?;
@@ -218,8 +226,12 @@ fn test_evil_bit_evil_exec() -> Result<(), Box<dyn std::error::Error>> {
             .header("Evil", "true")
             .body(bytes::Bytes::new())?,
     );
-    let request_context = PluginContext::new(plugin.clone(), HashMap::new(), None)?;
-    let mut plugin_instance = tokio_test::block_on(PluginInstance::new(plugin, request_context))?;
+    let redis_ctx = RedisCtx {
+        pool: None,
+        registry: Arc::new(ScriptRegistry::default()),
+    };
+    let plugin_ctx = PluginCtx::new(plugin.clone(), HashMap::new(), redis_ctx)?;
+    let mut plugin_instance = tokio_test::block_on(PluginInstance::new(plugin, plugin_ctx))?;
 
     // Initialize the plugin.
     tokio_test::block_on(plugin_instance.handle_init())?;
