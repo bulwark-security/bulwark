@@ -84,11 +84,11 @@ interface redis {
     /// Increments a rate limit, returning the number of attempts so far and the expiration time.
     incr-rate-limit: func(key: string, delta: s64, window: s64) -> result<rate, error>;
     /// Checks a rate limit, returning the number of attempts so far and the expiration time.
-    check-rate-limit: func(key: string) -> result<rate, error>;
+    check-rate-limit: func(key: string) -> result<option<rate>, error>;
     /// Increments a circuit breaker, returning the generation count, success count, failure count,
     /// consecutive success count, consecutive failure count, and expiration time.
     incr-breaker: func(key: string, success-delta: s64, failure-delta: s64, window: s64) -> result<breaker, error>;
     /// Checks a circuit breaker, returning the generation count, success count, failure count,
     /// consecutive success count, consecutive failure count, and expiration time.
-    check-breaker: func(key: string) -> result<breaker, error>;
+    check-breaker: func(key: string) -> result<option<breaker>, error>;
 }
