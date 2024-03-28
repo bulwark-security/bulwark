@@ -122,10 +122,23 @@ impl HttpHandlers for RedisPlugin {
         assert_eq!(breaker.expiration, original_expiration);
 
         // Test expiration operations.
-        redis::expire("test:redis-set-get", 1)?;
         redis::expire("test:redis-incr-get", 1)?;
         redis::expire_at("test:redis-sadd-srem-smembers", 1)?;
         // Only verify that there's no error.
+
+        // Teardown.
+        redis::del([
+            "test:redis-set-get",
+            "test:redis-incr-get",
+            "test:redis-sadd-srem-smembers",
+            "bulwark:rl:test:redis-rate-limit",
+            "bulwark:rl:test:redis-rate-limit:exp",
+            "bulwark:bk:g:test:redis-circuit-breaker",
+            "bulwark:bk:s:test:redis-circuit-breaker",
+            "bulwark:bk:f:test:redis-circuit-breaker",
+            "bulwark:bk:cs:test:redis-circuit-breaker",
+            "bulwark:bk:cf:test:redis-circuit-breaker",
+        ])?;
 
         output.decision = Decision::restricted(0.0);
         Ok(output)
