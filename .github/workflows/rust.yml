@@ -49,6 +49,9 @@ jobs:
           - stable
         os:
           - ubuntu-latest
+        redis-version:
+          - 6
+          - 7
 
     runs-on: ${{ matrix.os }}
 
@@ -66,6 +69,11 @@ jobs:
 
       - name: Rust cache
         uses: swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2.7.3
+
+      - name: Start Redis
+        uses: supercharge/redis-github-action@1.7.0
+        with:
+          redis-version: ${{ matrix.redis-version }}
 
       - name: Run bulwark tests
         uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3

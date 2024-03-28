@@ -24,12 +24,12 @@ wasmtime-wasi = { workspace = true }
 wasmtime-wasi-http = { workspace = true }
 
 anyhow = { workspace = true }
+bb8-redis = { workspace = true }
 bytes = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 metrics = { workspace = true }
-r2d2 = { workspace = true }
 redis = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -42,6 +42,7 @@ url = "2.5.0"
 
 [dev-dependencies]
 bulwark-build = { workspace = true }
+redis-test = { workspace = true }
 
 wasi-cap-std-sync = { workspace = true }
 wat = { workspace = true }

@@ -59,6 +59,7 @@ bulwark-wasm-host = { workspace = true }
 bulwark-wasm-sdk = { workspace = true }
 
 bytes = { workspace = true }
+bb8-redis = { workspace = true }
 
 tokio-test = "0.4.2"
 
@@ -116,13 +117,15 @@ forwarded-header-value = "0.1.1"
 futures = "0.3"
 http = "1.0"
 metrics = "0.21.1"
-r2d2 = "0.8.10"
-redis = { version = "0.23.0", features = [
+bb8-redis = "0.15.0"
+redis = { version = "0.25", features = [
     "tokio-comp",
-    "tokio-native-tls-comp",
+    "tokio-rustls-comp",
+    # Self-signed connections are common for self-hosted instances.
+    "tls-rustls-insecure",
     "cluster",
-    "r2d2",
 ] }
+redis-test = "0.4"
 reqwest = { version = "0.11.14", features = ["rustls-tls", "blocking"] }
 serde = { version = "1.0.149", features = ["std", "serde_derive"] }
 serde_json = "1.0.93"

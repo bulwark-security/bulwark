@@ -28,7 +28,7 @@ pub(crate) mod bindings {
 }
 
 use {
-    crate::PluginContext,
+    crate::PluginCtx,
     crate::{PluginExecutionError, PluginInstantiationError, PluginLoadError},
     bulwark_wasm_sdk::Decision,
     http_body_util::{combinators::BoxBody, BodyExt, Empty, Full},
@@ -251,7 +251,7 @@ pub struct PluginInstance {
     /// A reference to the parent `Plugin` and its configuration.
     plugin: Arc<Plugin>,
     /// The WASM store that holds state associated with the incoming request.
-    store: Store<PluginContext>,
+    store: Store<PluginCtx>,
     /// The HTTP detection world from the WIT interface.
     http_detection: bindings::HttpDetection,
     /// The buffers for `stdin`, `stdout`, and `stderr` used by the plugin for I/O.
@@ -267,13 +267,13 @@ impl PluginInstance {
     /// * `request_context` - The request context stores all of the state associated with an incoming request and its corresponding response.
     pub async fn new(
         plugin: Arc<Plugin>,
-        plugin_context: PluginContext,
+        plugin_ctx: PluginCtx,
     ) -> Result<PluginInstance, PluginInstantiationError> {
         // Clone the stdio so we can read the captured stdout and stderr buffers after execution has completed.
-        let stdio = plugin_context.stdio.clone();
+        let stdio = plugin_ctx.stdio.clone();
 
-        let mut linker: Linker<PluginContext> = Linker::new(&plugin.engine);
-        let mut store = Store::new(&plugin.engine, plugin_context);
+        let mut linker: Linker<PluginCtx> = Linker::new(&plugin.engine);
+        let mut store = Store::new(&plugin.engine, plugin_ctx);
 
         wasmtime_wasi::preview2::command::add_to_linker(&mut linker)?;
         wasmtime_wasi_http::bindings::wasi::http::types::add_to_linker(&mut linker, |ctx| ctx)
