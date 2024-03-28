@@ -52,6 +52,15 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    services:
+      redis:
+        image: redis
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -72,3 +81,6 @@ jobs:
         with:
           command: test
           args: -p bulwark-cli -p bulwark-build -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk -p bulwark-wasm-sdk-macros
+        env:
+          # Needs to match the service name in the `services` section
+          REDIS_URI: redis://redis:6379
