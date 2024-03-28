@@ -20,6 +20,7 @@ async fn test_redis_plugin() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         redis_uri = "redis://127.0.0.1:6379".to_string();
     }
+    println!("redis_uri: {}", redis_uri);
 
     let config = &bulwark_config::Config {
         service: bulwark_config::Service::default(),
