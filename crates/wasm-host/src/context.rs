@@ -94,14 +94,12 @@ impl Default for ScriptRegistry {
                 local counter_key = "bulwark:rl:" .. KEYS[1]
                 local expiration_key = counter_key .. ":exp"
                 local timestamp = tonumber(ARGV[1])
-                local attempts = tonumber(redis.call("get", counter_key))
-                local expiration = nil
-                if attempts then
-                    expiration = tonumber(redis.call("get", expiration_key))
-                    if not expiration or timestamp > expiration then
-                        attempts = nil
-                        expiration = nil
-                    end
+                local attempts = tonumber(redis.call("get", counter_key)) or 0
+                local expiration = tonumber(redis.call("get", expiration_key)) or 0
+                if not attempts or not expiration or timestamp > expiration then
+                    redis.call("del", counter_key, expiration_key)
+                    attempts = 0
+                    expiration = 0
                 end
                 return { attempts, expiration }
                 "#,
@@ -155,9 +153,10 @@ impl Default for ScriptRegistry {
                 local consec_success_key = "bulwark:bk:cs:" .. KEYS[1]
                 local consec_failure_key = "bulwark:bk:cf:" .. KEYS[1]
                 local expiration_key = "bulwark:bk:" .. KEYS[1] .. ":exp"
-                local generation = tonumber(redis.call("get", generation_key))
-                if not generation then
-                    return { nil, nil, nil, nil, nil, nil }
+                local generation = tonumber(redis.call("get", generation_key)) or 0
+                if not generation or generation <= 0 then
+                    redis.call("del", generation_key, success_key, failure_key, consec_success_key, consec_failure_key, expiration_key)
+                    return { 0, 0, 0, 0, 0, 0 }
                 end
                 local successes = tonumber(redis.call("get", success_key)) or 0
                 local failures = tonumber(redis.call("get", failure_key)) or 0
@@ -805,7 +804,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
             dyn Future<
                     Output = wasmtime::Result<
                         Result<
-                            crate::bindings::bulwark::plugin::redis::Rate,
+                            Option<crate::bindings::bulwark::plugin::redis::Rate>,
                             crate::bindings::bulwark::plugin::redis::Error,
                         >,
                     >,
@@ -838,9 +837,13 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                     .map_err(|err| {
                         crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                     })?;
-                Ok(crate::bindings::bulwark::plugin::redis::Rate {
-                    attempts,
-                    expiration,
+                Ok(if attempts > 0 {
+                    Some(crate::bindings::bulwark::plugin::redis::Rate {
+                        attempts,
+                        expiration,
+                    })
+                } else {
+                    None
                 })
             } else {
                 Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
@@ -954,7 +957,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
             dyn Future<
                     Output = wasmtime::Result<
                         Result<
-                            crate::bindings::bulwark::plugin::redis::Breaker,
+                            Option<crate::bindings::bulwark::plugin::redis::Breaker>,
                             crate::bindings::bulwark::plugin::redis::Error,
                         >,
                     >,
@@ -994,13 +997,17 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                     .map_err(|err| {
                         crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                     })?;
-                Ok(crate::bindings::bulwark::plugin::redis::Breaker {
-                    generation,
-                    successes,
-                    failures,
-                    consecutive_successes,
-                    consecutive_failures,
-                    expiration,
+                Ok(if generation > 0 {
+                    Some(crate::bindings::bulwark::plugin::redis::Breaker {
+                        generation,
+                        successes,
+                        failures,
+                        consecutive_successes,
+                        consecutive_failures,
+                        expiration,
+                    })
+                } else {
+                    None
                 })
             } else {
                 Err(crate::bindings::bulwark::plugin::redis::Error::Remote(

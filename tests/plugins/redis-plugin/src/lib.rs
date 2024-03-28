@@ -30,6 +30,11 @@ impl HttpHandlers for RedisPlugin {
         let mut output = HandlerOutput::default();
 
         // Test key/value and increment operations.
+        assert_eq!(redis::get("test:does-not-exist")?, None);
+        assert_eq!(
+            redis::del(["test:does-not-exist", "test:also-does-not-exist"])?,
+            0
+        );
         redis::set("test:redis-set-get", "some value")?;
         assert_eq!(
             redis::get("test:redis-set-get")?,
@@ -57,13 +62,16 @@ impl HttpHandlers for RedisPlugin {
         redis::sadd("test:redis-sadd-srem-smembers", ["apple"])?;
         redis::sadd("test:redis-sadd-srem-smembers", ["orange"])?;
         redis::sadd("test:redis-sadd-srem-smembers", ["pear"])?;
-        redis::srem("test:redis-sadd-srem-smembers", ["apple"])?;
+        assert_eq!(redis::srem("test:redis-sadd-srem-smembers", ["apple"])?, 1);
         let members = redis::smembers("test:redis-sadd-srem-smembers")?;
         assert!(members.contains(&"orange".to_string()));
         assert!(members.contains(&"pear".to_string()));
         assert_eq!(members.len(), 2);
+        assert_eq!(redis::srem("test:does-not-exist", ["apple"])?, 0);
 
         // Test rate limit operations.
+        let rate = redis::check_rate_limit("test:does-not-exist")?;
+        assert!(rate.is_none());
         let rate = redis::incr_rate_limit("test:redis-rate-limit", 1, 10)?;
         let original_expiration = rate.expiration;
         assert_eq!(rate.attempts, 1);
@@ -74,10 +82,15 @@ impl HttpHandlers for RedisPlugin {
         assert_eq!(rate.attempts, 7);
         assert_eq!(rate.expiration, original_expiration);
         let rate = redis::check_rate_limit("test:redis-rate-limit")?;
-        assert_eq!(rate.attempts, 7);
-        assert_eq!(rate.expiration, original_expiration);
+        assert!(rate.is_some());
+        if let Some(rate) = rate {
+            assert_eq!(rate.attempts, 7);
+            assert_eq!(rate.expiration, original_expiration);
+        }
 
         // Test circuit breaker operations.
+        let breaker = redis::check_breaker("test:does-not-exist")?;
+        assert!(breaker.is_none());
         let breaker = redis::incr_breaker("test:redis-circuit-breaker", 1, true, 10)?;
         let original_expiration = breaker.expiration;
         assert_eq!(breaker.generation, 1);
@@ -114,15 +127,20 @@ impl HttpHandlers for RedisPlugin {
         assert_eq!(breaker.consecutive_failures, 0);
         assert_eq!(breaker.expiration, original_expiration);
         let breaker = redis::check_breaker("test:redis-circuit-breaker")?;
-        assert_eq!(breaker.generation, 5);
-        assert_eq!(breaker.successes, 4);
-        assert_eq!(breaker.failures, 4);
-        assert_eq!(breaker.consecutive_successes, 2);
-        assert_eq!(breaker.consecutive_failures, 0);
-        assert_eq!(breaker.expiration, original_expiration);
+        assert!(breaker.is_some());
+        if let Some(breaker) = breaker {
+            assert_eq!(breaker.generation, 5);
+            assert_eq!(breaker.successes, 4);
+            assert_eq!(breaker.failures, 4);
+            assert_eq!(breaker.consecutive_successes, 2);
+            assert_eq!(breaker.consecutive_failures, 0);
+            assert_eq!(breaker.expiration, original_expiration);
+        }
 
         // Test expiration operations.
+        redis::expire("test:does-not-exist", 1)?;
         redis::expire("test:redis-incr-get", 1)?;
+        redis::expire_at("test:does-not-exist", 1)?;
         redis::expire_at("test:redis-sadd-srem-smembers", 1)?;
         // Only verify that there's no error.
 

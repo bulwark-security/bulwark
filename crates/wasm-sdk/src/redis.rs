@@ -265,7 +265,7 @@ pub fn incr_rate_limit<K: AsRef<str>>(
 /// # Arguments
 ///
 /// * `key` - The key name corresponding to the state counter.
-pub fn check_rate_limit<K: AsRef<str>>(key: K) -> Result<Rate, crate::RemoteStateError> {
+pub fn check_rate_limit<K: AsRef<str>>(key: K) -> Result<Option<Rate>, crate::RemoteStateError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::check_rate_limit(key)?)
 }
@@ -344,7 +344,7 @@ pub fn incr_breaker<K: AsRef<str>>(
 ///
 /// * `key` - The key name corresponding to the state counter.
 #[inline]
-pub fn check_breaker<K: AsRef<str>>(key: K) -> Result<Breaker, crate::RemoteStateError> {
+pub fn check_breaker<K: AsRef<str>>(key: K) -> Result<Option<Breaker>, crate::RemoteStateError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::check_breaker(key)?)
 }
