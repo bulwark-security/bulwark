@@ -45,3 +45,10 @@ impl HttpHandlers for BlankSlate {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Your unit tests go here.
+}
