@@ -24,6 +24,8 @@ pub type Response = http::Response<Bytes>;
 pub type ResponseBuilder = http::response::Builder;
 /// An HTTP uri builder type alias. See [`http::uri::Builder`] for details.
 pub type UriBuilder = http::uri::Builder;
+/// An HTTP header value type alias. See [`http::HeaderValue`] for details.
+pub type HeaderValue = http::HeaderValue;
 
 // TODO: perhaps something more like http::Request<Box<dyn AsyncRead + Sync + Send + Unpin>>?
 // TODO: or hyper::Request<HyperIncomingBody> to match WasiHttpView's new_incoming_request?
