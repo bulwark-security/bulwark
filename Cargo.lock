@@ -186,7 +186,7 @@ dependencies = [
  "http 1.0.0",
  "http-body 1.0.0",
  "http-body-util",
- "hyper 1.1.0",
+ "hyper 1.2.0",
  "hyper-util",
  "itoa",
  "matchit",
@@ -337,7 +337,7 @@ dependencies = [
  "color-eyre",
  "envoy-control-plane",
  "http 1.0.0",
- "hyper 1.1.0",
+ "hyper 1.2.0",
  "metrics",
  "metrics-exporter-prometheus",
  "metrics-exporter-statsd",
@@ -547,7 +547,7 @@ dependencies = [
  "cap-primitives",
  "cap-std",
  "rustix",
- "smallvec 1.11.2",
+ "smallvec 1.13.2",
 ]
 
 [[package]]
@@ -842,7 +842,7 @@ dependencies = [
  "hashbrown 0.14.2",
  "log",
  "regalloc2",
- "smallvec 1.11.2",
+ "smallvec 1.13.2",
  "target-lexicon",
 ]
 
@@ -888,7 +888,7 @@ checksum = "67150a1fef9857caba710f8c0c8223d640f02c0e5d1ebbfc75ed62912599cb6b"
 dependencies = [
  "cranelift-codegen",
  "log",
- "smallvec 1.11.2",
+ "smallvec 1.13.2",
  "target-lexicon",
 ]
 
@@ -920,7 +920,7 @@ dependencies = [
  "cranelift-frontend",
  "itertools 0.10.5",
  "log",
- "smallvec 1.11.2",
+ "smallvec 1.13.2",
  "wasmparser 0.118.1",
  "wasmtime-types",
 ]
@@ -1477,9 +1477,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.1"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "991910e35c615d8cab86b5ab04be67e6ad24d2bf5f4f11fdbbed26da999bbeab"
+checksum = "51ee2dd2e4f378392eeff5d51618cd9a63166a2513846bbc55f21cfacd9199d4"
 dependencies = [
  "bytes 1.5.0",
  "fnv",
@@ -1645,20 +1645,21 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.1.0"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb5aa53871fc917b1a9ed87b683a5d86db645e23acb32c2e0785a353e522fb75"
+checksum = "186548d73ac615b32a73aafe38fb4f56c0d340e110e5a200bcadbaf2e199263a"
 dependencies = [
  "bytes 1.5.0",
  "futures-channel",
  "futures-util",
- "h2 0.4.1",
+ "h2 0.4.3",
  "http 1.0.0",
  "http-body 1.0.0",
  "httparse",
  "httpdate",
  "itoa",
  "pin-project-lite",
+ "smallvec 1.13.2",
  "tokio 1.34.0",
  "want",
 ]
@@ -1713,7 +1714,7 @@ dependencies = [
  "futures-util",
  "http 1.0.0",
  "http-body 1.0.0",
- "hyper 1.1.0",
+ "hyper 1.2.0",
  "pin-project-lite",
  "socket2 0.5.5",
  "tokio 1.34.0",
@@ -2433,7 +2434,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "libc",
  "redox_syscall 0.4.1",
- "smallvec 1.11.2",
+ "smallvec 1.13.2",
  "windows-targets 0.48.5",
 ]
 
@@ -2883,7 +2884,7 @@ dependencies = [
  "log",
  "rustc-hash",
  "slice-group-by",
- "smallvec 1.11.2",
+ "smallvec 1.13.2",
 ]
 
 [[package]]
@@ -3348,9 +3349,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.11.2"
+version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4dccd0940a2dcdf68d092b8cbab7dc0ad8fa938bf95787e1b916b0e3d0e8e970"
+checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
 
 [[package]]
 name = "socket2"
@@ -3378,7 +3379,7 @@ version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b19b32ed6d899ab23174302ff105c1577e45a06b08d4fe0a9dd13ce804bbbf71"
 dependencies = [
- "smallvec 1.11.2",
+ "smallvec 1.13.2",
 ]
 
 [[package]]
@@ -4093,7 +4094,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee40835db14ddd1e3ba414292272eddde9dad04d3d4b65509656414d1c42592f"
 dependencies = [
  "chrono",
- "smallvec 1.11.2",
+ "smallvec 1.13.2",
  "thiserror",
  "tokio 1.34.0",
  "tracing",
@@ -4133,7 +4134,7 @@ dependencies = [
  "once_cell",
  "opentelemetry",
  "opentelemetry_sdk",
- "smallvec 1.11.2",
+ "smallvec 1.13.2",
  "tracing",
  "tracing-core",
  "tracing-log",
@@ -4152,7 +4153,7 @@ dependencies = [
  "once_cell",
  "regex",
  "sharded-slab",
- "smallvec 1.11.2",
+ "smallvec 1.13.2",
  "thread_local",
  "tracing",
  "tracing-core",
@@ -4853,7 +4854,7 @@ dependencies = [
  "http 1.0.0",
  "http-body 1.0.0",
  "http-body-util",
- "hyper 1.1.0",
+ "hyper 1.2.0",
  "rustls 0.21.9",
  "tokio 1.34.0",
  "tokio-rustls 0.24.1",
@@ -5053,7 +5054,7 @@ dependencies = [
  "cranelift-codegen",
  "gimli",
  "regalloc2",
- "smallvec 1.11.2",
+ "smallvec 1.13.2",
  "target-lexicon",
  "wasmparser 0.118.1",
  "wasmtime-environ",
