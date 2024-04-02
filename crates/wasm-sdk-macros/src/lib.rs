@@ -15,15 +15,9 @@ const WIT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wit");
 /// processing will continue to the next handler.
 ///
 /// # Trait Functions
-/// - `handle_init` - Not typically used. Called when the plugin is first loaded. If defined, overrides the
-///   default macro behavior of calling
-///   [`receive_request_body(true)`](https://docs.rs/bulwark-wasm-sdk/latest/bulwark_wasm_sdk/fn.receive_request_body.html)
-///   or [`receive_response_body(true)`](https://docs.rs/bulwark-wasm-sdk/latest/bulwark_wasm_sdk/fn.receive_response_body.html)
-///   when the corresponding handlers have been defined.
+/// - `handle_init` - Rarely used. Called when the plugin is first loaded.
 /// - `handle_request_enrichment` - This handler is called for every incoming request, before any decision-making will occur.
-///   It is typically used to perform enrichment tasks with the
-///   [`set_param_value`](https://docs.rs/bulwark-wasm-sdk/latest/bulwark_wasm_sdk/fn.set_param_value.html) function.
-///   The request body will not yet be available when this handler is called.
+///   It is typically used to perform enrichment tasks.
 /// - `handle_request_decision` - This handler is called to make an initial decision.
 /// - `handle_response_decision` - This handler is called once the interior service has received the request, processed it, and
 ///   returned a response, but prior to that response being sent onwards to the original exterior client. Notably, a `restricted`
@@ -43,8 +37,11 @@ const WIT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wit");
 /// struct ExamplePlugin;
 ///
 /// #[bulwark_plugin]
-/// impl Handlers for ExamplePlugin {
-///     fn handle_request_decision() -> Result {
+/// impl HttpHandlers for ExamplePlugin {
+///     fn handle_request_decision(
+///         req: Request,
+///         labels: HashMap<String, String>,
+///     ) -> Result {
 ///         println!("hello world");
 ///         // implement detection logic here
 ///         Ok(())
@@ -159,7 +156,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                             _: ::std::collections::HashMap<String, String>
                         ) -> Result<::bulwark_wasm_sdk::HandlerOutput, ::bulwark_wasm_sdk::Error> {
                             Ok(::bulwark_wasm_sdk::HandlerOutput {
-                                params: ::std::collections::HashMap::new(),
+                                labels: ::std::collections::HashMap::new(),
                                 decision: ::bulwark_wasm_sdk::Decision::default(),
                                 tags: vec![],
                             })
@@ -175,7 +172,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                             _: ::std::collections::HashMap<String, String>
                         ) -> Result<::bulwark_wasm_sdk::HandlerOutput, ::bulwark_wasm_sdk::Error> {
                             Ok(::bulwark_wasm_sdk::HandlerOutput {
-                                params: ::std::collections::HashMap::new(),
+                                labels: ::std::collections::HashMap::new(),
                                 decision: ::bulwark_wasm_sdk::Decision::default(),
                                 tags: vec![],
                             })
@@ -243,7 +240,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
         impl From<crate::handlers::exports::bulwark::plugin::http_handlers::HandlerOutput> for ::bulwark_wasm_sdk::HandlerOutput {
             fn from(handler_output: crate::handlers::exports::bulwark::plugin::http_handlers::HandlerOutput) -> Self {
                 Self {
-                    params: handler_output.params.iter().cloned().collect(),
+                    labels: handler_output.labels.iter().cloned().collect(),
                     decision: handler_output.decision.into(),
                     tags: handler_output.tags.clone(),
                 }
@@ -253,7 +250,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
         impl From<bulwark_wasm_sdk::HandlerOutput> for crate::handlers::exports::bulwark::plugin::http_handlers::HandlerOutput {
             fn from(handler_output: ::bulwark_wasm_sdk::HandlerOutput) -> Self {
                 Self {
-                    params: handler_output.params.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+                    labels: handler_output.labels.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
                     decision: handler_output.decision.into(),
                     tags: handler_output.tags.clone(),
                 }
@@ -430,8 +427,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
 /// The `handler` attribute is normally applied automatically by the `bulwark_plugin` macro and
 /// need not be specified explicitly.
 ///
-/// The associated function must take no parameters and return a `bulwark_wasm_sdk::Result`. It may only be
-/// named one of the following:
+/// The associated function must have the correct signature and may only be named one of the following:
 /// - `handle_init`
 /// - `handle_request_enrichment`
 /// - `handle_request_decision`
@@ -479,16 +475,16 @@ pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
                 #(#attrs)*
                 fn handle_request_enrichment(
                     request: handlers::wasi::http::types::IncomingRequest,
-                    params: wit_bindgen::rt::vec::Vec<handlers::bulwark::plugin::types::Param>,
+                    labels: wit_bindgen::rt::vec::Vec<handlers::bulwark::plugin::types::Label>,
                 ) -> Result<
-                    wit_bindgen::rt::vec::Vec<handlers::bulwark::plugin::types::Param>,
+                    wit_bindgen::rt::vec::Vec<handlers::bulwark::plugin::types::Label>,
                     handlers::exports::bulwark::plugin::http_handlers::Error,
                 > {
                     // Declares the inlined inner function, calls it, then performs very
                     // basic error handling on the result
                     #[inline(always)]
                     #inner_fn
-                    let result = #name(request.try_into()?, params.iter().cloned().collect()).map(|t| {
+                    let result = #name(request.try_into()?, labels.iter().cloned().collect()).map(|t| {
                         t.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
                     }).map_err(|e| {
                         handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
@@ -510,7 +506,7 @@ pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
                 #(#attrs)*
                 fn handle_request_decision(
                     request: handlers::wasi::http::types::IncomingRequest,
-                    params: wit_bindgen::rt::vec::Vec<handlers::bulwark::plugin::types::Param>,
+                    labels: wit_bindgen::rt::vec::Vec<handlers::bulwark::plugin::types::Label>,
                 ) -> Result<
                     handlers::exports::bulwark::plugin::http_handlers::HandlerOutput,
                     handlers::exports::bulwark::plugin::http_handlers::Error,
@@ -518,7 +514,7 @@ pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
                     // Declares the inlined inner function, calls it, then translates the result
                     #[inline(always)]
                     #inner_fn
-                    let result = #name(request.try_into()?, params.iter().cloned().collect()).map(|t| {
+                    let result = #name(request.try_into()?, labels.iter().cloned().collect()).map(|t| {
                         t.into()
                     }).map_err(|e| {
                         handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
@@ -541,7 +537,7 @@ pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
                 fn handle_response_decision(
                     request: handlers::wasi::http::types::IncomingRequest,
                     response: handlers::wasi::http::types::IncomingResponse,
-                    params: wit_bindgen::rt::vec::Vec<handlers::bulwark::plugin::types::Param>,
+                    labels: wit_bindgen::rt::vec::Vec<handlers::bulwark::plugin::types::Label>,
                 ) -> Result<
                     handlers::exports::bulwark::plugin::http_handlers::HandlerOutput,
                     handlers::exports::bulwark::plugin::http_handlers::Error,
@@ -550,7 +546,7 @@ pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
                     // basic error handling on the result
                     #[inline(always)]
                     #inner_fn
-                    let result = #name(request.try_into()?, response.try_into()?, params.iter().cloned().collect()).map(|t| {
+                    let result = #name(request.try_into()?, response.try_into()?, labels.iter().cloned().collect()).map(|t| {
                         t.into()
                     }).map_err(|e| {
                         handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
@@ -573,14 +569,14 @@ pub fn handler(_: TokenStream, input: TokenStream) -> TokenStream {
                 fn handle_decision_feedback(
                     request: handlers::wasi::http::types::IncomingRequest,
                     response: handlers::wasi::http::types::IncomingResponse,
-                    params: wit_bindgen::rt::vec::Vec<handlers::bulwark::plugin::types::Param>,
+                    labels: wit_bindgen::rt::vec::Vec<handlers::bulwark::plugin::types::Label>,
                     verdict: handlers::bulwark::plugin::types::Verdict,
                 ) -> Result<(), handlers::exports::bulwark::plugin::http_handlers::Error> {
                     // Declares the inlined inner function, calls it, then performs very
                     // basic error handling on the result
                     #[inline(always)]
                     #inner_fn
-                    let result = #name(request.try_into()?, response.try_into()?, params.iter().cloned().collect(), verdict.into()).map_err(|e| {
+                    let result = #name(request.try_into()?, response.try_into()?, labels.iter().cloned().collect(), verdict.into()).map_err(|e| {
                         handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
                     });
                     #[allow(unused_must_use)]

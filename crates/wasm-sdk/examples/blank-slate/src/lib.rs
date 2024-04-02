@@ -7,7 +7,7 @@ pub struct BlankSlate;
 impl HttpHandlers for BlankSlate {
     fn handle_request_enrichment(
         _request: Request,
-        _params: HashMap<String, String>,
+        _labels: HashMap<String, String>,
     ) -> Result<HashMap<String, String>, Error> {
         // Cross-plugin communication logic goes here, or leave as a no-op.
         Ok(HashMap::new())
@@ -15,7 +15,7 @@ impl HttpHandlers for BlankSlate {
 
     fn handle_request_decision(
         _request: Request,
-        _params: HashMap<String, String>,
+        _labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, Error> {
         let mut output = HandlerOutput::default();
         // Main detection logic goes here.
@@ -27,7 +27,7 @@ impl HttpHandlers for BlankSlate {
     fn handle_response_decision(
         _request: Request,
         _response: Response,
-        _params: HashMap<String, String>,
+        _labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, Error> {
         let mut output = HandlerOutput::default();
         // Process responses from the interior service here, or leave as a no-op.
@@ -38,7 +38,7 @@ impl HttpHandlers for BlankSlate {
     fn handle_decision_feedback(
         _request: Request,
         _response: Response,
-        _params: HashMap<String, String>,
+        _labels: HashMap<String, String>,
         _verdict: Verdict,
     ) -> Result<(), Error> {
         // Feedback loop implementations go here, or leave as a no-op.

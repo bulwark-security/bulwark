@@ -64,23 +64,21 @@ async fn join_all<T, F>(
 
     while let Some(r) = join_set.join_next().await {
         match r {
-            Ok(Ok(Ok(params))) => success(params),
+            Ok(Ok(Ok(output))) => success(output),
+            // These 3 errors are only logged, not bubbled up
             Ok(Ok(Err(err))) => {
-                // This error is only logged, not bubbled up
                 error!(
                     message = "plugin execution error",
                     elapsed = ?err,
                 );
             }
             Ok(Err(err)) => {
-                // This error is only logged, not bubbled up
                 warn!(
                     message = "timeout on plugin execution",
                     elapsed = ?err,
                 );
             }
             Err(err) => {
-                // This error is only logged, not bubbled up
                 warn!(
                     message = "join error on plugin execution",
                     error_message = ?err,
@@ -161,10 +159,10 @@ impl ExternalProcessor for BulwarkProcessor {
                     let mut timeout_duration = Duration::from_millis(10);
                     match route_result {
                         Ok(route_match) => {
-                            // TODO: may want to expose params to logging after redaction
-                            let mut params = HashMap::new();
+                            // TODO: may want to expose labels to logging after redaction
+                            let mut labels = HashMap::new();
                             for (key, value) in route_match.params.iter() {
-                                params.insert(format!("param.{}", key), value.to_string());
+                                labels.insert(format!("route.{}", key), value.to_string());
                             }
 
                             let route_target = route_match.value;
@@ -184,7 +182,7 @@ impl ExternalProcessor for BulwarkProcessor {
                                 stream: arc_stream,
                                 plugin_semaphore,
                                 plugin_instances: plugin_instances.clone(),
-                                params,
+                                labels,
                                 request: request.clone(),
                                 response: None,
                                 verdict: None,
@@ -354,11 +352,11 @@ impl BulwarkProcessor {
     async fn dispatch_request_enrichment(
         plugin_instance: Arc<Mutex<PluginInstance>>,
         request: Arc<bulwark_wasm_sdk::Request>,
-        params: HashMap<String, String>,
+        labels: HashMap<String, String>,
     ) -> Result<HashMap<String, String>, PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
         let result = plugin_instance
-            .handle_request_enrichment(request, params)
+            .handle_request_enrichment(request, labels)
             .await;
         match result {
             Ok(_) => metrics::increment_counter!(
@@ -378,11 +376,11 @@ impl BulwarkProcessor {
     async fn dispatch_request_decision(
         plugin_instance: Arc<Mutex<PluginInstance>>,
         request: Arc<bulwark_wasm_sdk::Request>,
-        params: HashMap<String, String>,
+        labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
         let result = plugin_instance
-            .handle_request_decision(request, params)
+            .handle_request_decision(request, labels)
             .await;
         match result {
             Ok(_) => metrics::increment_counter!(
@@ -403,11 +401,11 @@ impl BulwarkProcessor {
         plugin_instance: Arc<Mutex<PluginInstance>>,
         request: Arc<bulwark_wasm_sdk::Request>,
         response: Arc<bulwark_wasm_sdk::Response>,
-        params: HashMap<String, String>,
+        labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
         let result = plugin_instance
-            .handle_response_decision(request, response, params)
+            .handle_response_decision(request, response, labels)
             .await;
         match result {
             Ok(_) => metrics::increment_counter!(
@@ -428,12 +426,12 @@ impl BulwarkProcessor {
         plugin_instance: Arc<Mutex<PluginInstance>>,
         request: Arc<bulwark_wasm_sdk::Request>,
         response: Arc<bulwark_wasm_sdk::Response>,
-        params: HashMap<String, String>,
+        labels: HashMap<String, String>,
         verdict: bulwark_wasm_sdk::Verdict,
     ) -> Result<(), PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
         let result = plugin_instance
-            .handle_decision_feedback(request, response, params, verdict)
+            .handle_decision_feedback(request, response, labels, verdict)
             .await;
         match result {
             Ok(_) => metrics::increment_counter!(
@@ -457,7 +455,7 @@ struct ProcessorContext {
     stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
     plugin_semaphore: Arc<tokio::sync::Semaphore>,
     plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-    params: HashMap<String, String>,
+    labels: HashMap<String, String>,
     request: Arc<bulwark_wasm_sdk::Request>,
     response: Option<Arc<bulwark_wasm_sdk::Response>>,
     verdict: Option<Verdict>,
@@ -613,13 +611,13 @@ impl ProcessorContext {
                 .await
                 .expect("semaphore closed");
             let request = self.request.clone();
-            let params = self.params.clone();
+            let labels = self.labels.clone();
             enrichment_phase_tasks.spawn(
                 timeout(self.timeout_duration, async move {
                     let result = BulwarkProcessor::dispatch_request_enrichment(
                         plugin_instance,
                         request,
-                        params,
+                        labels,
                     )
                     .await;
                     drop(permit);
@@ -629,13 +627,13 @@ impl ProcessorContext {
             );
         }
 
-        let mut params = self.params.clone();
-        join_all(enrichment_phase_tasks, |new_params| {
-            // Merge params from each plugin
-            params.extend(new_params);
+        let mut labels = self.labels.clone();
+        join_all(enrichment_phase_tasks, |new_labels| {
+            // Merge labels from each plugin
+            labels.extend(new_labels);
         })
         .await;
-        self.params = params;
+        self.labels = labels;
     }
 
     async fn execute_request_decision_phase(&mut self) {
@@ -657,13 +655,13 @@ impl ProcessorContext {
             let outputs = outputs.clone();
             let plugin_outputs = plugin_outputs.clone();
             let request = self.request.clone();
-            let params = self.params.clone();
+            let labels = self.labels.clone();
             decision_phase_tasks.spawn(
                 timeout(self.timeout_duration, async move {
                     let output_result = BulwarkProcessor::dispatch_request_decision(
                         plugin_instance.clone(),
                         request,
-                        params,
+                        labels,
                     )
                     .await;
                     if let Ok(output) = &output_result {
@@ -693,20 +691,20 @@ impl ProcessorContext {
                         outputs.push(HandlerOutput {
                             decision: bulwark_wasm_sdk::UNKNOWN,
                             tags: HashSet::from([String::from("error")]),
-                            params: HashMap::new(),
+                            labels: HashMap::new(),
                         });
                     }
                     drop(permit);
-                    output_result.map(|output| output.params)
+                    output_result.map(|output| output.labels)
                 })
                 .instrument(decision_phase_child_span.or_current()),
             );
         }
 
-        let mut params = self.params.clone();
-        join_all(decision_phase_tasks, |new_params| {
-            // Merge params from each plugin
-            params.extend(new_params);
+        let mut labels = self.labels.clone();
+        join_all(decision_phase_tasks, |new_labels| {
+            // Merge labels from each plugin
+            labels.extend(new_labels);
         })
         .await;
 
@@ -723,7 +721,7 @@ impl ProcessorContext {
         self.combined_output = HandlerOutput {
             decision,
             tags: tags.into_iter().collect(),
-            params,
+            labels,
         };
         self.plugin_outputs = plugin_outputs.clone();
     }
@@ -750,7 +748,7 @@ impl ProcessorContext {
                 .response
                 .clone()
                 .expect("cannot execute response phase without response");
-            let params = self.params.clone();
+            let labels = self.labels.clone();
             let outputs = outputs.clone();
             let new_plugin_outputs = new_plugin_outputs.clone();
             let prior_plugin_outputs = self
@@ -763,7 +761,7 @@ impl ProcessorContext {
                         plugin_instance.clone(),
                         request,
                         response,
-                        params,
+                        labels,
                     )
                     .await;
                     if let Ok(output) = &output_result {
@@ -803,20 +801,20 @@ impl ProcessorContext {
                         outputs.push(HandlerOutput {
                             decision: bulwark_wasm_sdk::UNKNOWN,
                             tags: HashSet::from([String::from("error")]),
-                            params: HashMap::new(),
+                            labels: HashMap::new(),
                         });
                     }
                     drop(permit);
-                    output_result.map(|output| output.params)
+                    output_result.map(|output| output.labels)
                 })
                 .instrument(response_phase_child_span.or_current()),
             );
         }
 
-        let mut params = self.params.clone();
-        join_all(response_phase_tasks, |new_params| {
-            // Merge params from each plugin
-            params.extend(new_params);
+        let mut labels = self.labels.clone();
+        join_all(response_phase_tasks, |new_labels| {
+            // Merge labels from each plugin
+            labels.extend(new_labels);
         })
         .await;
 
@@ -833,7 +831,7 @@ impl ProcessorContext {
         self.combined_output = HandlerOutput {
             decision,
             tags: tags.into_iter().collect(),
-            params,
+            labels,
         };
         self.plugin_outputs = new_plugin_outputs.clone();
     }
@@ -889,7 +887,7 @@ impl ProcessorContext {
                 .response
                 .clone()
                 .expect("cannot execute feedback phase without response");
-            let params = self.params.clone();
+            let labels = self.labels.clone();
             let verdict = verdict.clone();
             feedback_phase_tasks.spawn(
                 timeout(self.timeout_duration, async move {
@@ -897,7 +895,7 @@ impl ProcessorContext {
                         plugin_instance,
                         request,
                         response,
-                        params,
+                        labels,
                         verdict,
                     )
                     .await;
