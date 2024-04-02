@@ -82,14 +82,14 @@ async fn test_redis_plugin() -> Result<(), Box<dyn std::error::Error>> {
     plugin_instance.handle_init().await?;
 
     // Perform request enrichment.
-    let new_params = plugin_instance
+    let new_labels = plugin_instance
         .handle_request_enrichment(request.clone(), HashMap::new())
         .await?;
-    assert!(new_params.is_empty());
+    assert!(new_labels.is_empty());
 
     // Handle request decision.
     let handler_output = plugin_instance
-        .handle_request_decision(request.clone(), new_params)
+        .handle_request_decision(request.clone(), new_labels)
         .await?;
 
     assert_eq!(handler_output.decision.accept, 0.0);
@@ -107,7 +107,7 @@ async fn test_redis_plugin() -> Result<(), Box<dyn std::error::Error>> {
 
     // Handle response decision.
     let handler_output = plugin_instance
-        .handle_response_decision(request.clone(), response.clone(), handler_output.params)
+        .handle_response_decision(request.clone(), response.clone(), handler_output.labels)
         .await?;
 
     assert_eq!(handler_output.decision.accept, 0.0);
@@ -121,7 +121,7 @@ async fn test_redis_plugin() -> Result<(), Box<dyn std::error::Error>> {
         .handle_decision_feedback(
             request.clone(),
             response.clone(),
-            handler_output.params,
+            handler_output.labels,
             bulwark_wasm_sdk::Verdict {
                 decision: handler_output.decision,
                 outcome: bulwark_wasm_sdk::Outcome::Accepted,

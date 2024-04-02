@@ -71,8 +71,8 @@ pub type HeaderValue = http::HeaderValue;
 /// A `HandlerOutput` represents a decision and associated output for a single handler within a single detection.
 #[derive(Clone, Default)]
 pub struct HandlerOutput {
-    /// The `params` value represents the new params to enrich the request with.
-    pub params: HashMap<String, String>,
+    /// The `labels` field contains key/value pairs used to enrich the request with additional information.
+    pub labels: HashMap<String, String>,
     /// The `decision` value represents the combined numerical decision from multiple detections.
     pub decision: Decision,
     /// The `tags` value represents the new tags to annotate the request with.
