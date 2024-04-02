@@ -46,14 +46,14 @@ fn test_blank_slate_exec() -> Result<(), Box<dyn std::error::Error>> {
     tokio_test::block_on(plugin_instance.handle_init())?;
 
     // Perform request enrichment.
-    let new_params = tokio_test::block_on(
+    let new_labels = tokio_test::block_on(
         plugin_instance.handle_request_enrichment(request.clone(), HashMap::new()),
     )?;
-    assert!(new_params.is_empty());
+    assert!(new_labels.is_empty());
 
     // Handle request decision.
     let handler_output =
-        tokio_test::block_on(plugin_instance.handle_request_decision(request.clone(), new_params))?;
+        tokio_test::block_on(plugin_instance.handle_request_decision(request.clone(), new_labels))?;
 
     assert_eq!(handler_output.decision.accept, 0.0);
     assert_eq!(handler_output.decision.restrict, 0.0);
@@ -72,7 +72,7 @@ fn test_blank_slate_exec() -> Result<(), Box<dyn std::error::Error>> {
     let handler_output = tokio_test::block_on(plugin_instance.handle_response_decision(
         request.clone(),
         response.clone(),
-        handler_output.params,
+        handler_output.labels,
     ))?;
 
     assert_eq!(handler_output.decision.accept, 0.0);
@@ -85,7 +85,7 @@ fn test_blank_slate_exec() -> Result<(), Box<dyn std::error::Error>> {
     tokio_test::block_on(plugin_instance.handle_decision_feedback(
         request.clone(),
         response.clone(),
-        handler_output.params,
+        handler_output.labels,
         bulwark_wasm_sdk::Verdict {
             decision: handler_output.decision,
             outcome: bulwark_wasm_sdk::Outcome::Accepted,
@@ -141,14 +141,14 @@ fn test_evil_bit_benign_exec() -> Result<(), Box<dyn std::error::Error>> {
     tokio_test::block_on(plugin_instance.handle_init())?;
 
     // Perform request enrichment.
-    let new_params = tokio_test::block_on(
+    let new_labels = tokio_test::block_on(
         plugin_instance.handle_request_enrichment(request.clone(), HashMap::new()),
     )?;
-    assert!(new_params.is_empty());
+    assert!(new_labels.is_empty());
 
     // Handle request decision.
     let handler_output =
-        tokio_test::block_on(plugin_instance.handle_request_decision(request.clone(), new_params))?;
+        tokio_test::block_on(plugin_instance.handle_request_decision(request.clone(), new_labels))?;
 
     assert_eq!(handler_output.decision.accept, 0.0);
     assert_eq!(handler_output.decision.restrict, 0.0);
@@ -167,7 +167,7 @@ fn test_evil_bit_benign_exec() -> Result<(), Box<dyn std::error::Error>> {
     let handler_output = tokio_test::block_on(plugin_instance.handle_response_decision(
         request.clone(),
         response.clone(),
-        handler_output.params,
+        handler_output.labels,
     ))?;
 
     assert_eq!(handler_output.decision.accept, 0.0);
@@ -179,7 +179,7 @@ fn test_evil_bit_benign_exec() -> Result<(), Box<dyn std::error::Error>> {
     tokio_test::block_on(plugin_instance.handle_decision_feedback(
         request.clone(),
         response.clone(),
-        handler_output.params,
+        handler_output.labels,
         bulwark_wasm_sdk::Verdict {
             decision: handler_output.decision,
             outcome: bulwark_wasm_sdk::Outcome::Accepted,
@@ -237,14 +237,14 @@ fn test_evil_bit_evil_exec() -> Result<(), Box<dyn std::error::Error>> {
     tokio_test::block_on(plugin_instance.handle_init())?;
 
     // Perform request enrichment.
-    let new_params = tokio_test::block_on(
+    let new_labels = tokio_test::block_on(
         plugin_instance.handle_request_enrichment(request.clone(), HashMap::new()),
     )?;
-    assert!(new_params.is_empty());
+    assert!(new_labels.is_empty());
 
     // Handle request decision.
     let handler_output =
-        tokio_test::block_on(plugin_instance.handle_request_decision(request.clone(), new_params))?;
+        tokio_test::block_on(plugin_instance.handle_request_decision(request.clone(), new_labels))?;
 
     assert_eq!(handler_output.decision.accept, 0.0);
     assert_eq!(handler_output.decision.restrict, 1.0);
@@ -264,7 +264,7 @@ fn test_evil_bit_evil_exec() -> Result<(), Box<dyn std::error::Error>> {
     tokio_test::block_on(plugin_instance.handle_decision_feedback(
         request.clone(),
         response.clone(),
-        handler_output.params,
+        handler_output.labels,
         bulwark_wasm_sdk::Verdict {
             decision: handler_output.decision,
             outcome: bulwark_wasm_sdk::Outcome::Restricted,

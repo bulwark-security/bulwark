@@ -8,7 +8,7 @@ impl HttpHandlers for EvilBit {
     /// Check to see if the request has confessed malicious intent by setting an `Evil` header.
     fn handle_request_decision(
         request: Request,
-        _params: HashMap<String, String>,
+        _labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, Error> {
         let mut output = HandlerOutput::default();
         let evil_header = request.headers().get("Evil");
