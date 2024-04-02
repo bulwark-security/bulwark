@@ -37,7 +37,7 @@ const WIT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wit");
 /// struct ExamplePlugin;
 ///
 /// #[bulwark_plugin]
-/// impl Handlers for ExamplePlugin {
+/// impl HttpHandlers for ExamplePlugin {
 ///     fn handle_request_decision(
 ///         req: Request,
 ///         labels: HashMap<String, String>,
