@@ -37,8 +37,8 @@ interface types {
 
     /// A `HandlerOutput` represents the combined result of executing a detection's handlers.
     record handler-output {
-        /// The `params` value represents parameters used to enrich the request with additional information.
-        params: list<param>,
+        /// The `labels` field contains key/value pairs used to enrich the request with additional information.
+        labels: list<label>,
         /// The `decision` value represents the verdict of the handler.
         decision: decision,
         /// The `tags` value represents tags used to annotate the request.
@@ -55,9 +55,9 @@ interface types {
         tags: list<string>,
     }
 
-    /// A `Param` maps a parameter name to a parameter value.
+    /// A `Label` maps a label name to a label value.
     ///
-    /// Parameters are used to represent arbitrary information about a request. They may be application-specific and are
+    /// Labels are used to represent arbitrary information about a request. They may be application-specific and are
     /// often produced by parsing the request, decrypting session cookies, or by calling out to an external service.
-    type param = tuple<string, string>;
+    type label = tuple<string, string>;
 }

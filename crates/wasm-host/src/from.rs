@@ -144,7 +144,7 @@ impl From<crate::bindings::bulwark::plugin::types::HandlerOutput> for HandlerOut
         Self {
             decision: output.decision.into(),
             tags: HashSet::from_iter(output.tags),
-            params: HashMap::from_iter(output.params),
+            labels: HashMap::from_iter(output.labels),
         }
     }
 }

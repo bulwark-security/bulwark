@@ -71,16 +71,16 @@ pub struct HandlerOutput {
     pub decision: Decision,
     /// The tags applied by plugins to annotate a [`Decision`]
     pub tags: HashSet<String>,
-    /// The parameters applied by plugins to enrich the request.
-    pub params: HashMap<String, String>,
+    /// The labels applied by plugins to enrich the request.
+    pub labels: HashMap<String, String>,
 }
 
 impl HandlerOutput {
-    // Extends the parameters with the provided `params`.
-    //
-    // See [`HashMap::extend`] for more information.
-    pub fn extend_params(mut self, params: HashMap<String, String>) -> Self {
-        self.params.extend(params);
+    /// Extends the labels with the provided ones.
+    ///
+    /// See [`HashMap::extend`] for more information.
+    pub fn extend_labels(mut self, labels: HashMap<String, String>) -> Self {
+        self.labels.extend(labels);
         self
     }
 }
@@ -346,7 +346,7 @@ impl PluginInstance {
     pub async fn handle_request_enrichment(
         &mut self,
         request: Arc<bulwark_wasm_sdk::Request>,
-        params: HashMap<String, String>,
+        labels: HashMap<String, String>,
     ) -> Result<HashMap<String, String>, PluginExecutionError> {
         let incoming_request: http::Request<HyperIncomingBody> = (*request).clone().map(|body| {
             if !body.is_empty() {
@@ -363,14 +363,14 @@ impl PluginInstance {
             .new_incoming_request(incoming_request)?;
 
         // TODO: need to determine if automatic calls to remove_forbidden_headers are going to be a problem
-        let params: Vec<(String, String)> = params.into_iter().collect();
+        let labels: Vec<(String, String)> = labels.into_iter().collect();
         let result = self
             .http_detection
             .bulwark_plugin_http_handlers()
             .call_handle_request_enrichment(
                 self.store.as_context_mut(),
                 incoming_request_handle,
-                params.as_slice(),
+                labels.as_slice(),
             )
             .await;
         match result {
@@ -383,16 +383,16 @@ impl PluginInstance {
                 "ref" => self.plugin_reference(), "result" => "error"
             ),
         }
-        let params: HashMap<String, String> = result??.into_iter().collect();
+        let labels: HashMap<String, String> = result??.into_iter().collect();
 
-        Ok(params)
+        Ok(labels)
     }
 
     /// Executes the guest's `on_request_decision` function.
     pub async fn handle_request_decision(
         &mut self,
         request: Arc<bulwark_wasm_sdk::Request>,
-        params: HashMap<String, String>,
+        labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, PluginExecutionError> {
         let incoming_request: http::Request<HyperIncomingBody> = (*request).clone().map(|body| {
             if !body.is_empty() {
@@ -408,14 +408,14 @@ impl PluginInstance {
             .data_mut()
             .new_incoming_request(incoming_request)?;
 
-        let params: Vec<(String, String)> = params.into_iter().collect();
+        let labels: Vec<(String, String)> = labels.into_iter().collect();
         let result = self
             .http_detection
             .bulwark_plugin_http_handlers()
             .call_handle_request_decision(
                 self.store.as_context_mut(),
                 incoming_request_handle,
-                params.as_slice(),
+                labels.as_slice(),
             )
             .await;
         match result {
@@ -437,7 +437,7 @@ impl PluginInstance {
         &mut self,
         request: Arc<bulwark_wasm_sdk::Request>,
         response: Arc<bulwark_wasm_sdk::Response>,
-        params: HashMap<String, String>,
+        labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, PluginExecutionError> {
         let incoming_request: http::Request<HyperIncomingBody> = (*request).clone().map(|body| {
             if !body.is_empty() {
@@ -475,7 +475,7 @@ impl PluginInstance {
             .data_mut()
             .new_incoming_response(incoming_response)?;
 
-        let params: Vec<(String, String)> = params.into_iter().collect();
+        let labels: Vec<(String, String)> = labels.into_iter().collect();
         let result = self
             .http_detection
             .bulwark_plugin_http_handlers()
@@ -483,7 +483,7 @@ impl PluginInstance {
                 self.store.as_context_mut(),
                 incoming_request_handle,
                 incoming_response_handle,
-                params.as_slice(),
+                labels.as_slice(),
             )
             .await;
         match result {
@@ -505,7 +505,7 @@ impl PluginInstance {
         &mut self,
         request: Arc<bulwark_wasm_sdk::Request>,
         response: Arc<bulwark_wasm_sdk::Response>,
-        params: HashMap<String, String>,
+        labels: HashMap<String, String>,
         verdict: bulwark_wasm_sdk::Verdict,
     ) -> Result<(), PluginExecutionError> {
         let incoming_request: http::Request<HyperIncomingBody> = (*request).clone().map(|body| {
@@ -543,7 +543,7 @@ impl PluginInstance {
             .data_mut()
             .new_incoming_response(incoming_response)?;
 
-        let params: Vec<(String, String)> = params.into_iter().collect();
+        let labels: Vec<(String, String)> = labels.into_iter().collect();
         let result = self
             .http_detection
             .bulwark_plugin_http_handlers()
@@ -551,7 +551,7 @@ impl PluginInstance {
                 self.store.as_context_mut(),
                 incoming_request_handle,
                 incoming_response_handle,
-                params.as_slice(),
+                labels.as_slice(),
                 &verdict.into(),
             )
             .await;
