@@ -295,13 +295,17 @@ pub fn check_rate_limit<K: AsRef<str>>(key: K) -> Result<Option<Rate>, crate::Re
 /// struct CircuitBreaker;
 ///
 /// #[bulwark_plugin]
-/// impl Handlers for CircuitBreaker {
-///     fn on_response_decision() -> Result {
-///         if let Some(ip) = get_client_ip() {
+/// impl HttpHandlers for CircuitBreaker {
+///     fn handle_response_decision(
+///         req: Request,
+///         resp: Response,
+///         _labels: HashMap<String, String>,
+///     ) -> Result {
+///         if let Some(ip) = client_ip(req) {
 ///             let key = format!("client.ip:{ip}");
 ///             // "success" or "failure" could be determined by other methods besides status code
-///             let success = get_response().map(|r| r.status().as_u16() < 500).unwrap_or(false);
-///             let breaker = increment_breaker(
+///             let success = resp.status().as_u16() < 500;
+///             let breaker = incr_breaker(
 ///                 &key,
 ///                 1,
 ///                 success,
