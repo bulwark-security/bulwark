@@ -50,14 +50,35 @@ jobs:
         os:
           - ubuntu-latest
         redis-version:
-          - 6
-          - 7
+          - "6.2.14"
+          - "7.2.4"
+        envoy-version:
+          - "1.22"
 
     runs-on: ${{ matrix.os }}
+
+    services:
+      redis:
+        image: redis:${{ matrix.redis-version }}
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+      echo:
+        image: hashicorp/http-echo
+        ports:
+          - 5678:5678
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Launch Envoy service
+        run: /usr/bin/docker run -d --name envoy --network "${{ job.container.network }}" --network-alias envoy -p 8080:8080 -e GITHUB_ACTIONS=true -e CI=true -v "./tests/gha_envoy.yaml":"/etc/envoy/envoy.yaml" envoyproxy/envoy:v${{ matrix.envoy-version }}-latest envoy -l debug -c /etc/envoy/envoy.yaml
 
       - name: Install Rust
         uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
@@ -70,13 +91,17 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2.7.3
 
-      - name: Start Redis
-        uses: supercharge/redis-github-action@1.8.0
-        with:
-          redis-version: ${{ matrix.redis-version }}
+      - name: Docker services
+        run: /usr/bin/docker ps
 
       - name: Run bulwark tests
         uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
         with:
           command: test
-          args: -p bulwark-cli -p bulwark-build -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk -p bulwark-wasm-sdk-macros
+          args: -p bulwark-cli -p bulwark-build -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk -p bulwark-wasm-sdk-macros -- --include-ignored
+
+      - name: Envoy logs
+        run: /usr/bin/docker logs envoy
+
+      - name: Kill Envoy service
+        run: /usr/bin/docker kill envoy

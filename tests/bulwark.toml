@@ -1,0 +1,23 @@
+[service]
+admin = false
+proxy_hops = 1
+
+[state]
+redis_uri = "redis://127.0.0.1:6379"
+
+[thresholds]
+observe_only = false
+
+[[plugin]]
+ref = "evil_bit"
+path = "dist/plugins/bulwark_evil_bit.wasm"
+
+[[resource]]
+route = "/"
+plugins = ["evil_bit"]
+timeout = 50
+
+[[resource]]
+route = "/*params"
+plugins = ["evil_bit"]
+timeout = 50
