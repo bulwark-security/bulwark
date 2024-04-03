@@ -55,7 +55,8 @@ jobs:
         envoy-version:
           - "1.22"
           - "1.26"
-          - "1.29"
+          # TODO: add 1.29 back in once #233 is fixed and Envoy compatibility issue has been resolved
+          # - "1.29"
         exclude:
           - redis-version: "6.2.14"
             envoy-version: "1.22"
