@@ -55,6 +55,29 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    services:
+      redis:
+        image: redis
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+      envoy:
+        image: envoyproxy/envoy:v1.22-latest
+        volumes:
+          - ./tests/envoy.yaml:/etc/envoy/envoy.yaml
+        ports:
+          - 8080:8080
+
+      echo:
+        image: hashicorp/http-echo
+        ports:
+          - 5678:5678
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -70,13 +93,8 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2.7.3
 
-      - name: Start Redis
-        uses: supercharge/redis-github-action@1.8.0
-        with:
-          redis-version: ${{ matrix.redis-version }}
-
       - name: Run bulwark tests
         uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
         with:
           command: test
-          args: -p bulwark-cli -p bulwark-build -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk -p bulwark-wasm-sdk-macros
+          args: -p bulwark-cli -p bulwark-build -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk -p bulwark-wasm-sdk-macros -- --include-ignored

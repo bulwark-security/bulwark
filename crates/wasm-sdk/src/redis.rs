@@ -289,7 +289,7 @@ pub fn check_rate_limit<K: AsRef<str>>(key: K) -> Result<Option<Rate>, crate::Re
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```no_compile
 /// use bulwark_wasm_sdk::*;
 ///
 /// struct CircuitBreaker;

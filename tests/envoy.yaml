@@ -46,26 +46,27 @@ static_resources:
     # The interior service that Bulwark is protecting.
     - name: interior
       connect_timeout: 0.25s
-      type: STATIC
+      type: LOGICAL_DNS
       lb_policy: ROUND_ROBIN
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
           "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
           explicit_http_config:
-            http2_protocol_options: {}
+            http_protocol_options: {}
       load_assignment:
         cluster_name: interior
         endpoints:
           - lb_endpoints:
               - endpoint:
                   address:
+                    # echo service is mapped to this port on the host
                     socket_address:
-                      address: 127.0.0.1
-                      port_value: 8000
+                      address: gateway.docker.internal
+                      port_value: 5678
     # The Bulwark external processor.
     - name: bulwark
       connect_timeout: 0.25s
-      type: STATIC
+      type: LOGICAL_DNS
       lb_policy: ROUND_ROBIN
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -78,6 +79,7 @@ static_resources:
           - lb_endpoints:
               - endpoint:
                   address:
+                    # bulwark will be started on the host by the test suite
                     socket_address:
-                      address: 127.0.0.1
+                      address: gateway.docker.internal
                       port_value: 8089
