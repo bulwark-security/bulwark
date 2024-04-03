@@ -42,11 +42,9 @@ async fn test_envoy_evil_bit() -> Result<(), Box<dyn std::error::Error>> {
 
     // send a friendly request to our envoy service
     let response = reqwest::get("http://127.0.0.1:8080").await?;
-    // assert!(response.status().is_success());
-    println!("response: {:?}", response);
+    assert!(response.status().is_success());
     let body = response.text().await?;
-    // assert!(body.contains("hello-world"));
-    println!("body: {:?}", body);
+    assert!(body.contains("hello-world"));
 
     // send an evil request to our envoy service
     let client = reqwest::Client::new();
@@ -55,11 +53,9 @@ async fn test_envoy_evil_bit() -> Result<(), Box<dyn std::error::Error>> {
         .header("Evil", "true")
         .send()
         .await?;
-    // assert!(response.status().is_client_error());
-    println!("response: {:?}", response);
+    assert!(response.status().is_client_error());
     let body = response.text().await?;
-    // assert!(body.contains("Access Denied"));
-    println!("body: {:?}", body);
+    assert!(body.contains("Access Denied"));
 
     Ok(())
 }
