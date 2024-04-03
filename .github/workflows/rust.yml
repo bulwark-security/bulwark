@@ -76,7 +76,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Launch Envoy service
-        run: /usr/bin/docker run -d --name envoy --network "${{ job.container.network }}" --network-alias envoy -p 8080:8080 -e GITHUB_ACTIONS=true -e CI=true -v "./tests/envoy.yaml":"/etc/envoy/envoy.yaml" envoyproxy/envoy:v1.22-latest
+        run: /usr/bin/docker run -d --name envoy --network "${{ job.container.network }}" --network-alias envoy -p 8080:8080 -e GITHUB_ACTIONS=true -e CI=true -v "./tests/gha_envoy.yaml":"/etc/envoy/envoy.yaml" envoyproxy/envoy:v1.22-latest envoy -l debug -c /etc/envoy/envoy.yaml
 
       - name: Install Rust
         uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
@@ -92,11 +92,17 @@ jobs:
       - name: Debug Docker services
         run: /usr/bin/docker ps
 
+      - name: Debug Envoy logs
+        run: /usr/bin/docker logs envoy
+
       - name: Run bulwark tests
         uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
         with:
           command: test
           args: -p bulwark-cli -p bulwark-build -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk -p bulwark-wasm-sdk-macros -- --include-ignored
+
+      - name: Debug Envoy logs again
+        run: /usr/bin/docker logs envoy
 
       - name: Kill Envoy service
         run: /usr/bin/docker kill envoy

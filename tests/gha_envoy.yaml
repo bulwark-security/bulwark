@@ -1,0 +1,85 @@
+static_resources:
+  listeners:
+    - name: http
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 8080
+      filter_chains:
+        - filters:
+            - name: envoy.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                codec_type: AUTO
+
+                # All HTTP traffic should route to the interior cluster.
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: local_service
+                      domains:
+                        - "*"
+                      routes:
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: interior
+
+                # Filtering should apply the Bulwark external processing filter before sending to the interior cluster.
+                http_filters:
+                  - name: envoy.filters.http.ext_proc
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                      message_timeout:
+                        seconds: 2
+                      grpc_service:
+                        timeout:
+                          seconds: 300
+                        envoy_grpc:
+                          cluster_name: bulwark
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+  clusters:
+    # The interior service that Bulwark is protecting.
+    - name: interior
+      connect_timeout: 0.25s
+      type: LOGICAL_DNS
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+      load_assignment:
+        cluster_name: interior
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    # echo service is mapped to this port on the host
+                    socket_address:
+                      address: echo
+                      port_value: 5678
+    # The Bulwark external processor.
+    - name: bulwark
+      connect_timeout: 0.25s
+      type: LOGICAL_DNS
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
+      load_assignment:
+        cluster_name: bulwark
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    # bulwark will be started on the host by the test suite
+                    socket_address:
+                      address: host-gateway
+                      port_value: 8089
