@@ -59,14 +59,14 @@ static_resources:
           - lb_endpoints:
               - endpoint:
                   address:
-                    # echo service is mapped to this port on the host
+                    # echo service is mapped to this port through services list
                     socket_address:
                       address: echo
                       port_value: 5678
     # The Bulwark external processor.
     - name: bulwark
       connect_timeout: 0.25s
-      type: LOGICAL_DNS
+      type: STATIC
       lb_policy: ROUND_ROBIN
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -81,5 +81,5 @@ static_resources:
                   address:
                     # bulwark will be started on the host by the test suite
                     socket_address:
-                      address: host-gateway
+                      address: 172.17.0.1
                       port_value: 8089
