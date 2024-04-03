@@ -41,12 +41,6 @@ async fn test_envoy_evil_bit() -> Result<(), Box<dyn std::error::Error>> {
     // wait for the server to finish starting before sending requests
     tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
 
-    // Debug what's going on with containers in our GH actions
-    Command::new("docker")
-        .args(["ps"])
-        .stdout(Stdio::piped())
-        .status()?;
-
     // send a friendly request to our envoy service
     let response = reqwest::get("http://127.0.0.1:8080").await?;
     assert!(response.status().is_success());
