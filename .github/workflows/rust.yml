@@ -89,11 +89,8 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2.7.3
 
-      - name: Debug Docker services
+      - name: Docker services
         run: /usr/bin/docker ps
-
-      - name: Debug Envoy logs
-        run: /usr/bin/docker logs envoy
 
       - name: Run bulwark tests
         uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
@@ -101,7 +98,7 @@ jobs:
           command: test
           args: -p bulwark-cli -p bulwark-build -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk -p bulwark-wasm-sdk-macros -- --include-ignored
 
-      - name: Debug Envoy logs again
+      - name: Envoy logs
         run: /usr/bin/docker logs envoy
 
       - name: Kill Envoy service

@@ -7,6 +7,7 @@ use tonic::transport::Server;
 
 // Ignored by default because it requires a running envoy instance with a specific configuration.
 // See ./github/workflows/rust.yml for more information.
+// Use local_envoy.yaml config for local testing. The gha_envoy.yaml config is used by GitHub Actions.
 #[tokio::test]
 #[ignore]
 async fn test_envoy_evil_bit() -> Result<(), Box<dyn std::error::Error>> {
