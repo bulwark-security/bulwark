@@ -66,13 +66,6 @@ jobs:
         ports:
           - 6379:6379
 
-      envoy:
-        image: envoyproxy/envoy:v1.22-latest
-        volumes:
-          - ./tests/envoy.yaml:/etc/envoy/envoy.yaml
-        ports:
-          - 8080:8080
-
       echo:
         image: hashicorp/http-echo
         ports:
@@ -81,6 +74,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Launch Envoy service
+        run: /usr/bin/docker run --network-alias envoy -p 8080:8080 -e GITHUB_ACTIONS=true -e CI=true -v "./tests/envoy.yaml":"/etc/envoy/envoy.yaml" envoyproxy/envoy:v1.22-latest
 
       - name: Install Rust
         uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
