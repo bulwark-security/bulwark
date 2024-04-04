@@ -58,6 +58,40 @@ pub fn config_keys() -> Vec<String> {
 /// # Arguments
 ///
 /// * `key` - A key indexing into a configuration [`Map`]
+///
+/// # Example
+///
+/// ```no_compile
+/// use bulwark_wasm_sdk::*;
+/// use ipnet::Ipv4Net;
+/// use iprange::IpRange;
+/// use std::net::IpAddr;
+///
+/// struct BannedRanges;
+///
+/// #[bulwark_plugin]
+/// impl HttpHandlers for BannedRanges {
+///     fn handle_request_decision(
+///         req: Request,
+///         _: std::collections::HashMap<String, String>,
+///     ) -> Result<HandlerOutput, Error> {
+///         let mut output = HandlerOutput::default();
+///         if let Some(IpAddr::V4(ip)) = client_ip(&req) {
+///             let ip_range: IpRange<Ipv4Net> = serde_json::from_value::<Vec<String>>(
+///                 config_var("banned_ranges").ok_or(error!("banned_ranges not set"))?,
+///             )?
+///             .iter()
+///             .map(|s| s.parse().unwrap())
+///             .collect();
+///
+///             if ip_range.contains(&ip) {
+///                 output.decision = RESTRICT;
+///             }
+///         }
+///         Ok(output)
+///     }
+/// }
+/// ```
 pub fn config_var(key: &str) -> Option<Value> {
     crate::wit::bulwark::plugin::config::config_var(key).map(|v| v.into())
 }
