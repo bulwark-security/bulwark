@@ -867,8 +867,15 @@ impl ProcessorContext {
                 let decision = self
                     .plugin_outputs
                     .get(&plugin_instance.plugin_reference())
-                    .expect("missing plugin output")
-                    .decision;
+                    .map(|output| output.decision)
+                    // This could happen if the plugin panics.
+                    .unwrap_or_else(|| {
+                        warn!(
+                            message = "plugin decision missing",
+                            reference = &plugin_instance.plugin_reference(),
+                        );
+                        Decision::default()
+                    });
                 metrics::histogram!(
                     "decision_score",
                     decision.pignistic().restrict,
