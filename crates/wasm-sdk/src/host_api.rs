@@ -66,6 +66,34 @@ pub fn config_var(key: &str) -> Option<Value> {
 ///
 /// This is derived from the `proxy_hops` configuration value and the
 /// `Forwarded` or `X-Forwarded-For` headers.
+///
+/// # Example
+///
+/// ```no_compile
+/// use bulwark_wasm_sdk::*;
+///
+/// struct RateLimiter;
+///
+/// #[bulwark_plugin]
+/// impl HttpHandlers for RateLimiter {
+///     fn handle_request_decision(
+///         req: Request,
+///         _: std::collections::HashMap<String, String>,
+///     ) -> Result<HandlerOutput, Error> {
+///         let mut output = HandlerOutput::default();
+///         if let Some(ip) = client_ip(&req) {
+///             let key = format!("ip:{}", ip);
+///             let rate = redis::incr_rate_limit(key, 1, 60 * 15)?;
+///
+///             if rate.attempts > 1000 {
+///                 output.decision = Decision::restricted(1.0);
+///                 output.tags = vec!["rate-limited".to_string()];
+///             }
+///         }
+///         Ok(output)
+///     }
+/// }
+/// ```
 pub fn client_ip(req: &Request) -> Option<IpAddr> {
     let proxy_hops = crate::wit::bulwark::plugin::config::proxy_hops();
 
