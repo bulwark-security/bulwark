@@ -562,11 +562,69 @@ where
             })
             .collect(),
     };
+    for plugin in &config.plugins {
+        // Read plugin configs to surface type errors immediately
+        validate_plugin_config(&plugin.config)?;
+    }
     for resource in &config.resources {
         // Resolve plugins to surface resolution errors immediately
         resource.resolve_plugins(&config)?;
     }
     Ok(config)
+}
+
+fn validate_plugin_config(
+    config: &serde_json::map::Map<String, serde_json::Value>,
+) -> Result<(), ConfigFileError> {
+    for (key, value) in config {
+        match value {
+            serde_json::Value::Null => (),
+            serde_json::Value::Bool(_) => (),
+            serde_json::Value::Number(_) => (),
+            serde_json::Value::String(_) => (),
+            serde_json::Value::Array(array) => {
+                for value in array {
+                    match value {
+                        serde_json::Value::Null => (),
+                        serde_json::Value::Bool(_) => (),
+                        serde_json::Value::Number(_) => (),
+                        serde_json::Value::String(_) => (),
+                        serde_json::Value::Array(_) => {
+                            return Err(ConfigFileError::InvalidPluginConfig(format!(
+                                "config key '{key}' contained an array with a non-primitive subtype"
+                            )));
+                        }
+                        serde_json::Value::Object(_) => {
+                            return Err(ConfigFileError::InvalidPluginConfig(format!(
+                                "config key '{key}' contained an array with a non-primitive subtype"
+                            )));
+                        }
+                    }
+                }
+            }
+            serde_json::Value::Object(obj) => {
+                for (_, value) in obj {
+                    match value {
+                        serde_json::Value::Null => (),
+                        serde_json::Value::Bool(_) => (),
+                        serde_json::Value::Number(_) => (),
+                        serde_json::Value::String(_) => (),
+                        serde_json::Value::Array(_) => {
+                            return Err(ConfigFileError::InvalidPluginConfig(format!(
+                                "config key '{key}' contained an object with a non-primitive subtype"
+                            )));
+                        }
+                        serde_json::Value::Object(_) => {
+                            return Err(ConfigFileError::InvalidPluginConfig(format!(
+                                "config key '{key}' contained an object with a non-primitive subtype"
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -843,6 +901,32 @@ mod tests {
             result.unwrap_err().to_string(),
             "duplicate named plugin or preset: 'blank_slate'"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_invalid_config_array() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
+        let result = load_config("tests/invalid_config_array.toml");
+        assert!(result.is_err());
+        assert_eq!(result
+            .unwrap_err()
+            .to_string(),
+            "invalid plugin config: config key 'key' contained an array with a non-primitive subtype");
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_invalid_config_object() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
+        let result = load_config("tests/invalid_config_object.toml");
+        assert!(result.is_err());
+        assert_eq!(result
+            .unwrap_err()
+            .to_string(),
+            "invalid plugin config: config key 'key' contained an object with a non-primitive subtype");
         Ok(())
     }
 

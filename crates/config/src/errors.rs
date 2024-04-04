@@ -17,6 +17,8 @@ pub enum ConfigFileError {
     CircularInclude(String),
     #[error("duplicate named plugin or preset: '{0}'")]
     Duplicate(String),
+    #[error("invalid plugin config: {0}")]
+    InvalidPluginConfig(String),
 }
 
 /// This error will be returned if an attempt to serialize a config structure fails.
