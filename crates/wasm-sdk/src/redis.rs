@@ -300,7 +300,8 @@ pub fn check_rate_limit<K: AsRef<str>>(key: K) -> Result<Option<Rate>, crate::Re
 ///         req: Request,
 ///         resp: Response,
 ///         _labels: HashMap<String, String>,
-///     ) -> Result {
+///     ) -> Result<HandlerOutput, Error> {
+///         let mut output = HandlerOutput::default();
 ///         if let Some(ip) = client_ip(req) {
 ///             let key = format!("client.ip:{ip}");
 ///             // "success" or "failure" could be determined by other methods besides status code
@@ -313,7 +314,7 @@ pub fn check_rate_limit<K: AsRef<str>>(key: K) -> Result<Option<Rate>, crate::Re
 ///             )?;
 ///             // use breaker here
 ///         }
-///         Ok(())
+///         Ok(output)
 ///     }
 /// }
 /// ```
