@@ -29,15 +29,7 @@ interface config {
     /// Returns all config key names.
     config-keys: func() -> list<string>;
     /// Returns the named config value.
-    config-var: func(key: string) -> result<option<value>, error>;
+    config-var: func(key: string) -> option<value>;
     /// Returns the number of proxy hops expected exterior to Bulwark.
     proxy-hops: func() -> u8;
-
-    variant error {
-        missing(string),
-        invalid-serialization(string),
-        invalid-unicode(string),
-        invalid-conversion(string),
-        permission(string),
-    }
 }
