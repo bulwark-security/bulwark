@@ -24,7 +24,7 @@ use {
     tracing_forest::Formatter,
 };
 
-/// The ECS formatter converts a [`Tree`](tracing_forest::tree::Tree) into a formatted [`String`] to be displayed.
+/// The ECS formatter converts a [`Tree`] into a formatted [`String`] to be displayed.
 ///
 /// The formatter expects log messages to be short, known messages emitted by Bulwark and therefore it is
 /// not a reusable component.

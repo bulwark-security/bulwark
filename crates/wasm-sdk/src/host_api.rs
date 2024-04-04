@@ -10,12 +10,12 @@ pub use http::{Extensions, Method, StatusCode, Uri, Version};
 pub use serde_json::json as value;
 pub use serde_json::{Map, Value};
 
-/// A type alias. See [`bytes::Bytes`] for details.
+/// A type alias. See [`bytes::Bytes`](https://docs.rs/bytes/latest/bytes/struct.Bytes.html) for details.
 pub type Bytes = bytes::Bytes;
-/// An HTTP request combines a head consisting of a [`Method`], [`Uri`], and headers with a [`BodyChunk`], which provides
+/// An HTTP request combines a head consisting of a [`Method`], [`Uri`], and headers with [`Bytes`], which provides
 /// access to the first chunk of a request body.
 pub type Request = http::Request<Bytes>;
-/// An HTTP response combines a head consisting of a [`StatusCode`] and headers with a [`BodyChunk`], which provides
+/// An HTTP response combines a head consisting of a [`StatusCode`] and headers with [`Bytes`], which provides
 /// access to the first chunk of a response body.
 pub type Response = http::Response<Bytes>;
 /// Reexports the `http` crate.

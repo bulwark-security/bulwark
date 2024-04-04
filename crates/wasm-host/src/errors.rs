@@ -41,7 +41,7 @@ pub enum PluginExecutionError {
     AnyError(#[from] anyhow::Error),
 }
 
-/// Returned when attempting to create a [`RequestContext`](crate::RequestContext) fails.
+/// Returned when attempting to create a [`PluginCtx`](crate::PluginCtx) fails.
 #[derive(thiserror::Error, Debug)]
 pub enum ContextInstantiationError {
     #[error(transparent)]

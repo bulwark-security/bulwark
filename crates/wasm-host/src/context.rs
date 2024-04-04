@@ -171,7 +171,7 @@ impl Default for ScriptRegistry {
 }
 
 impl PluginCtx {
-    /// Creates a new `PluginContext`.
+    /// Creates a new [`PluginCtx`].
     ///
     /// # Arguments
     ///

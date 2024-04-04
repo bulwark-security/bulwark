@@ -260,7 +260,7 @@ pub fn incr_rate_limit<K: AsRef<str>>(
 /// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
 /// the prefix of the key being requested. This function will return an error if permission has not been granted.
 ///
-/// See [`increment_rate_limit`].
+/// See [`incr_rate_limit`].
 ///
 /// # Arguments
 ///
