@@ -283,10 +283,10 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
 
             fn try_from(request: crate::handlers::wasi::http::types::IncomingRequest) -> Result<Self, Self::Error> {
                 const MAX_SIZE: u64 = 1048576;
-                let mut builder = ::bulwark_wasm_sdk::RequestBuilder::new();
+                let mut builder = ::bulwark_wasm_sdk::http::request::Builder::new();
                 // Builder doesn't support scheme or authority as separate functions,
                 // so we need to manually construct the URI.
-                let mut uri = ::bulwark_wasm_sdk::UriBuilder::new();
+                let mut uri = ::bulwark_wasm_sdk::http::uri::Builder::new();
                 if let Some(scheme) = request.scheme() {
                     let other;
                     uri = uri.scheme(match scheme {
@@ -368,7 +368,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
 
             fn try_from(response: crate::handlers::wasi::http::types::IncomingResponse) -> Result<Self, Self::Error> {
                 const MAX_SIZE: u64 = 1048576;
-                let mut builder = ::bulwark_wasm_sdk::ResponseBuilder::new();
+                let mut builder = ::bulwark_wasm_sdk::http::response::Builder::new();
                 // We have no way to know the HTTP version here, so leave it as default.
                 builder = builder.status(response.status());
 

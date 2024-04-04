@@ -15,17 +15,11 @@ pub type Bytes = bytes::Bytes;
 /// An HTTP request combines a head consisting of a [`Method`], [`Uri`], and headers with a [`BodyChunk`], which provides
 /// access to the first chunk of a request body.
 pub type Request = http::Request<Bytes>;
-/// An HTTP request builder type alias. See [`http::request::Builder`] for details.
-pub type RequestBuilder = http::request::Builder;
 /// An HTTP response combines a head consisting of a [`StatusCode`] and headers with a [`BodyChunk`], which provides
 /// access to the first chunk of a response body.
 pub type Response = http::Response<Bytes>;
-/// An HTTP response builder type alias. See [`http::response::Builder`] for details.
-pub type ResponseBuilder = http::response::Builder;
-/// An HTTP uri builder type alias. See [`http::uri::Builder`] for details.
-pub type UriBuilder = http::uri::Builder;
-/// An HTTP header value type alias. See [`http::HeaderValue`] for details.
-pub type HeaderValue = http::HeaderValue;
+/// Reexports the `http` crate.
+pub use http;
 
 // TODO: perhaps something more like http::Request<Box<dyn AsyncRead + Sync + Send + Unpin>>?
 // TODO: or hyper::Request<HyperIncomingBody> to match WasiHttpView's new_incoming_request?
