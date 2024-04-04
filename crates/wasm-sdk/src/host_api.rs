@@ -5,7 +5,7 @@ use {
 
 // For some reason, doc-tests in this module trigger a linker error, so they're set to no_run
 
-pub use crate::{Decision, Error, Outcome};
+pub use crate::{Decision, Outcome};
 pub use http::{Extensions, Method, StatusCode, Uri, Version};
 pub use serde_json::json as value;
 pub use serde_json::{Map, Value};
@@ -64,8 +64,8 @@ pub fn config_keys() -> Vec<String> {
 /// # Arguments
 ///
 /// * `key` - A key indexing into a configuration [`Map`]
-pub fn config_var(key: &str) -> Result<Option<Value>, Error> {
-    Ok(crate::wit::bulwark::plugin::config::config_var(key)?.map(|v| v.into()))
+pub fn config_var(key: &str) -> Option<Value> {
+    crate::wit::bulwark::plugin::config::config_var(key).map(|v| v.into())
 }
 
 /// Returns the true remote client IP address.

@@ -278,10 +278,7 @@ impl crate::bindings::bulwark::plugin::config::Host for PluginCtx {
         Box<
             dyn Future<
                     Output = wasmtime::Result<
-                        Result<
-                            Option<crate::bindings::bulwark::plugin::config::Value>,
-                            crate::bindings::bulwark::plugin::config::Error,
-                        >,
+                        Option<crate::bindings::bulwark::plugin::config::Value>,
                     >,
                 > + Send
                 + 'async_trait,
@@ -292,22 +289,15 @@ impl crate::bindings::bulwark::plugin::config::Host for PluginCtx {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            Ok(self
+            let result = self
                 .guest_config
                 .get(key.as_str())
                 .map_or(Ok(None), |value| {
                     // Invert, we need Result<Option<V>, E> rather than Option<Result<V, E>>.
                     // This is also why the map_or default above is Ok(None).
-                    value
-                        .clone()
-                        .try_into()
-                        .map_err(|e: &'static str| {
-                            crate::bindings::bulwark::plugin::config::Error::InvalidConversion(
-                                e.to_string(),
-                            )
-                        })
-                        .map(Some)
-                }))
+                    value.clone().try_into().map(Some)
+                });
+            Ok(result.expect("config should already be validated"))
         })
     }
 
