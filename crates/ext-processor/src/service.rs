@@ -37,6 +37,12 @@ use tokio::{sync::RwLock, sync::Semaphore, task::JoinSet, time::timeout};
 use tonic::Streaming;
 use tracing::{debug, error, info, instrument, trace, warn, Instrument};
 
+macro_rules! format_f64 {
+    ($expression:expr) => {
+        tracing::field::display(crate::format::Float3Formatter($expression))
+    };
+}
+
 extern crate redis;
 
 type ExternalProcessorStream =
@@ -674,11 +680,11 @@ impl ProcessorContext {
                         info!(
                             message = "plugin decision",
                             name = plugin_instance.plugin_reference(),
-                            accept = decision.accept,
-                            restrict = decision.restrict,
-                            unknown = decision.unknown,
-                            score = decision.pignistic().restrict,
-                            weight = plugin_instance.weight(),
+                            accept = format_f64!(decision.accept),
+                            restrict = format_f64!(decision.restrict),
+                            unknown = format_f64!(decision.unknown),
+                            score = format_f64!(decision.pignistic().restrict),
+                            weight = format_f64!(plugin_instance.weight()),
                         );
 
                         let mut outputs = outputs.lock().await;
@@ -774,11 +780,11 @@ impl ProcessorContext {
                         info!(
                             message = "plugin decision",
                             name = plugin_instance.plugin_reference(),
-                            accept = decision.accept,
-                            restrict = decision.restrict,
-                            unknown = decision.unknown,
-                            score = decision.pignistic().restrict,
-                            weight = plugin_instance.weight(),
+                            accept = format_f64!(decision.accept),
+                            restrict = format_f64!(decision.restrict),
+                            unknown = format_f64!(decision.unknown),
+                            score = format_f64!(decision.pignistic().restrict),
+                            weight = format_f64!(plugin_instance.weight()),
                         );
 
                         if let Some(prior_plugin_outputs) = prior_plugin_outputs {
@@ -933,10 +939,10 @@ impl ProcessorContext {
 
         info!(
             message = "combine decision",
-            accept = decision.accept,
-            restrict = decision.restrict,
-            unknown = decision.unknown,
-            score = decision.pignistic().restrict,
+            accept = format_f64!(decision.accept),
+            restrict = format_f64!(decision.restrict),
+            unknown = format_f64!(decision.unknown),
+            score = format_f64!(decision.pignistic().restrict),
             outcome = outcome.to_string(),
             observe_only = self.thresholds.observe_only,
             // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
@@ -1052,10 +1058,10 @@ impl ProcessorContext {
 
         info!(
             message = "combine decision",
-            accept = decision.accept,
-            restrict = decision.restrict,
-            unknown = decision.unknown,
-            score = decision.pignistic().restrict,
+            accept = format_f64!(decision.accept),
+            restrict = format_f64!(decision.restrict),
+            unknown = format_f64!(decision.unknown),
+            score = format_f64!(decision.pignistic().restrict),
             outcome = outcome.to_string(),
             observe_only = self.thresholds.observe_only,
             // array values aren't handled well unfortunately, coercing to comma-separated values seems to be the best option
