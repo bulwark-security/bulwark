@@ -168,6 +168,15 @@ pub fn incr_by<K: AsRef<str>>(key: K, delta: i64) -> Result<i64, crate::RemoteSt
     Ok(crate::wit::bulwark::plugin::redis::incr_by(key, delta)?)
 }
 
+/// Adds a set of members to a set in Redis.
+///
+/// Returns the number of members that were added to the set.
+/// Members already present in the set are not included in this count.
+///
+/// # Arguments
+///
+/// * `key` - The key name corresponding to the set.
+/// * `members` - The new members to add to the set.
 pub fn sadd<K: AsRef<str>, I: IntoIterator<Item = T>, T: Into<String>>(
     key: K,
     members: I,
@@ -180,11 +189,25 @@ pub fn sadd<K: AsRef<str>, I: IntoIterator<Item = T>, T: Into<String>>(
     )?)
 }
 
+/// Retrieves a set of members stored in Redis.
+///
+/// # Arguments
+///
+/// * `key` - The key name corresponding to the set.
 pub fn smembers<K: AsRef<str>>(key: K) -> Result<Vec<String>, crate::RemoteStateError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::smembers(key)?)
 }
 
+/// Removes members from a set in Redis.
+///
+/// Returns the number of members that were removed from the set.
+/// Members not present in the set are not included in this count.
+///
+/// # Arguments
+///
+/// * `key` - The key name corresponding to the set.
+/// * `members` - The new members to add to the set.
 pub fn srem<K: AsRef<str>, I: IntoIterator<Item = T>, T: Into<String>>(
     key: K,
     members: I,
@@ -227,7 +250,6 @@ pub fn expire_at<K: AsRef<str>>(key: K, unix_time: u64) -> Result<(), crate::Rem
     )?)
 }
 
-// TODO: needs an example
 /// Increments a rate limit, returning the number of attempts so far and the expiration time.
 ///
 /// The rate limiter is a counter over a period of time. At the end of the period, it will expire,
@@ -243,6 +265,36 @@ pub fn expire_at<K: AsRef<str>>(key: K, unix_time: u64) -> Result<(), crate::Rem
 /// * `key` - The key name corresponding to the state counter.
 /// * `delta` - The amount to increase the counter by.
 /// * `window` - How long each period should be in seconds.
+///
+/// # Example
+///
+/// ```rust,no_compile
+/// use bulwark_wasm_sdk::*;
+/// use std::collections::HashMap;
+///
+/// struct PostRateLimiter;
+///
+/// #[bulwark_plugin]
+/// impl HttpHandlers for PostRateLimiter {
+///     fn handle_request_decision(
+///         req: Request,
+///         _labels: HashMap<String, String>,
+///     ) -> Result<HandlerOutput, Error> {
+///         let mut output = HandlerOutput::default();
+///         if let Some(ip) = client_ip(&req) {
+///             let key = format!("ip:post:{ip}");
+///             if req.method() == http::Method::POST {
+///                 let rate = redis::incr_rate_limit(key, 1, 5 * 60)?; // 5 minutes
+///                 if rate.attempts >= 1000 {
+///                     output.decision = RESTRICT;
+///                     output.tags = vec!["rate-limited".to_string()];
+///                 }
+///             }
+///         }
+///         Ok(output)
+///     }
+/// }
+/// ```
 #[inline]
 pub fn incr_rate_limit<K: AsRef<str>>(
     key: K,
@@ -265,6 +317,50 @@ pub fn incr_rate_limit<K: AsRef<str>>(
 /// # Arguments
 ///
 /// * `key` - The key name corresponding to the state counter.
+///
+/// # Example
+///
+/// ```rust,no_compile
+/// use bulwark_wasm_sdk::*;
+/// use std::collections::HashMap;
+///
+/// struct NotFoundRateLimiter;
+///
+/// #[bulwark_plugin]
+/// impl HttpHandlers for NotFoundRateLimiter {
+///     fn handle_request_decision(
+///         req: Request,
+///         _labels: HashMap<String, String>,
+///     ) -> Result<HandlerOutput, Error> {
+///         let mut output = HandlerOutput::default();
+///         if let Some(ip) = client_ip(&req) {
+///             let key = format!("ip:not-found:{ip}");
+///             // Only check the rate limit, don't increment, because we don't know the status code yet.
+///             if let Some(rate) = redis::check_rate_limit(key)? {
+///                 if rate.attempts >= 200 {
+///                     output.decision = RESTRICT;
+///                     output.tags = vec!["rate-limited".to_string()];
+///                 }
+///             }
+///         }
+///         Ok(output)
+///     }
+///
+///     fn handle_response_decision(
+///         req: Request,
+///         resp: Response,
+///         _labels: HashMap<String, String>,
+///     ) -> Result<HandlerOutput, Error> {
+///         if let Some(ip) = client_ip(&req) {
+///             let key = format!("ip:not-found:{ip}");
+///             if resp.status().as_u16() == 404 {
+///                 redis::incr_rate_limit(key, 1, 60 * 60)?; // 1 hour window
+///             }
+///         }
+///         Ok(HandlerOutput::default())
+///     }
+/// }
+/// ```
 pub fn check_rate_limit<K: AsRef<str>>(key: K) -> Result<Option<Rate>, crate::RemoteStateError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::check_rate_limit(key)?)
@@ -287,32 +383,31 @@ pub fn check_rate_limit<K: AsRef<str>>(key: K) -> Result<Option<Rate>, crate::Re
 /// * `success` - Whether the operation was successful or not, determining which counter to increment.
 /// * `window` - How long each period should be in seconds.
 ///
-/// # Examples
+/// # Example
 ///
-/// ```no_compile
+/// ```rust,no_compile
 /// use bulwark_wasm_sdk::*;
+/// use std::collections::HashMap;
 ///
-/// struct CircuitBreaker;
+/// struct OptionsScan;
 ///
 /// #[bulwark_plugin]
-/// impl HttpHandlers for CircuitBreaker {
-///     fn handle_response_decision(
+/// impl HttpHandlers for OptionsScan {
+///     fn handle_request_decision(
 ///         req: Request,
-///         resp: Response,
 ///         _labels: HashMap<String, String>,
 ///     ) -> Result<HandlerOutput, Error> {
 ///         let mut output = HandlerOutput::default();
-///         if let Some(ip) = client_ip(req) {
-///             let key = format!("client.ip:{ip}");
-///             // "success" or "failure" could be determined by other methods besides status code
-///             let success = resp.status().as_u16() < 500;
-///             let breaker = incr_breaker(
-///                 &key,
-///                 1,
-///                 success,
-///                 60 * 60, // 1 hour
-///             )?;
-///             // use breaker here
+///         if let Some(ip) = client_ip(&req) {
+///             let key = format!("ip:options:{ip}");
+///             let success = req.method() != http::Method::OPTIONS;
+///             let breaker = redis::incr_breaker(key, 1, success, 15 * 60)?; // 15 minutes
+///             if breaker.consecutive_failures >= 25 {
+///                 // After 25 or more consecutive options requests from the same client,
+///                 // then mark the request suspicious but don't block it outright.
+///                 output.decision = Decision::restricted(0.25);
+///                 output.tags = vec!["options-scan".to_string()];
+///             }
 ///         }
 ///         Ok(output)
 ///     }
@@ -348,6 +443,51 @@ pub fn incr_breaker<K: AsRef<str>>(
 /// # Arguments
 ///
 /// * `key` - The key name corresponding to the state counter.
+///
+/// # Example
+///
+/// ```rust,no_compile
+/// use bulwark_wasm_sdk::*;
+/// use std::collections::HashMap;
+///
+/// struct SoftCircuitBreaker;
+///
+/// #[bulwark_plugin]
+/// impl HttpHandlers for SoftCircuitBreaker {
+///     fn handle_request_decision(
+///         req: Request,
+///         _labels: HashMap<String, String>,
+///     ) -> Result<HandlerOutput, Error> {
+///         let mut output = HandlerOutput::default();
+///         if let Some(ip) = client_ip(&req) {
+///             let key = format!("ip:breaker:{ip}");
+///             // Only check the breaker, don't increment, because we don't know the status code yet.
+///             if let Some(breaker) = redis::check_breaker(key)? {
+///                 if breaker.consecutive_failures >= 10 && breaker.consecutive_failures % 10 != 0 {
+///                     // Breaker tripped, but allow every 10th request through.
+///                     // Only soft-limit requests by setting a low score.
+///                     output.decision = Decision::restricted(0.25);
+///                     output.tags = vec!["circuit-broken".to_string()];
+///                 }
+///             }
+///         }
+///         Ok(output)
+///     }
+///
+///     fn handle_response_decision(
+///         req: Request,
+///         resp: Response,
+///         _labels: HashMap<String, String>,
+///     ) -> Result<HandlerOutput, Error> {
+///         if let Some(ip) = client_ip(&req) {
+///             let key = format!("ip:breaker:{ip}");
+///             let success = resp.status().as_u16() < 500;
+///             redis::incr_breaker(key, 1, success, 10 * 60)?; // 10 minutes
+///         }
+///         Ok(HandlerOutput::default())
+///     }
+/// }
+/// ```
 #[inline]
 pub fn check_breaker<K: AsRef<str>>(key: K) -> Result<Option<Breaker>, crate::RemoteStateError> {
     let key: &str = key.as_ref();

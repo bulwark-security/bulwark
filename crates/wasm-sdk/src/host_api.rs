@@ -61,11 +61,12 @@ pub fn config_keys() -> Vec<String> {
 ///
 /// # Example
 ///
-/// ```no_compile
+/// ```rust,no_compile
 /// use bulwark_wasm_sdk::*;
 /// use ipnet::Ipv4Net;
 /// use iprange::IpRange;
 /// use std::net::IpAddr;
+/// use std::collections::HashMap
 ///
 /// struct BannedRanges;
 ///
@@ -73,7 +74,7 @@ pub fn config_keys() -> Vec<String> {
 /// impl HttpHandlers for BannedRanges {
 ///     fn handle_request_decision(
 ///         req: Request,
-///         _: std::collections::HashMap<String, String>,
+///         _labels: HashMap<String, String>,
 ///     ) -> Result<HandlerOutput, Error> {
 ///         let mut output = HandlerOutput::default();
 ///         if let Some(IpAddr::V4(ip)) = client_ip(&req) {
@@ -103,8 +104,9 @@ pub fn config_var(key: &str) -> Option<Value> {
 ///
 /// # Example
 ///
-/// ```no_compile
+/// ```rust,no_compile
 /// use bulwark_wasm_sdk::*;
+/// use std::collections::HashMap;
 ///
 /// struct RateLimiter;
 ///
@@ -112,15 +114,15 @@ pub fn config_var(key: &str) -> Option<Value> {
 /// impl HttpHandlers for RateLimiter {
 ///     fn handle_request_decision(
 ///         req: Request,
-///         _: std::collections::HashMap<String, String>,
+///         _labels: HashMap<String, String>,
 ///     ) -> Result<HandlerOutput, Error> {
 ///         let mut output = HandlerOutput::default();
 ///         if let Some(ip) = client_ip(&req) {
 ///             let key = format!("ip:{}", ip);
-///             let rate = redis::incr_rate_limit(key, 1, 60 * 15)?;
+///             let rate = redis::incr_rate_limit(key, 1, 60 * 15)?; // 15 minute window
 ///
 ///             if rate.attempts > 1000 {
-///                 output.decision = Decision::restricted(1.0);
+///                 output.decision = RESTRICT;
 ///                 output.tags = vec!["rate-limited".to_string()];
 ///             }
 ///         }
