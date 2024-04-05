@@ -134,7 +134,7 @@ pub struct State {
     pub redis_pool_size: u32,
 }
 
-/// The default [`Service::redis_pool_size`] value.
+/// The default [`State::redis_pool_size`] value.
 pub const DEFAULT_REDIS_POOL_SIZE: u32 = 16;
 
 impl Default for State {

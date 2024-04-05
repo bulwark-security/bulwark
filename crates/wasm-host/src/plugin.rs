@@ -246,7 +246,7 @@ impl PluginStdio {
     }
 }
 
-/// An instance of a [`Plugin`], associated with a [`RequestContext`].
+/// An instance of a [`Plugin`], associated with a [`PluginCtx`].
 pub struct PluginInstance {
     /// A reference to the parent `Plugin` and its configuration.
     plugin: Arc<Plugin>,

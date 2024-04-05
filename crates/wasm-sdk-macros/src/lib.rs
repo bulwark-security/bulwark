@@ -31,8 +31,10 @@ const WIT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wit");
 ///
 /// # Example
 ///
-/// ```no_compile
+#[cfg_attr(doctest, doc = " ````no_test")]
+/// ```rust
 /// use bulwark_wasm_sdk::*;
+/// use std::collections::HashMap;
 ///
 /// struct ExamplePlugin;
 ///
@@ -41,7 +43,7 @@ const WIT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wit");
 ///     fn handle_request_decision(
 ///         req: Request,
 ///         labels: HashMap<String, String>,
-///     ) -> Result {
+///     ) -> Result<HandlerOutput, Error> {
 ///         println!("hello world");
 ///         // implement detection logic here
 ///         Ok(())

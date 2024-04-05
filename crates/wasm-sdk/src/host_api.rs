@@ -10,12 +10,12 @@ pub use http::{Extensions, Method, StatusCode, Uri, Version};
 pub use serde_json::json as value;
 pub use serde_json::{Map, Value};
 
-/// A type alias. See [`bytes::Bytes`] for details.
+/// A type alias. See [`bytes::Bytes`](https://docs.rs/bytes/latest/bytes/struct.Bytes.html) for details.
 pub type Bytes = bytes::Bytes;
-/// An HTTP request combines a head consisting of a [`Method`], [`Uri`], and headers with a [`BodyChunk`], which provides
+/// An HTTP request combines a head consisting of a [`Method`], [`Uri`], and headers with [`Bytes`], which provides
 /// access to the first chunk of a request body.
 pub type Request = http::Request<Bytes>;
-/// An HTTP response combines a head consisting of a [`StatusCode`] and headers with a [`BodyChunk`], which provides
+/// An HTTP response combines a head consisting of a [`StatusCode`] and headers with [`Bytes`], which provides
 /// access to the first chunk of a response body.
 pub type Response = http::Response<Bytes>;
 /// Reexports the `http` crate.
@@ -58,6 +58,42 @@ pub fn config_keys() -> Vec<String> {
 /// # Arguments
 ///
 /// * `key` - A key indexing into a configuration [`Map`]
+///
+/// # Example
+///
+#[cfg_attr(doctest, doc = " ````no_test")]
+/// ```rust
+/// use bulwark_wasm_sdk::*;
+/// use ipnet::Ipv4Net;
+/// use iprange::IpRange;
+/// use std::net::IpAddr;
+/// use std::collections::HashMap
+///
+/// struct BannedRanges;
+///
+/// #[bulwark_plugin]
+/// impl HttpHandlers for BannedRanges {
+///     fn handle_request_decision(
+///         req: Request,
+///         _labels: HashMap<String, String>,
+///     ) -> Result<HandlerOutput, Error> {
+///         let mut output = HandlerOutput::default();
+///         if let Some(IpAddr::V4(ip)) = client_ip(&req) {
+///             let ip_range: IpRange<Ipv4Net> = serde_json::from_value::<Vec<String>>(
+///                 config_var("banned_ranges").ok_or(error!("banned_ranges not set"))?,
+///             )?
+///             .iter()
+///             .map(|s| s.parse().unwrap())
+///             .collect();
+///
+///             if ip_range.contains(&ip) {
+///                 output.decision = RESTRICT;
+///             }
+///         }
+///         Ok(output)
+///     }
+/// }
+/// ```
 pub fn config_var(key: &str) -> Option<Value> {
     crate::wit::bulwark::plugin::config::config_var(key).map(|v| v.into())
 }
@@ -66,6 +102,36 @@ pub fn config_var(key: &str) -> Option<Value> {
 ///
 /// This is derived from the `proxy_hops` configuration value and the
 /// `Forwarded` or `X-Forwarded-For` headers.
+///
+/// # Example
+///
+#[cfg_attr(doctest, doc = " ````no_test")]
+/// ```rust
+/// use bulwark_wasm_sdk::*;
+/// use std::collections::HashMap;
+///
+/// struct RateLimiter;
+///
+/// #[bulwark_plugin]
+/// impl HttpHandlers for RateLimiter {
+///     fn handle_request_decision(
+///         req: Request,
+///         _labels: HashMap<String, String>,
+///     ) -> Result<HandlerOutput, Error> {
+///         let mut output = HandlerOutput::default();
+///         if let Some(ip) = client_ip(&req) {
+///             let key = format!("ip:{}", ip);
+///             let rate = redis::incr_rate_limit(key, 1, 60 * 15)?; // 15 minute window
+///
+///             if rate.attempts > 1000 {
+///                 output.decision = RESTRICT;
+///                 output.tags = vec!["rate-limited".to_string()];
+///             }
+///         }
+///         Ok(output)
+///     }
+/// }
+/// ```
 pub fn client_ip(req: &Request) -> Option<IpAddr> {
     let proxy_hops = crate::wit::bulwark::plugin::config::proxy_hops();
 

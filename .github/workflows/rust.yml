@@ -40,6 +40,27 @@ jobs:
       - name: Run clippy
         run: cargo clippy --no-deps --workspace --all-targets -- --deny warnings
 
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
+        with:
+          toolchain: stable
+          components: clippy
+          override: true
+          target: wasm32-wasi
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2.7.3
+
+      - name: Build Documentation
+        run: cargo doc --all --no-deps
+
   test:
     name: Test suite
     strategy:
