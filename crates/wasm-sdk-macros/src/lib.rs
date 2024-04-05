@@ -31,7 +31,8 @@ const WIT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wit");
 ///
 /// # Example
 ///
-/// ```rust,no_compile
+#[cfg_attr(doctest, doc = " ````no_test")]
+/// ```rust
 /// use bulwark_wasm_sdk::*;
 /// use std::collections::HashMap;
 ///

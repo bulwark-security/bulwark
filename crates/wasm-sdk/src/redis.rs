@@ -268,7 +268,8 @@ pub fn expire_at<K: AsRef<str>>(key: K, unix_time: u64) -> Result<(), crate::Rem
 ///
 /// # Example
 ///
-/// ```rust,no_compile
+#[cfg_attr(doctest, doc = " ````no_test")]
+/// ```rust
 /// use bulwark_wasm_sdk::*;
 /// use std::collections::HashMap;
 ///
@@ -295,6 +296,8 @@ pub fn expire_at<K: AsRef<str>>(key: K, unix_time: u64) -> Result<(), crate::Rem
 ///     }
 /// }
 /// ```
+///
+/// See [`check_rate_limit`] for an example covering both request and response handlers.
 #[inline]
 pub fn incr_rate_limit<K: AsRef<str>>(
     key: K,
@@ -312,15 +315,14 @@ pub fn incr_rate_limit<K: AsRef<str>>(
 /// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
 /// the prefix of the key being requested. This function will return an error if permission has not been granted.
 ///
-/// See [`incr_rate_limit`].
-///
 /// # Arguments
 ///
 /// * `key` - The key name corresponding to the state counter.
 ///
 /// # Example
 ///
-/// ```rust,no_compile
+#[cfg_attr(doctest, doc = " ````no_test")]
+/// ```rust
 /// use bulwark_wasm_sdk::*;
 /// use std::collections::HashMap;
 ///
@@ -361,6 +363,8 @@ pub fn incr_rate_limit<K: AsRef<str>>(
 ///     }
 /// }
 /// ```
+///
+/// See [`incr_rate_limit`] for a simpler example covering only the request handler.
 pub fn check_rate_limit<K: AsRef<str>>(key: K) -> Result<Option<Rate>, crate::RemoteStateError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::check_rate_limit(key)?)
@@ -385,7 +389,8 @@ pub fn check_rate_limit<K: AsRef<str>>(key: K) -> Result<Option<Rate>, crate::Re
 ///
 /// # Example
 ///
-/// ```rust,no_compile
+#[cfg_attr(doctest, doc = " ````no_test")]
+/// ```rust
 /// use bulwark_wasm_sdk::*;
 /// use std::collections::HashMap;
 ///
@@ -413,6 +418,8 @@ pub fn check_rate_limit<K: AsRef<str>>(key: K) -> Result<Option<Rate>, crate::Re
 ///     }
 /// }
 /// ```
+///
+/// See [`check_breaker`] for an example covering both request and response handlers.
 pub fn incr_breaker<K: AsRef<str>>(
     key: K,
     delta: i64,
@@ -438,15 +445,14 @@ pub fn incr_breaker<K: AsRef<str>>(
 /// In order for this function to succeed, a plugin's configuration must explicitly declare a permission grant for
 /// the prefix of the key being requested. This function will return an error if permission has not been granted.
 ///
-/// See [`incr_breaker`].
-///
 /// # Arguments
 ///
 /// * `key` - The key name corresponding to the state counter.
 ///
 /// # Example
 ///
-/// ```rust,no_compile
+#[cfg_attr(doctest, doc = " ````no_test")]
+/// ```rust
 /// use bulwark_wasm_sdk::*;
 /// use std::collections::HashMap;
 ///
@@ -488,6 +494,8 @@ pub fn incr_breaker<K: AsRef<str>>(
 ///     }
 /// }
 /// ```
+///
+/// See [`incr_breaker`] for a simpler example covering only the request handler.
 #[inline]
 pub fn check_breaker<K: AsRef<str>>(key: K) -> Result<Option<Breaker>, crate::RemoteStateError> {
     let key: &str = key.as_ref();

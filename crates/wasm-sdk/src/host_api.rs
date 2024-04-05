@@ -61,7 +61,8 @@ pub fn config_keys() -> Vec<String> {
 ///
 /// # Example
 ///
-/// ```rust,no_compile
+#[cfg_attr(doctest, doc = " ````no_test")]
+/// ```rust
 /// use bulwark_wasm_sdk::*;
 /// use ipnet::Ipv4Net;
 /// use iprange::IpRange;
@@ -104,7 +105,8 @@ pub fn config_var(key: &str) -> Option<Value> {
 ///
 /// # Example
 ///
-/// ```rust,no_compile
+#[cfg_attr(doctest, doc = " ````no_test")]
+/// ```rust
 /// use bulwark_wasm_sdk::*;
 /// use std::collections::HashMap;
 ///
