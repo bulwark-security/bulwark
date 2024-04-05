@@ -3,6 +3,7 @@
 //! [1]: https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_proc_filter
 
 mod errors;
+mod format;
 mod service;
 
 pub use errors::*;
