@@ -44,7 +44,6 @@ url = "2.5.0"
 bulwark-build = { workspace = true }
 redis-test = { workspace = true }
 
-wasi-cap-std-sync = { workspace = true }
 wat = { workspace = true }
 wit-component = { workspace = true }
 

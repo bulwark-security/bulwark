@@ -7,7 +7,7 @@ use redis::AsyncCommands;
 use std::{collections::HashMap, sync::Arc};
 use url::Url;
 use wasmtime::component::Resource;
-use wasmtime_wasi::preview2::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView};
+use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView};
 use wasmtime_wasi_http::{
     types::{HostFutureIncomingResponse, HostIncomingResponse, OutgoingRequest},
     WasiHttpCtx, WasiHttpView,
@@ -218,20 +218,12 @@ impl PluginCtx {
 }
 
 impl WasiView for PluginCtx {
-    fn table(&self) -> &ResourceTable {
-        &self.wasi_table
-    }
-
-    fn table_mut(&mut self) -> &mut ResourceTable {
-        &mut self.wasi_table
-    }
-
-    fn ctx(&self) -> &WasiCtx {
-        &self.wasi_ctx
-    }
-
-    fn ctx_mut(&mut self) -> &mut WasiCtx {
+    fn ctx(&mut self) -> &mut WasiCtx {
         &mut self.wasi_ctx
+    }
+
+    fn table(&mut self) -> &mut ResourceTable {
+        &mut self.wasi_table
     }
 }
 

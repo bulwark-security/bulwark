@@ -213,9 +213,6 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                 world: "bulwark:plugin/http-detection",
                 path: #WIT_PATH,
                 runtime_path: "::bulwark_wasm_sdk::wit_bindgen::rt",
-                exports: {
-                    "bulwark:plugin/http-handlers": #struct_type,
-                },
             });
         }
 
@@ -419,6 +416,8 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
             #(#new_items)*
             #(#noop_handlers)*
         }
+
+        handlers::export!(#struct_type with_types_in handlers);
     };
 
     output.into()
