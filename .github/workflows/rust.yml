@@ -31,7 +31,6 @@ jobs:
         with:
           toolchain: stable
           components: clippy
-          override: true
           target: wasm32-wasi
 
       - name: Rust cache
@@ -52,7 +51,6 @@ jobs:
         with:
           toolchain: stable
           components: clippy
-          override: true
           target: wasm32-wasi
 
       - name: Rust cache
@@ -114,7 +112,6 @@ jobs:
         with:
           toolchain: ${{ matrix.rust_version }}
           components: clippy
-          override: true
           target: wasm32-wasi
 
       - name: Rust cache
