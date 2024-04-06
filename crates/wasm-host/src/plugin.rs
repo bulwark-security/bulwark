@@ -40,7 +40,7 @@ use {
     },
     wasmtime::component::{Component, Linker},
     wasmtime::{AsContextMut, Config, Engine, Store},
-    wasmtime_wasi::preview2::{pipe::MemoryOutputPipe, HostOutputStream, StdoutStream},
+    wasmtime_wasi::{pipe::MemoryOutputPipe, HostOutputStream, StdoutStream},
     wasmtime_wasi_http::WasiHttpView,
 };
 
@@ -275,7 +275,7 @@ impl PluginInstance {
         let mut linker: Linker<PluginCtx> = Linker::new(&plugin.engine);
         let mut store = Store::new(&plugin.engine, plugin_ctx);
 
-        wasmtime_wasi::preview2::command::add_to_linker(&mut linker)?;
+        wasmtime_wasi::command::add_to_linker(&mut linker)?;
         wasmtime_wasi_http::bindings::wasi::http::types::add_to_linker(&mut linker, |ctx| ctx)
             .context("failed to link `wasi:http/types` interface")?;
         wasmtime_wasi_http::bindings::wasi::http::outgoing_handler::add_to_linker(
@@ -467,7 +467,7 @@ impl PluginInstance {
                 std::time::Duration::from_millis(600 * 1000),
             )),
             // No-op worker
-            worker: Arc::new(wasmtime_wasi::preview2::spawn(async {})),
+            worker: Arc::new(wasmtime_wasi::spawn(async {})),
         };
         let incoming_response_handle = self
             .store
@@ -535,7 +535,7 @@ impl PluginInstance {
                 std::time::Duration::from_millis(600 * 1000),
             )),
             // No-op worker
-            worker: Arc::new(wasmtime_wasi::preview2::spawn(async {})),
+            worker: Arc::new(wasmtime_wasi::spawn(async {})),
         };
         let incoming_response_handle = self
             .store

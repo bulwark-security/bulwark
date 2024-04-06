@@ -99,15 +99,14 @@ bulwark-wasm-sdk = { path = "crates/wasm-sdk", version = "=0.4.0" }
 bulwark-wasm-sdk-macros = { path = "crates/wasm-sdk-macros", version = "=0.4.0" }
 
 # WASM dependencies
-wasi-cap-std-sync = { version = "17" }
-wasi-common = { version = "17" }
-wasmtime = { version = "17.0.1", features = ["component-model"] }
-wasmtime-types = { version = "17" }
-wasmtime-wasi = { version = "17" }
-wasmtime-wasi-http = { version = "17", features = ["sync"] }
-wat = "1.0.86"
-wit-bindgen = "0.17.0"
-wit-component = "0.20.2"
+wasi-common = { version = "19" }
+wasmtime = { version = "19.0.1", features = ["component-model"] }
+wasmtime-types = { version = "19" }
+wasmtime-wasi = { version = "19" }
+wasmtime-wasi-http = { version = "19" }
+wat = "1.202.0"
+wit-bindgen = "0.24.0"
+wit-component = "0.202.0"
 
 # Other shared external dependencies
 anyhow = "=1.0.72"
