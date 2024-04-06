@@ -124,7 +124,7 @@ jobs:
         uses: clechasseur/rs-cargo@cc6f4abbeb8d498b2c6637af19ac691f8540f8d1 # v2.0.2
         with:
           command: test
-          args: -p bulwark-cli -p bulwark-build -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk -p bulwark-wasm-sdk-macros -- --include-ignored
+          args: -p bulwark-cli -p bulwark-build -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-host -p bulwark-sdk -p bulwark-sdk-macros -- --include-ignored
 
       - name: Envoy logs
         run: /usr/bin/docker logs envoy

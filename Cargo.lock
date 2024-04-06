@@ -328,8 +328,8 @@ dependencies = [
  "bulwark-build",
  "bulwark-config",
  "bulwark-ext-processor",
- "bulwark-wasm-host",
- "bulwark-wasm-sdk",
+ "bulwark-host",
+ "bulwark-sdk",
  "bytes 1.5.0",
  "chrono",
  "clap",
@@ -399,8 +399,8 @@ version = "0.4.0"
 dependencies = [
  "bb8-redis",
  "bulwark-config",
- "bulwark-wasm-host",
- "bulwark-wasm-sdk",
+ "bulwark-host",
+ "bulwark-sdk",
  "bytes 1.5.0",
  "envoy-control-plane",
  "forwarded-header-value",
@@ -422,7 +422,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "bulwark-wasm-host"
+name = "bulwark-host"
 version = "0.4.0"
 dependencies = [
  "anyhow",
@@ -430,7 +430,7 @@ dependencies = [
  "bb8-redis",
  "bulwark-build",
  "bulwark-config",
- "bulwark-wasm-sdk",
+ "bulwark-sdk",
  "bytes 1.5.0",
  "chrono",
  "futures 0.3.29",
@@ -455,12 +455,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "bulwark-wasm-sdk"
+name = "bulwark-sdk"
 version = "0.4.0"
 dependencies = [
  "anyhow",
  "bulwark-decision",
- "bulwark-wasm-sdk-macros",
+ "bulwark-sdk-macros",
  "bytes 1.5.0",
  "cfg-if 1.0.0",
  "forwarded-header-value",
@@ -472,7 +472,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "bulwark-wasm-sdk-macros"
+name = "bulwark-sdk-macros"
 version = "0.4.0"
 dependencies = [
  "proc-macro2",

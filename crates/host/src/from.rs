@@ -1,5 +1,5 @@
 use crate::HandlerOutput;
-use bulwark_wasm_sdk::{Decision, Outcome, Verdict};
+use bulwark_sdk::{Decision, Outcome, Verdict};
 use std::collections::{HashMap, HashSet};
 
 impl TryFrom<serde_json::Value> for crate::bindings::bulwark::plugin::config::Value {

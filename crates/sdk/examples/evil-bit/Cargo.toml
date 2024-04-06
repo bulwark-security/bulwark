@@ -1,5 +1,5 @@
 [package]
-name = "bulwark-blank-slate"
+name = "bulwark-evil-bit"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0 WITH LLVM-exception"
@@ -13,7 +13,7 @@ publish = false
 maintenance = { status = "experimental" }
 
 [dependencies]
-bulwark-wasm-sdk = { path = "../.." }
+bulwark-sdk = { path = "../.." }
 wit-bindgen = "0.17.0"
 
 [workspace]

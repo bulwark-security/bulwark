@@ -63,7 +63,7 @@ pub fn config_keys() -> Vec<String> {
 ///
 #[cfg_attr(doctest, doc = " ````no_test")]
 /// ```rust
-/// use bulwark_wasm_sdk::*;
+/// use bulwark_sdk::*;
 /// use ipnet::Ipv4Net;
 /// use iprange::IpRange;
 /// use std::net::IpAddr;
@@ -107,7 +107,7 @@ pub fn config_var(key: &str) -> Option<Value> {
 ///
 #[cfg_attr(doctest, doc = " ````no_test")]
 /// ```rust
-/// use bulwark_wasm_sdk::*;
+/// use bulwark_sdk::*;
 /// use std::collections::HashMap;
 ///
 /// struct RateLimiter;

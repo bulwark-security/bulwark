@@ -14,7 +14,7 @@ async fn test_envoy_evil_bit() -> Result<(), Box<dyn std::error::Error>> {
     let base = Path::new(file!()).parent().unwrap_or(Path::new("."));
 
     bulwark_build::build_plugin(
-        base.join("../crates/wasm-sdk/examples/evil-bit"),
+        base.join("../crates/sdk/examples/evil-bit"),
         base.join("dist/plugins/bulwark_evil_bit.wasm"),
         &[],
         true,

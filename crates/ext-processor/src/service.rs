@@ -2,14 +2,14 @@
 
 use crate::{PluginGroupInstantiationError, ProcessingMessageError, RequestError, ResponseError};
 use bulwark_config::Config;
-use bulwark_wasm_sdk::Verdict;
+use bulwark_sdk::Verdict;
 
 use bb8_redis::{bb8, RedisConnectionManager};
-use bulwark_wasm_host::{
+use bulwark_host::{
     ForwardedIP, HandlerOutput, Plugin, PluginCtx, PluginExecutionError, PluginInstance,
     PluginLoadError, RedisCtx, ScriptRegistry,
 };
-use bulwark_wasm_sdk::Decision;
+use bulwark_sdk::Decision;
 use envoy_control_plane::envoy::{
     config::core::v3::HeaderMap,
     extensions::filters::http::ext_proc::v3::{processing_mode, ProcessingMode},
@@ -113,7 +113,7 @@ pub struct BulwarkProcessor {
 impl ExternalProcessor for BulwarkProcessor {
     type ProcessStream = ExternalProcessorStream;
 
-    /// Processes an incoming request, performing all Envoy-specific handling needed by [`bulwark_wasm_host`].
+    /// Processes an incoming request, performing all Envoy-specific handling needed by [`bulwark_host`].
     #[instrument(name = "handle request", skip(self, tonic_request))]
     async fn process(
         &self,
@@ -357,7 +357,7 @@ impl BulwarkProcessor {
 
     async fn dispatch_request_enrichment(
         plugin_instance: Arc<Mutex<PluginInstance>>,
-        request: Arc<bulwark_wasm_sdk::Request>,
+        request: Arc<bulwark_sdk::Request>,
         labels: HashMap<String, String>,
     ) -> Result<HashMap<String, String>, PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
@@ -381,7 +381,7 @@ impl BulwarkProcessor {
 
     async fn dispatch_request_decision(
         plugin_instance: Arc<Mutex<PluginInstance>>,
-        request: Arc<bulwark_wasm_sdk::Request>,
+        request: Arc<bulwark_sdk::Request>,
         labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
@@ -405,8 +405,8 @@ impl BulwarkProcessor {
 
     async fn dispatch_response_decision(
         plugin_instance: Arc<Mutex<PluginInstance>>,
-        request: Arc<bulwark_wasm_sdk::Request>,
-        response: Arc<bulwark_wasm_sdk::Response>,
+        request: Arc<bulwark_sdk::Request>,
+        response: Arc<bulwark_sdk::Response>,
         labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
@@ -430,10 +430,10 @@ impl BulwarkProcessor {
 
     async fn dispatch_decision_feedback(
         plugin_instance: Arc<Mutex<PluginInstance>>,
-        request: Arc<bulwark_wasm_sdk::Request>,
-        response: Arc<bulwark_wasm_sdk::Response>,
+        request: Arc<bulwark_sdk::Request>,
+        response: Arc<bulwark_sdk::Response>,
         labels: HashMap<String, String>,
-        verdict: bulwark_wasm_sdk::Verdict,
+        verdict: bulwark_sdk::Verdict,
     ) -> Result<(), PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
         let result = plugin_instance
@@ -462,8 +462,8 @@ struct ProcessorContext {
     plugin_semaphore: Arc<tokio::sync::Semaphore>,
     plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
     labels: HashMap<String, String>,
-    request: Arc<bulwark_wasm_sdk::Request>,
-    response: Option<Arc<bulwark_wasm_sdk::Response>>,
+    request: Arc<bulwark_sdk::Request>,
+    response: Option<Arc<bulwark_sdk::Response>>,
     verdict: Option<Verdict>,
     combined_output: HandlerOutput,
     plugin_outputs: HashMap<String, HandlerOutput>,
@@ -476,7 +476,7 @@ impl ProcessorContext {
         sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
         stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
         proxy_hops: usize,
-    ) -> Result<bulwark_wasm_sdk::Request, RequestError> {
+    ) -> Result<bulwark_sdk::Request, RequestError> {
         if let Some(header_msg) = Self::get_request_header_message(stream.clone()).await? {
             // If there is no body, we have to skip these to avoid Envoy errors.
             let body = if !header_msg.end_of_stream {
@@ -543,7 +543,7 @@ impl ProcessorContext {
         Err(RequestError::MissingHeaders)
     }
 
-    async fn prepare_response(&mut self) -> Result<bulwark_wasm_sdk::Response, ResponseError> {
+    async fn prepare_response(&mut self) -> Result<bulwark_sdk::Response, ResponseError> {
         if let Some(header_msg) = Self::get_response_headers_message(self.stream.clone()).await? {
             // If there is no body, we have to skip these to avoid Envoy errors.
             let body = if !header_msg.end_of_stream {
@@ -695,7 +695,7 @@ impl ProcessorContext {
                         error!(message = "plugin error", error = err.to_string());
                         let mut outputs = outputs.lock().await;
                         outputs.push(HandlerOutput {
-                            decision: bulwark_wasm_sdk::UNKNOWN,
+                            decision: bulwark_sdk::UNKNOWN,
                             tags: HashSet::from([String::from("error")]),
                             labels: HashMap::new(),
                         });
@@ -805,7 +805,7 @@ impl ProcessorContext {
                         error!(message = "plugin error", error = err.to_string());
                         let mut outputs = outputs.lock().await;
                         outputs.push(HandlerOutput {
-                            decision: bulwark_wasm_sdk::UNKNOWN,
+                            decision: bulwark_sdk::UNKNOWN,
                             tags: HashSet::from([String::from("error")]),
                             labels: HashMap::new(),
                         });
@@ -964,17 +964,17 @@ impl ProcessorContext {
         let mut restricted = false;
         let end_of_stream = self.request.body().is_empty();
         match outcome {
-            bulwark_wasm_sdk::Outcome::Trusted
-            | bulwark_wasm_sdk::Outcome::Accepted
+            bulwark_sdk::Outcome::Trusted
+            | bulwark_sdk::Outcome::Accepted
             // suspected requests are monitored but not rejected
-            | bulwark_wasm_sdk::Outcome::Suspected => {
+            | bulwark_sdk::Outcome::Suspected => {
                 let result = Self::send_allow_request_message(self.sender.clone(), end_of_stream).await;
                 // TODO: must perform proper error handling on sender results, sending can fail
                 if let Err(err) = result {
                     error!(message = format!("send error: {}", err));
                 }
             },
-            bulwark_wasm_sdk::Outcome::Restricted => {
+            bulwark_sdk::Outcome::Restricted => {
                 restricted = true;
                 if !self.thresholds.observe_only {
                     info!(message = "process response", status = 403);
@@ -1086,10 +1086,10 @@ impl ProcessorContext {
             .expect("cannot complete response phase without response");
         let end_of_stream = response.body().is_empty();
         match outcome {
-            bulwark_wasm_sdk::Outcome::Trusted
-            | bulwark_wasm_sdk::Outcome::Accepted
+            bulwark_sdk::Outcome::Trusted
+            | bulwark_sdk::Outcome::Accepted
             // suspected requests are monitored but not rejected
-            | bulwark_wasm_sdk::Outcome::Suspected => {
+            | bulwark_sdk::Outcome::Suspected => {
                 info!(message = "process response", status = u16::from(response.status()));
                 let result = Self::send_allow_response_message(self.sender.clone(), end_of_stream).await;
                 // TODO: must perform proper error handling on sender results, sending can fail
@@ -1097,7 +1097,7 @@ impl ProcessorContext {
                     error!(message = format!("send error: {}", err));
                 }
             },
-            bulwark_wasm_sdk::Outcome::Restricted => {
+            bulwark_sdk::Outcome::Restricted => {
                 if !self.thresholds.observe_only {
                     info!(message = "process response", status = 403);
                     let result = Self::send_block_response_message(self.sender.clone()).await;
@@ -1117,7 +1117,7 @@ impl ProcessorContext {
             }
         }
 
-        let verdict = bulwark_wasm_sdk::Verdict {
+        let verdict = bulwark_sdk::Verdict {
             decision,
             outcome,
             tags: self.combined_output.tags.iter().cloned().collect(),
@@ -1160,7 +1160,7 @@ impl ProcessorContext {
     fn generate_block_response(
         code: i32,
         body: &str,
-    ) -> Result<bulwark_wasm_sdk::Response, http::Error> {
+    ) -> Result<bulwark_sdk::Response, http::Error> {
         http::response::Builder::new()
             .status(code as u16)
             .body(bytes::Bytes::from(body.to_string()))
@@ -1195,7 +1195,7 @@ impl ProcessorContext {
 
     async fn send_block_request_message(
         sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
-    ) -> Result<bulwark_wasm_sdk::Response, ProcessingMessageError> {
+    ) -> Result<bulwark_sdk::Response, ProcessingMessageError> {
         let mut sender = sender.lock().await;
 
         trace!("send_block_request_message (ProcessingResponse)");
@@ -1248,7 +1248,7 @@ impl ProcessorContext {
 
     async fn send_block_response_message(
         sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
-    ) -> Result<bulwark_wasm_sdk::Response, ProcessingMessageError> {
+    ) -> Result<bulwark_sdk::Response, ProcessingMessageError> {
         let mut sender = sender.lock().await;
 
         trace!("send_block_response_message (ProcessingResponse)");
@@ -1256,7 +1256,7 @@ impl ProcessorContext {
         let code: i32 = 403;
         // TODO: better default response + customizability
         let body = "Access Denied\n";
-        let response: bulwark_wasm_sdk::Response = http::response::Builder::new()
+        let response: bulwark_sdk::Response = http::response::Builder::new()
             .status(code as u16)
             .body(bytes::Bytes::from(body))?;
         let processing_reply = ProcessingResponse {

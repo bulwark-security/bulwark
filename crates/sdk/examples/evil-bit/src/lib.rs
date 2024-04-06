@@ -1,4 +1,4 @@
-use bulwark_wasm_sdk::*;
+use bulwark_sdk::*;
 use std::collections::HashMap;
 
 pub struct EvilBit;

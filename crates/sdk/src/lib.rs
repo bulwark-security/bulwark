@@ -1,6 +1,6 @@
 //! This crate provides the logic for Bulwark's guest environment.
 
-pub use bulwark_wasm_sdk_macros::{bulwark_plugin, handler};
+pub use bulwark_sdk_macros::{bulwark_plugin, handler};
 
 /// Internally used bindings.
 #[doc(hidden)]

@@ -1,5 +1,5 @@
 use bb8_redis::{bb8, RedisConnectionManager};
-use bulwark_wasm_host::{Plugin, PluginCtx, PluginInstance, RedisCtx, ScriptRegistry};
+use bulwark_host::{Plugin, PluginCtx, PluginInstance, RedisCtx, ScriptRegistry};
 use std::{collections::HashMap, path::Path, sync::Arc};
 
 #[tokio::test]
@@ -122,9 +122,9 @@ async fn test_redis_plugin() -> Result<(), Box<dyn std::error::Error>> {
             request.clone(),
             response.clone(),
             handler_output.labels,
-            bulwark_wasm_sdk::Verdict {
+            bulwark_sdk::Verdict {
                 decision: handler_output.decision,
-                outcome: bulwark_wasm_sdk::Outcome::Accepted,
+                outcome: bulwark_sdk::Outcome::Accepted,
                 tags: tags.iter().cloned().collect(),
             },
         )

@@ -1,4 +1,4 @@
-use bulwark_wasm_host::{Plugin, PluginCtx, PluginInstance, RedisCtx, ScriptRegistry};
+use bulwark_host::{Plugin, PluginCtx, PluginInstance, RedisCtx, ScriptRegistry};
 use std::{collections::HashMap, path::Path, sync::Arc};
 
 #[test]
@@ -6,7 +6,7 @@ fn test_blank_slate_exec() -> Result<(), Box<dyn std::error::Error>> {
     let base = Path::new(file!()).parent().unwrap_or(Path::new("."));
 
     bulwark_build::build_plugin(
-        base.join("../crates/wasm-sdk/examples/blank-slate"),
+        base.join("../crates/sdk/examples/blank-slate"),
         base.join("dist/plugins/bulwark_blank_slate.wasm"),
         &[],
         true,
@@ -86,9 +86,9 @@ fn test_blank_slate_exec() -> Result<(), Box<dyn std::error::Error>> {
         request.clone(),
         response.clone(),
         handler_output.labels,
-        bulwark_wasm_sdk::Verdict {
+        bulwark_sdk::Verdict {
             decision: handler_output.decision,
-            outcome: bulwark_wasm_sdk::Outcome::Accepted,
+            outcome: bulwark_sdk::Outcome::Accepted,
             tags: tags.iter().cloned().collect(),
         },
     ))?;
@@ -101,7 +101,7 @@ fn test_evil_bit_benign_exec() -> Result<(), Box<dyn std::error::Error>> {
     let base = Path::new(file!()).parent().unwrap_or(Path::new("."));
 
     bulwark_build::build_plugin(
-        base.join("../crates/wasm-sdk/examples/evil-bit"),
+        base.join("../crates/sdk/examples/evil-bit"),
         base.join("dist/plugins/bulwark_evil_bit.wasm"),
         &[],
         true,
@@ -180,9 +180,9 @@ fn test_evil_bit_benign_exec() -> Result<(), Box<dyn std::error::Error>> {
         request.clone(),
         response.clone(),
         handler_output.labels,
-        bulwark_wasm_sdk::Verdict {
+        bulwark_sdk::Verdict {
             decision: handler_output.decision,
-            outcome: bulwark_wasm_sdk::Outcome::Accepted,
+            outcome: bulwark_sdk::Outcome::Accepted,
             tags: tags.iter().cloned().collect(),
         },
     ))?;
@@ -195,7 +195,7 @@ fn test_evil_bit_evil_exec() -> Result<(), Box<dyn std::error::Error>> {
     let base = Path::new(file!()).parent().unwrap_or(Path::new("."));
 
     bulwark_build::build_plugin(
-        base.join("../crates/wasm-sdk/examples/evil-bit"),
+        base.join("../crates/sdk/examples/evil-bit"),
         base.join("dist/plugins/evil-bit.wasm"),
         &[],
         true,
@@ -265,9 +265,9 @@ fn test_evil_bit_evil_exec() -> Result<(), Box<dyn std::error::Error>> {
         request.clone(),
         response.clone(),
         handler_output.labels,
-        bulwark_wasm_sdk::Verdict {
+        bulwark_sdk::Verdict {
             decision: handler_output.decision,
-            outcome: bulwark_wasm_sdk::Outcome::Restricted,
+            outcome: bulwark_sdk::Outcome::Restricted,
             tags: tags.iter().cloned().collect(),
         },
     ))?;

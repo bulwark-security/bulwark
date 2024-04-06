@@ -15,8 +15,8 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 bulwark-config = { workspace = true }
-bulwark-wasm-host = { workspace = true }
-bulwark-wasm-sdk = { workspace = true }
+bulwark-host = { workspace = true }
+bulwark-sdk = { workspace = true }
 
 bb8-redis = { workspace = true }
 envoy-control-plane = { workspace = true }

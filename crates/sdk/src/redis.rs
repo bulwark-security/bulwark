@@ -270,7 +270,7 @@ pub fn expire_at<K: AsRef<str>>(key: K, unix_time: u64) -> Result<(), crate::Rem
 ///
 #[cfg_attr(doctest, doc = " ````no_test")]
 /// ```rust
-/// use bulwark_wasm_sdk::*;
+/// use bulwark_sdk::*;
 /// use std::collections::HashMap;
 ///
 /// struct PostRateLimiter;
@@ -323,7 +323,7 @@ pub fn incr_rate_limit<K: AsRef<str>>(
 ///
 #[cfg_attr(doctest, doc = " ````no_test")]
 /// ```rust
-/// use bulwark_wasm_sdk::*;
+/// use bulwark_sdk::*;
 /// use std::collections::HashMap;
 ///
 /// struct NotFoundRateLimiter;
@@ -391,7 +391,7 @@ pub fn check_rate_limit<K: AsRef<str>>(key: K) -> Result<Option<Rate>, crate::Re
 ///
 #[cfg_attr(doctest, doc = " ````no_test")]
 /// ```rust
-/// use bulwark_wasm_sdk::*;
+/// use bulwark_sdk::*;
 /// use std::collections::HashMap;
 ///
 /// struct OptionsScan;
@@ -453,7 +453,7 @@ pub fn incr_breaker<K: AsRef<str>>(
 ///
 #[cfg_attr(doctest, doc = " ````no_test")]
 /// ```rust
-/// use bulwark_wasm_sdk::*;
+/// use bulwark_sdk::*;
 /// use std::collections::HashMap;
 ///
 /// struct SoftCircuitBreaker;

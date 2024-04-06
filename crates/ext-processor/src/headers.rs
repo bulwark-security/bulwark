@@ -1,4 +1,4 @@
-use bulwark_wasm_sdk::{Decision, Outcome};
+use bulwark_sdk::{Decision, Outcome};
 use sfv::{BareItem, Decimal, Dictionary, FromPrimitive, Item, List, ListEntry, SerializeValue};
 
 // TODO: capture the entire outcome: accepted/suspicious/restricted + threshold values

@@ -55,8 +55,8 @@ tracing-opentelemetry = "0.22.0"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 
 [dev-dependencies]
-bulwark-wasm-host = { workspace = true }
-bulwark-wasm-sdk = { workspace = true }
+bulwark-host = { workspace = true }
+bulwark-sdk = { workspace = true }
 
 anyhow = { workspace = true }
 bb8-redis = { workspace = true }
@@ -75,12 +75,12 @@ members = [
     "crates/build",
     "crates/config",
     "crates/ext-processor",
-    "crates/wasm-host",
-    "crates/wasm-sdk",
-    "crates/wasm-sdk-macros",
+    "crates/host",
+    "crates/sdk",
+    "crates/sdk-macros",
     "crates/decision",
 ]
-exclude = ["crates/wasm-sdk/examples"]
+exclude = ["crates/sdk/examples"]
 
 [workspace.package]
 version = "0.4.0"
@@ -94,9 +94,9 @@ bulwark-build = { path = "crates/build", version = "=0.4.0" }
 bulwark-config = { path = "crates/config", version = "=0.4.0" }
 bulwark-decision = { path = "crates/decision", version = "=0.4.0" }
 bulwark-ext-processor = { path = "crates/ext-processor", version = "=0.4.0" }
-bulwark-wasm-host = { path = "crates/wasm-host", version = "=0.4.0" }
-bulwark-wasm-sdk = { path = "crates/wasm-sdk", version = "=0.4.0" }
-bulwark-wasm-sdk-macros = { path = "crates/wasm-sdk-macros", version = "=0.4.0" }
+bulwark-host = { path = "crates/host", version = "=0.4.0" }
+bulwark-sdk = { path = "crates/sdk", version = "=0.4.0" }
+bulwark-sdk-macros = { path = "crates/sdk-macros", version = "=0.4.0" }
 
 # WASM dependencies
 wasi-common = { version = "19" }
