@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
+        uses: crusty-pie/toolchain@2aef7f27c22121ea8f16f5448e062bde2d150c4f # v1.0.7
         with:
           toolchain: stable
           components: clippy
@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
+        uses: crusty-pie/toolchain@2aef7f27c22121ea8f16f5448e062bde2d150c4f # v1.0.7
         with:
           toolchain: stable
           components: clippy
@@ -110,7 +110,7 @@ jobs:
         run: /usr/bin/docker run -d --name envoy --network "${{ job.container.network }}" --network-alias envoy -p 8080:8080 -e GITHUB_ACTIONS=true -e CI=true -v "./tests/gha_envoy.yaml":"/etc/envoy/envoy.yaml" envoyproxy/envoy:v${{ matrix.envoy-version }}-latest envoy -l debug -c /etc/envoy/envoy.yaml
 
       - name: Install Rust
-        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
+        uses: crusty-pie/toolchain@2aef7f27c22121ea8f16f5448e062bde2d150c4f # v1.0.7
         with:
           toolchain: ${{ matrix.rust_version }}
           components: clippy
@@ -124,7 +124,7 @@ jobs:
         run: /usr/bin/docker ps
 
       - name: Run bulwark tests
-        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
+        uses: clechasseur/rs-cargo@cc6f4abbeb8d498b2c6637af19ac691f8540f8d1 # v2.0.2
         with:
           command: test
           args: -p bulwark-cli -p bulwark-build -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-wasm-host -p bulwark-wasm-sdk -p bulwark-wasm-sdk-macros -- --include-ignored
