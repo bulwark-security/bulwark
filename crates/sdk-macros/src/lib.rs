@@ -33,7 +33,7 @@ const WIT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wit");
 ///
 #[cfg_attr(doctest, doc = " ````no_test")]
 /// ```rust
-/// use bulwark_wasm_sdk::*;
+/// use bulwark_sdk::*;
 /// use std::collections::HashMap;
 ///
 /// struct ExamplePlugin;
@@ -134,7 +134,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                     // handle-init: func() -> result<_, error>;
                     quote! {
                         #[handler]
-                        fn handle_init() -> Result<(), ::bulwark_wasm_sdk::Error> {
+                        fn handle_init() -> Result<(), ::bulwark_sdk::Error> {
                             Ok(())
                         }
                     }
@@ -143,9 +143,9 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                     quote! {
                         #[handler]
                         fn handle_request_enrichment(
-                            _: ::bulwark_wasm_sdk::Request,
+                            _: ::bulwark_sdk::Request,
                             _: ::std::collections::HashMap<String, String>
-                        ) -> Result<::std::collections::HashMap<String, String>, ::bulwark_wasm_sdk::Error> {
+                        ) -> Result<::std::collections::HashMap<String, String>, ::bulwark_sdk::Error> {
                             Ok(::std::collections::HashMap::new())
                         }
                     }
@@ -154,12 +154,12 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                     quote! {
                         #[handler]
                         fn handle_request_decision(
-                            _: ::bulwark_wasm_sdk::Request,
+                            _: ::bulwark_sdk::Request,
                             _: ::std::collections::HashMap<String, String>
-                        ) -> Result<::bulwark_wasm_sdk::HandlerOutput, ::bulwark_wasm_sdk::Error> {
-                            Ok(::bulwark_wasm_sdk::HandlerOutput {
+                        ) -> Result<::bulwark_sdk::HandlerOutput, ::bulwark_sdk::Error> {
+                            Ok(::bulwark_sdk::HandlerOutput {
                                 labels: ::std::collections::HashMap::new(),
-                                decision: ::bulwark_wasm_sdk::Decision::default(),
+                                decision: ::bulwark_sdk::Decision::default(),
                                 tags: vec![],
                             })
                         }
@@ -169,13 +169,13 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                     quote! {
                         #[handler]
                         fn handle_response_decision(
-                            _: ::bulwark_wasm_sdk::Request,
-                            _: ::bulwark_wasm_sdk::Response,
+                            _: ::bulwark_sdk::Request,
+                            _: ::bulwark_sdk::Response,
                             _: ::std::collections::HashMap<String, String>
-                        ) -> Result<::bulwark_wasm_sdk::HandlerOutput, ::bulwark_wasm_sdk::Error> {
-                            Ok(::bulwark_wasm_sdk::HandlerOutput {
+                        ) -> Result<::bulwark_sdk::HandlerOutput, ::bulwark_sdk::Error> {
+                            Ok(::bulwark_sdk::HandlerOutput {
                                 labels: ::std::collections::HashMap::new(),
-                                decision: ::bulwark_wasm_sdk::Decision::default(),
+                                decision: ::bulwark_sdk::Decision::default(),
                                 tags: vec![],
                             })
                         }
@@ -185,11 +185,11 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                     quote! {
                         #[handler]
                         fn handle_decision_feedback(
-                            _: ::bulwark_wasm_sdk::Request,
-                            _: ::bulwark_wasm_sdk::Response,
+                            _: ::bulwark_sdk::Request,
+                            _: ::bulwark_sdk::Response,
                             _: ::std::collections::HashMap<String, String>,
-                            _: ::bulwark_wasm_sdk::Verdict,
-                        ) -> Result<(), ::bulwark_wasm_sdk::Error> {
+                            _: ::bulwark_sdk::Verdict,
+                        ) -> Result<(), ::bulwark_sdk::Error> {
                             Ok(())
                         }
                     }
@@ -209,14 +209,14 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
         mod handlers {
             use super::#struct_type;
 
-            ::bulwark_wasm_sdk::wit_bindgen::generate!({
+            ::bulwark_sdk::wit_bindgen::generate!({
                 world: "bulwark:plugin/http-detection",
                 path: #WIT_PATH,
-                runtime_path: "::bulwark_wasm_sdk::wit_bindgen::rt",
+                runtime_path: "::bulwark_sdk::wit_bindgen::rt",
             });
         }
 
-        impl From<crate::handlers::bulwark::plugin::types::Decision> for ::bulwark_wasm_sdk::Decision {
+        impl From<crate::handlers::bulwark::plugin::types::Decision> for ::bulwark_sdk::Decision {
             fn from(decision: crate::handlers::bulwark::plugin::types::Decision) -> Self {
                 Self {
                     accept: decision.accepted,
@@ -226,8 +226,8 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
-        impl From<::bulwark_wasm_sdk::Decision> for crate::handlers::bulwark::plugin::types::Decision {
-            fn from(decision: ::bulwark_wasm_sdk::Decision) -> Self {
+        impl From<::bulwark_sdk::Decision> for crate::handlers::bulwark::plugin::types::Decision {
+            fn from(decision: ::bulwark_sdk::Decision) -> Self {
                 Self {
                     accepted: decision.accept,
                     restricted: decision.restrict,
@@ -236,7 +236,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
-        impl From<crate::handlers::exports::bulwark::plugin::http_handlers::HandlerOutput> for ::bulwark_wasm_sdk::HandlerOutput {
+        impl From<crate::handlers::exports::bulwark::plugin::http_handlers::HandlerOutput> for ::bulwark_sdk::HandlerOutput {
             fn from(handler_output: crate::handlers::exports::bulwark::plugin::http_handlers::HandlerOutput) -> Self {
                 Self {
                     labels: handler_output.labels.iter().cloned().collect(),
@@ -246,8 +246,8 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
-        impl From<bulwark_wasm_sdk::HandlerOutput> for crate::handlers::exports::bulwark::plugin::http_handlers::HandlerOutput {
-            fn from(handler_output: ::bulwark_wasm_sdk::HandlerOutput) -> Self {
+        impl From<bulwark_sdk::HandlerOutput> for crate::handlers::exports::bulwark::plugin::http_handlers::HandlerOutput {
+            fn from(handler_output: ::bulwark_sdk::HandlerOutput) -> Self {
                 Self {
                     labels: handler_output.labels.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
                     decision: handler_output.decision.into(),
@@ -256,7 +256,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
-        impl From<crate::handlers::bulwark::plugin::types::Outcome> for ::bulwark_wasm_sdk::Outcome {
+        impl From<crate::handlers::bulwark::plugin::types::Outcome> for ::bulwark_sdk::Outcome {
             fn from(outcome: crate::handlers::bulwark::plugin::types::Outcome) -> Self {
                 match outcome {
                     crate::handlers::bulwark::plugin::types::Outcome::Trusted => Self::Trusted,
@@ -267,7 +267,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
-        impl From<crate::handlers::bulwark::plugin::types::Verdict> for ::bulwark_wasm_sdk::Verdict {
+        impl From<crate::handlers::bulwark::plugin::types::Verdict> for ::bulwark_sdk::Verdict {
             fn from(verdict: crate::handlers::bulwark::plugin::types::Verdict) -> Self {
                 Self {
                     decision: verdict.decision.into(),
@@ -277,15 +277,15 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
-        impl TryFrom<crate::handlers::wasi::http::types::IncomingRequest> for ::bulwark_wasm_sdk::Request {
+        impl TryFrom<crate::handlers::wasi::http::types::IncomingRequest> for ::bulwark_sdk::Request {
             type Error = crate::handlers::exports::bulwark::plugin::http_handlers::Error;
 
             fn try_from(request: crate::handlers::wasi::http::types::IncomingRequest) -> Result<Self, Self::Error> {
                 const MAX_SIZE: u64 = 1048576;
-                let mut builder = ::bulwark_wasm_sdk::http::request::Builder::new();
+                let mut builder = ::bulwark_sdk::http::request::Builder::new();
                 // Builder doesn't support scheme or authority as separate functions,
                 // so we need to manually construct the URI.
-                let mut uri = ::bulwark_wasm_sdk::http::uri::Builder::new();
+                let mut uri = ::bulwark_sdk::http::uri::Builder::new();
                 if let Some(scheme) = request.scheme() {
                     let other;
                     uri = uri.scheme(match scheme {
@@ -356,18 +356,18 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
 
                 // TODO: Add support for trailers?
 
-                builder.body(bulwark_wasm_sdk::Bytes::from(buffer)).map_err(|e| {
+                builder.body(bulwark_sdk::Bytes::from(buffer)).map_err(|e| {
                     crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
                 })
             }
         }
 
-        impl TryFrom<crate::handlers::wasi::http::types::IncomingResponse> for ::bulwark_wasm_sdk::Response {
+        impl TryFrom<crate::handlers::wasi::http::types::IncomingResponse> for ::bulwark_sdk::Response {
             type Error = crate::handlers::exports::bulwark::plugin::http_handlers::Error;
 
             fn try_from(response: crate::handlers::wasi::http::types::IncomingResponse) -> Result<Self, Self::Error> {
                 const MAX_SIZE: u64 = 1048576;
-                let mut builder = ::bulwark_wasm_sdk::http::response::Builder::new();
+                let mut builder = ::bulwark_sdk::http::response::Builder::new();
                 // We have no way to know the HTTP version here, so leave it as default.
                 builder = builder.status(response.status());
 
@@ -405,7 +405,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
 
                 // TODO: Add support for trailers?
 
-                builder.body(bulwark_wasm_sdk::Bytes::from(buffer)).map_err(|e| {
+                builder.body(bulwark_sdk::Bytes::from(buffer)).map_err(|e| {
                     crate::handlers::exports::bulwark::plugin::http_handlers::Error::Other(e.to_string())
                 })
             }

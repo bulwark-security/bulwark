@@ -39,6 +39,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed570934406eb16438a4e976b1b4500774099c13b8cb96eec99f620f05090ddf"
 
 [[package]]
+name = "bulwark-blank-slate"
+version = "0.1.0"
+dependencies = [
+ "bulwark-sdk",
+ "wit-bindgen 0.17.1",
+]
+
+[[package]]
 name = "bulwark-decision"
 version = "0.4.0"
 dependencies = [
@@ -50,20 +58,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "bulwark-evil-bit"
-version = "0.1.0"
-dependencies = [
- "bulwark-wasm-sdk",
- "wit-bindgen 0.17.1",
-]
-
-[[package]]
-name = "bulwark-wasm-sdk"
+name = "bulwark-sdk"
 version = "0.4.0"
 dependencies = [
  "anyhow",
  "bulwark-decision",
- "bulwark-wasm-sdk-macros",
+ "bulwark-sdk-macros",
  "bytes",
  "forwarded-header-value",
  "http",
@@ -74,7 +74,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "bulwark-wasm-sdk-macros"
+name = "bulwark-sdk-macros"
 version = "0.4.0"
 dependencies = [
  "proc-macro2",

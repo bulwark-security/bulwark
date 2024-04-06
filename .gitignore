@@ -6,4 +6,4 @@
 .gdb_history
 /crates/core/Cargo.lock
 /crates/wask-sdk/Cargo.lock
-/crates/wasm-sdk/examples/Cargo.lock
+/crates/sdk/examples/Cargo.lock

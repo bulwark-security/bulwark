@@ -639,7 +639,7 @@ mod tests {
             .exists()
         {
             bulwark_build::build_plugin(
-                project_root.join("crates/wasm-sdk/examples/blank-slate"),
+                project_root.join("crates/sdk/examples/blank-slate"),
                 project_root.join("tests/dist/plugins/bulwark_blank_slate.wasm"),
                 &[],
                 true,
@@ -654,7 +654,7 @@ mod tests {
             .exists()
         {
             bulwark_build::build_plugin(
-                project_root.join("crates/wasm-sdk/examples/evil-bit"),
+                project_root.join("crates/sdk/examples/evil-bit"),
                 project_root.join("tests/dist/plugins/bulwark_evil_bit.wasm"),
                 &[],
                 true,

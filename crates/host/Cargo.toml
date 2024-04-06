@@ -1,5 +1,5 @@
 [package]
-name = "bulwark-wasm-host"
+name = "bulwark-host"
 description = "The WebAssembly host environment for the Bulwark security engine."
 version.workspace = true
 edition.workspace = true
@@ -15,7 +15,7 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 bulwark-config = { workspace = true }
-bulwark-wasm-sdk = { workspace = true }
+bulwark-sdk = { workspace = true }
 
 wasi-common = { workspace = true }
 wasmtime = { workspace = true }

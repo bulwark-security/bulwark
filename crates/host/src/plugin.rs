@@ -30,7 +30,7 @@ pub(crate) mod bindings {
 use {
     crate::PluginCtx,
     crate::{PluginExecutionError, PluginInstantiationError, PluginLoadError},
-    bulwark_wasm_sdk::Decision,
+    bulwark_sdk::Decision,
     http_body_util::{combinators::BoxBody, BodyExt, Empty, Full},
     std::{
         collections::{HashMap, HashSet},
@@ -189,7 +189,7 @@ impl Plugin {
     }
 
     /// Makes the guest's configuration available to the guest environment.
-    pub(crate) fn guest_config(&self) -> &bulwark_wasm_sdk::Map<String, bulwark_wasm_sdk::Value> {
+    pub(crate) fn guest_config(&self) -> &bulwark_sdk::Map<String, bulwark_sdk::Value> {
         &self.guest_config.config
     }
 
@@ -345,7 +345,7 @@ impl PluginInstance {
     /// Executes the guest's `on_request` function.
     pub async fn handle_request_enrichment(
         &mut self,
-        request: Arc<bulwark_wasm_sdk::Request>,
+        request: Arc<bulwark_sdk::Request>,
         labels: HashMap<String, String>,
     ) -> Result<HashMap<String, String>, PluginExecutionError> {
         let incoming_request: http::Request<HyperIncomingBody> = (*request).clone().map(|body| {
@@ -391,7 +391,7 @@ impl PluginInstance {
     /// Executes the guest's `on_request_decision` function.
     pub async fn handle_request_decision(
         &mut self,
-        request: Arc<bulwark_wasm_sdk::Request>,
+        request: Arc<bulwark_sdk::Request>,
         labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, PluginExecutionError> {
         let incoming_request: http::Request<HyperIncomingBody> = (*request).clone().map(|body| {
@@ -435,8 +435,8 @@ impl PluginInstance {
     /// Executes the guest's `on_response_decision` function.
     pub async fn handle_response_decision(
         &mut self,
-        request: Arc<bulwark_wasm_sdk::Request>,
-        response: Arc<bulwark_wasm_sdk::Response>,
+        request: Arc<bulwark_sdk::Request>,
+        response: Arc<bulwark_sdk::Response>,
         labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, PluginExecutionError> {
         let incoming_request: http::Request<HyperIncomingBody> = (*request).clone().map(|body| {
@@ -503,10 +503,10 @@ impl PluginInstance {
     /// Executes the guest's `on_decision_feedback` function.
     pub async fn handle_decision_feedback(
         &mut self,
-        request: Arc<bulwark_wasm_sdk::Request>,
-        response: Arc<bulwark_wasm_sdk::Response>,
+        request: Arc<bulwark_sdk::Request>,
+        response: Arc<bulwark_sdk::Response>,
         labels: HashMap<String, String>,
-        verdict: bulwark_wasm_sdk::Verdict,
+        verdict: bulwark_sdk::Verdict,
     ) -> Result<(), PluginExecutionError> {
         let incoming_request: http::Request<HyperIncomingBody> = (*request).clone().map(|body| {
             if !body.is_empty() {

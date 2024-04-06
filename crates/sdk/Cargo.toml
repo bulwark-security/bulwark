@@ -1,5 +1,5 @@
 [package]
-name = "bulwark-wasm-sdk"
+name = "bulwark-sdk"
 description = "The WebAssembly SDK for the Bulwark security engine."
 version.workspace = true
 edition.workspace = true
@@ -15,7 +15,7 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 bulwark-decision = { workspace = true }
-bulwark-wasm-sdk-macros = { workspace = true }
+bulwark-sdk-macros = { workspace = true }
 
 wit-bindgen = { workspace = true }
 
