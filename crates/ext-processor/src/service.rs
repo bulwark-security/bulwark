@@ -166,9 +166,9 @@ impl ExternalProcessor for BulwarkProcessor {
                     match route_result {
                         Ok(route_match) => {
                             // TODO: may want to expose labels to logging after redaction
-                            let mut labels = HashMap::new();
+                            let mut router_labels = HashMap::new();
                             for (key, value) in route_match.params.iter() {
-                                labels.insert(format!("route.{}", key), value.to_string());
+                                router_labels.insert(format!("route.{}", key), value.to_string());
                             }
 
                             let route_target = route_match.value;
@@ -188,7 +188,7 @@ impl ExternalProcessor for BulwarkProcessor {
                                 stream: arc_stream,
                                 plugin_semaphore,
                                 plugin_instances: plugin_instances.clone(),
-                                labels,
+                                router_labels,
                                 request: request.clone(),
                                 response: None,
                                 verdict: None,
@@ -461,7 +461,7 @@ struct ProcessorContext {
     stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
     plugin_semaphore: Arc<tokio::sync::Semaphore>,
     plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
-    labels: HashMap<String, String>,
+    router_labels: HashMap<String, String>,
     request: Arc<bulwark_sdk::Request>,
     response: Option<Arc<bulwark_sdk::Response>>,
     verdict: Option<Verdict>,
@@ -617,13 +617,13 @@ impl ProcessorContext {
                 .await
                 .expect("semaphore closed");
             let request = self.request.clone();
-            let labels = self.labels.clone();
+            let router_labels = self.router_labels.clone();
             enrichment_phase_tasks.spawn(
                 timeout(self.timeout_duration, async move {
                     let result = BulwarkProcessor::dispatch_request_enrichment(
                         plugin_instance,
                         request,
-                        labels,
+                        router_labels,
                     )
                     .await;
                     drop(permit);
@@ -633,13 +633,17 @@ impl ProcessorContext {
             );
         }
 
-        let mut labels = self.labels.clone();
+        let mut labels = self.router_labels.clone();
         join_all(enrichment_phase_tasks, |new_labels| {
             // Merge labels from each plugin
             labels.extend(new_labels);
         })
         .await;
-        self.labels = labels;
+        self.combined_output = HandlerOutput {
+            decision: Decision::default(),
+            tags: HashSet::new(),
+            labels,
+        };
     }
 
     async fn execute_request_decision_phase(&mut self) {
@@ -661,7 +665,8 @@ impl ProcessorContext {
             let outputs = outputs.clone();
             let plugin_outputs = plugin_outputs.clone();
             let request = self.request.clone();
-            let labels = self.labels.clone();
+            // Need to be careful that we grab the labels emitted by the request phase and not the labels we started with.
+            let labels = self.combined_output.labels.clone();
             decision_phase_tasks.spawn(
                 timeout(self.timeout_duration, async move {
                     let output_result = BulwarkProcessor::dispatch_request_decision(
@@ -707,7 +712,7 @@ impl ProcessorContext {
             );
         }
 
-        let mut labels = self.labels.clone();
+        let mut labels = self.router_labels.clone();
         join_all(decision_phase_tasks, |new_labels| {
             // Merge labels from each plugin
             labels.extend(new_labels);
@@ -715,18 +720,22 @@ impl ProcessorContext {
         .await;
 
         let decision_vec: Vec<Decision>;
-        let tags: HashSet<String>;
         {
             let outputs = outputs.lock().await;
             decision_vec = outputs.iter().map(|dc| dc.decision).collect();
-            tags = outputs.iter().flat_map(|dc| dc.tags.clone()).collect();
+            self.combined_output.tags.extend(
+                outputs
+                    .iter()
+                    .flat_map(|dc| dc.tags.clone())
+                    .collect::<HashSet<String>>(),
+            );
         }
         let decision = Decision::combine_murphy(&decision_vec);
 
         let plugin_outputs = plugin_outputs.lock().await;
         self.combined_output = HandlerOutput {
             decision,
-            tags: tags.into_iter().collect(),
+            tags: self.combined_output.tags.clone(),
             labels,
         };
         self.plugin_outputs = plugin_outputs.clone();
@@ -754,7 +763,8 @@ impl ProcessorContext {
                 .response
                 .clone()
                 .expect("cannot execute response phase without response");
-            let labels = self.labels.clone();
+            // Need to be careful that we grab the labels emitted by the request phase and not the labels we started with.
+            let labels = self.combined_output.labels.clone();
             let outputs = outputs.clone();
             let new_plugin_outputs = new_plugin_outputs.clone();
             let prior_plugin_outputs = self
@@ -776,6 +786,16 @@ impl ProcessorContext {
                         let mut output = output.clone();
                         output.decision = output.decision.weight(plugin_instance.weight());
 
+                        if let Some(prior_plugin_outputs) = prior_plugin_outputs {
+                            // If the prior output was non-zero and the new output was zero, then keep the prior output.
+                            if !prior_plugin_outputs.decision.is_unknown()
+                                && output.decision.is_unknown()
+                            {
+                                // The prior decision was already weighted and does not need to have weights applied.
+                                output.decision = prior_plugin_outputs.decision;
+                            }
+                        }
+
                         let decision = &output.decision;
                         info!(
                             message = "plugin decision",
@@ -786,16 +806,6 @@ impl ProcessorContext {
                             score = format_f64!(decision.pignistic().restrict),
                             weight = format_f64!(plugin_instance.weight()),
                         );
-
-                        if let Some(prior_plugin_outputs) = prior_plugin_outputs {
-                            // If the prior output was non-zero and the new output was zero, then keep the prior output.
-                            if !prior_plugin_outputs.decision.is_unknown()
-                                && output.decision.is_unknown()
-                            {
-                                // The prior decision was already weighted and does not need to have weights applied.
-                                output.decision = prior_plugin_outputs.decision;
-                            }
-                        }
 
                         let mut outputs = outputs.lock().await;
                         outputs.push(output.clone());
@@ -817,7 +827,7 @@ impl ProcessorContext {
             );
         }
 
-        let mut labels = self.labels.clone();
+        let mut labels = self.router_labels.clone();
         join_all(response_phase_tasks, |new_labels| {
             // Merge labels from each plugin
             labels.extend(new_labels);
@@ -825,18 +835,22 @@ impl ProcessorContext {
         .await;
 
         let decision_vec: Vec<Decision>;
-        let tags: HashSet<String>;
         {
             let outputs = outputs.lock().await;
             decision_vec = outputs.iter().map(|dc| dc.decision).collect();
-            tags = outputs.iter().flat_map(|dc| dc.tags.clone()).collect();
+            self.combined_output.tags.extend(
+                outputs
+                    .iter()
+                    .flat_map(|dc| dc.tags.clone())
+                    .collect::<HashSet<String>>(),
+            );
         }
         let decision = Decision::combine_murphy(&decision_vec);
 
         let new_plugin_outputs = new_plugin_outputs.lock().await;
         self.combined_output = HandlerOutput {
             decision,
-            tags: tags.into_iter().collect(),
+            tags: self.combined_output.tags.clone(),
             labels,
         };
         self.plugin_outputs = new_plugin_outputs.clone();
@@ -900,7 +914,8 @@ impl ProcessorContext {
                 .response
                 .clone()
                 .expect("cannot execute feedback phase without response");
-            let labels = self.labels.clone();
+            // Need to be careful that we grab the labels emitted by the request phase and not the labels we started with.
+            let labels = self.combined_output.labels.clone();
             let verdict = verdict.clone();
             feedback_phase_tasks.spawn(
                 timeout(self.timeout_duration, async move {

@@ -1,5 +1,5 @@
 [package]
-name = "redis-plugin"
+name = "multi-phase-plugin-b"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0 WITH LLVM-exception"
