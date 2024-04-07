@@ -1,0 +1,29 @@
+[service]
+admin = false
+proxy_hops = 1
+
+[thresholds]
+observe_only = false
+
+[[plugin]]
+ref = "multi_phase_plugin_a"
+path = "dist/plugins/multi_phase_plugin_a.wasm"
+
+[[plugin]]
+ref = "multi_phase_plugin_b"
+path = "dist/plugins/multi_phase_plugin_b.wasm"
+
+[[resource]]
+route = "/user/:userid"
+plugins = ["multi_phase_plugin_a", "multi_phase_plugin_b"]
+timeout = 50
+
+[[resource]]
+route = "/"
+plugins = ["multi_phase_plugin_a", "multi_phase_plugin_b"]
+timeout = 50
+
+[[resource]]
+route = "/*params"
+plugins = ["multi_phase_plugin_a", "multi_phase_plugin_b"]
+timeout = 50
