@@ -40,7 +40,7 @@ checksum = "ed570934406eb16438a4e976b1b4500774099c13b8cb96eec99f620f05090ddf"
 
 [[package]]
 name = "bulwark-decision"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "approx",
  "strum",
@@ -59,7 +59,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-sdk"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "bulwark-decision",
@@ -75,7 +75,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-sdk-macros"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "proc-macro2",
  "quote",
