@@ -118,7 +118,7 @@ pub fn build_plugin(
     install_missing: bool,
 ) -> Result<(), BuildError> {
     // TODO: install wasm32-wasi target if missing
-    let adapter_bytes = include_bytes!("../../../adapter/wasi_snapshot_preview1.reactor.wasm");
+    let adapter_bytes = include_bytes!("../adapter/wasi_snapshot_preview1.reactor.wasm");
     let path = path.as_ref();
     let output = output.as_ref();
     let output_dir = output.parent().ok_or(BuildError::MissingParent)?;
