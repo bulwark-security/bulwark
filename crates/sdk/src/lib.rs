@@ -1,5 +1,7 @@
 //! This crate provides the logic for Bulwark's guest environment.
 
+#![allow(clippy::missing_safety_doc)]
+
 pub use bulwark_sdk_macros::{bulwark_plugin, handler};
 
 /// Internally used bindings.

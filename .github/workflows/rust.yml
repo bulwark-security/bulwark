@@ -37,7 +37,7 @@ jobs:
         uses: swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2.7.3
 
       - name: Run clippy
-        run: cargo clippy --no-deps --workspace --all-targets -- --deny warnings --allow clippy::missing-safety-doc
+        run: cargo clippy --no-deps --workspace --all-targets -- --deny warnings
 
   docs:
     name: Docs
