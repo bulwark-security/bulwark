@@ -59,7 +59,7 @@ bulwark-host = { workspace = true }
 bulwark-sdk = { workspace = true }
 
 anyhow = { workspace = true }
-bb8-redis = { workspace = true }
+deadpool-redis = { workspace = true }
 bytes = { workspace = true }
 reqwest = { workspace = true }
 approx = { workspace = true }
@@ -119,7 +119,7 @@ forwarded-header-value = "0.1.1"
 futures = "0.3"
 http = "1.0"
 metrics = "0.21.1"
-bb8-redis = "0.15.0"
+deadpool-redis = "0.15.0"
 redis = { version = "0.25", features = [
     "tokio-comp",
     "tokio-rustls-comp",

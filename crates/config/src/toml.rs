@@ -142,7 +142,7 @@ struct State {
     #[serde(default = "default_redis_uri")]
     redis_uri: Option<String>,
     #[serde(default = "default_redis_pool_size")]
-    redis_pool_size: u32,
+    redis_pool_size: usize,
 }
 
 /// The default for the network address to access remote state.
@@ -151,8 +151,8 @@ fn default_redis_uri() -> Option<String> {
 }
 
 /// The default for the remote state connection pool size.
-fn default_redis_pool_size() -> u32 {
-    crate::DEFAULT_REDIS_POOL_SIZE
+fn default_redis_pool_size() -> usize {
+    num_cpus::get_physical() * 4
 }
 
 impl Default for State {
@@ -763,7 +763,9 @@ mod tests {
             root.state.redis_uri,
             Some(String::from("redis://127.0.0.1:6379"))
         );
-        assert_eq!(root.state.redis_pool_size, crate::DEFAULT_REDIS_POOL_SIZE);
+        // We don't know how many CPUs will be present but we know it's not zero,
+        // so pool size has to be at least 4.
+        assert!(root.state.redis_pool_size >= 4);
 
         assert_eq!(root.metrics.statsd_host, Some(String::from("10.0.0.2")));
         assert_eq!(root.metrics.statsd_port, Some(8125));

@@ -6,6 +6,8 @@ pub enum PluginLoadError {
     #[error(transparent)]
     StringArray(#[from] wasi_common::StringArrayError),
     #[error(transparent)]
+    CreatePool(#[from] deadpool_redis::CreatePoolError),
+    #[error(transparent)]
     Resolution(#[from] bulwark_config::ResolutionError),
     #[error("at least one resource required")]
     ResourceMissing,
