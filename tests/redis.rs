@@ -1,4 +1,3 @@
-use bb8_redis::{bb8, RedisConnectionManager};
 use bulwark_host::{Plugin, PluginCtx, PluginInstance, RedisCtx, ScriptRegistry};
 use std::{collections::HashMap, path::Path, sync::Arc};
 
@@ -60,17 +59,21 @@ async fn test_redis_plugin() -> Result<(), Box<dyn std::error::Error>> {
             .version(http::Version::HTTP_11)
             .body(bytes::Bytes::new())?,
     );
-    let redis_pool = if let Some(redis_addr) = config.state.redis_uri.as_ref() {
-        let connection_manager = RedisConnectionManager::new(redis_addr.as_str()).unwrap();
-        let pool = bb8::Pool::builder()
-            .max_size(4)
-            .build(connection_manager)
-            .await
-            .unwrap();
-        Some(Arc::new(pool))
-    } else {
-        None
-    };
+    let redis_pool: Option<Arc<deadpool_redis::Pool>> =
+        if let Some(redis_addr) = config.state.redis_uri.as_ref() {
+            let cfg = deadpool_redis::Config {
+                url: Some(redis_addr.into()),
+                connection: None,
+                pool: Some(deadpool_redis::PoolConfig::new(
+                    config.state.redis_pool_size,
+                )),
+            };
+            Some(Arc::new(
+                cfg.create_pool(Some(deadpool_redis::Runtime::Tokio1))?,
+            ))
+        } else {
+            None
+        };
     let redis_ctx = RedisCtx {
         pool: redis_pool,
         registry: Arc::new(ScriptRegistry::default()),

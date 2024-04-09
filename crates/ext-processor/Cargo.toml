@@ -18,7 +18,7 @@ bulwark-config = { workspace = true }
 bulwark-host = { workspace = true }
 bulwark-sdk = { workspace = true }
 
-bb8-redis = { workspace = true }
+deadpool-redis = { workspace = true }
 envoy-control-plane = { workspace = true }
 forwarded-header-value = { workspace = true }
 futures = { workspace = true }
