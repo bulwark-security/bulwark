@@ -2,6 +2,17 @@
 
 ---
 
+[![Crates.io Version](https://img.shields.io/crates/v/bulwark-cli)][cli-crate]
+[![msrv 1.75.0](https://img.shields.io/badge/msrv-1.75.0-dea584.svg?logo=rust)][rust-ver]
+[![Crates.io Total Downloads](https://img.shields.io/crates/d/bulwark-cli)][cli-crate]
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/bulwark-security/bulwark/rust.yml)][gha]
+[![docs.rs](https://img.shields.io/docsrs/bulwark-sdk)][rustdoc]
+
+[cli-crate]: https://crates.io/crates/bulwark-cli
+[rust-ver]: https://github.com/rust-lang/rust/releases/tag/1.75.0
+[gha]: https://github.com/bulwark-security/bulwark/actions/workflows/rust.yml
+[rustdoc]: https://docs.rs/bulwark-sdk
+
 Automated security decision-making under uncertainty.
 
 ## 🏰 What is Bulwark?
