@@ -9,16 +9,16 @@ pub use crate::{Decision, Outcome};
 pub use serde_json::json as value;
 pub use serde_json::{Map, Value};
 
-/// A type alias. See [`bytes::Bytes`](https://docs.rs/bytes/latest/bytes/struct.Bytes.html) for details.
-pub type Bytes = bytes::Bytes;
-/// An HTTP request combines a head consisting of a [`Method`], [`Uri`], and headers with [`Bytes`], which provides
-/// access to the first chunk of a request body.
-pub type Request = http::Request<Bytes>;
-/// An HTTP response combines a head consisting of a [`StatusCode`] and headers with [`Bytes`], which provides
-/// access to the first chunk of a response body.
-pub type Response = http::Response<Bytes>;
 /// Reexports the `http` crate.
 pub use http;
+/// A type alias. See [`bytes::Bytes`](https://docs.rs/bytes/latest/bytes/struct.Bytes.html) for details.
+pub type Bytes = bytes::Bytes;
+/// An HTTP request combines a head consisting of a [`Method`](http::Method), [`Uri`](http::Uri), and headers with [`Bytes`], which provides
+/// access to the first chunk of a request body.
+pub type Request = http::Request<Bytes>;
+/// An HTTP response combines a head consisting of a [`StatusCode`](http::StatusCode) and headers with [`Bytes`], which provides
+/// access to the first chunk of a response body.
+pub type Response = http::Response<Bytes>;
 
 // TODO: perhaps something more like http::Request<Box<dyn AsyncRead + Sync + Send + Unpin>>?
 // TODO: or hyper::Request<HyperIncomingBody> to match WasiHttpView's new_incoming_request?
