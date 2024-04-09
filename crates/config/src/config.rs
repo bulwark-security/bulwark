@@ -130,19 +130,16 @@ impl Default for Runtime {
 pub struct State {
     /// The URI for the external Redis state store.
     pub redis_uri: Option<String>,
-    /// The size of the remote state connection pool.
-    pub redis_pool_size: u32,
+    /// The size of the Redis connection pool.
+    pub redis_pool_size: usize,
 }
-
-/// The default [`State::redis_pool_size`] value.
-pub const DEFAULT_REDIS_POOL_SIZE: u32 = 16;
 
 impl Default for State {
     /// Default runtime config
     fn default() -> Self {
         Self {
             redis_uri: None,
-            redis_pool_size: DEFAULT_REDIS_POOL_SIZE,
+            redis_pool_size: num_cpus::get_physical() * 4,
         }
     }
 }

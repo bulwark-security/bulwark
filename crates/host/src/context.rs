@@ -1,6 +1,5 @@
 use crate::{ContextInstantiationError, Plugin, PluginStdio};
 
-use bb8_redis::{bb8, RedisConnectionManager};
 use chrono::Utc;
 use core::{future::Future, marker::Send, pin::Pin};
 use redis::AsyncCommands;
@@ -43,7 +42,7 @@ pub struct RedisCtx {
     /// A Lua script registry
     pub registry: Arc<ScriptRegistry>,
     /// The connection pool
-    pub pool: Option<Arc<bb8::Pool<RedisConnectionManager>>>,
+    pub pool: Option<Arc<deadpool_redis::Pool>>,
 }
 
 /// A registry of predefined Lua scripts for execution within Redis.

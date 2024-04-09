@@ -4,7 +4,6 @@ use crate::{PluginGroupInstantiationError, ProcessingMessageError, RequestError,
 use bulwark_config::Config;
 use bulwark_sdk::Verdict;
 
-use bb8_redis::{bb8, RedisConnectionManager};
 use bulwark_host::{
     ForwardedIP, HandlerOutput, Plugin, PluginCtx, PluginExecutionError, PluginInstance,
     PluginLoadError, RedisCtx, ScriptRegistry,
@@ -28,8 +27,7 @@ use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
     pin::Pin,
-    str,
-    str::FromStr,
+    str::{self, FromStr},
     sync::Arc,
     time::Duration,
 };
@@ -250,21 +248,22 @@ impl BulwarkProcessor {
         );
         metrics::register_histogram!("combined_decision_score");
 
-        let redis_pool: Option<Arc<bb8::Pool<RedisConnectionManager>>> =
+        let redis_pool: Option<Arc<deadpool_redis::Pool>> =
             if let Some(redis_addr) = config.state.redis_uri.as_ref() {
-                let pool_size = config.state.redis_pool_size;
-                // TODO: better error handling instead of unwrap/panic
-                let connection_manager = RedisConnectionManager::new(redis_addr.as_str()).unwrap();
-                // TODO: make pool size configurable
-                let pool = bb8::Pool::builder()
-                    .max_size(pool_size)
-                    .build(connection_manager)
-                    .await
-                    .unwrap();
-                Some(Arc::new(pool))
+                let cfg = deadpool_redis::Config {
+                    url: Some(redis_addr.into()),
+                    connection: None,
+                    pool: Some(deadpool_redis::PoolConfig::new(
+                        config.state.redis_pool_size,
+                    )),
+                };
+                Some(Arc::new(
+                    cfg.create_pool(Some(deadpool_redis::Runtime::Tokio1))?,
+                ))
             } else {
                 None
             };
+
         let redis_ctx = RedisCtx {
             pool: redis_pool,
             registry: Arc::new(ScriptRegistry::default()),
