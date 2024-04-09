@@ -42,20 +42,20 @@ impl HttpHandlers for AlicePlugin {
         if let Some(overwrite) = labels.get("overwrite") {
             assert_eq!(overwrite.as_str(), "new value");
         }
-        if response.status() == StatusCode::OK && request.method() == "POST" {
+        if response.status() == http::StatusCode::OK && request.method() == "POST" {
             // This needs to be low enough that it doesn't trigger a block on its own, but
             // high enough that it triggers a block only when combined with another restrict
             // value that originated in a _request_ phase in a different plugin that similarly
             // isn't enough to block on its own. This has to be triggered by the Envoy
             // integration test to hit the behavior this is intended to verify.
             output.decision = Decision::restricted(0.5);
-        } else if response.status() == StatusCode::NOT_FOUND {
+        } else if response.status() == http::StatusCode::NOT_FOUND {
             if let Some(overwrite) = labels.get("overwrite") {
                 if overwrite.as_str() == "new value" {
                     output.decision = Decision::restricted(0.1);
                 }
             }
-        } else if response.status() == StatusCode::INTERNAL_SERVER_ERROR {
+        } else if response.status() == http::StatusCode::INTERNAL_SERVER_ERROR {
             return Err(error!(
                 "this is an intentional error to force the error tag"
             ));
