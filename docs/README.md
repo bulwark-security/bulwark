@@ -42,7 +42,7 @@ detections rapidly, without making changes to the underlying application.
     [Bulwark Security PBC](https://bulwark.security/). We intend to offer a freely available
     [community ruleset](https://github.com/bulwark-security/bulwark-community-ruleset), an
     advanced commercial ruleset, paid support, and professional services, in addition to a Bulwark cloud admin
-    application. Contact us ([sales@bulwark.security](mailto:sales@bulwark.security)) if you are interested in
+    application. Contact us ([hello@bulwark.security](mailto:hello@bulwark.security)) if you are interested in
     discounted early access on a design partner basis for any of these commercial offerings.
 
 ## 🕵️ Use Cases
