@@ -189,7 +189,7 @@ dependencies = [
  "hyper 1.2.0",
  "hyper-util",
  "itoa",
- "matchit",
+ "matchit 0.7.3",
  "memchr",
  "mime",
  "percent-encoding",
@@ -385,7 +385,7 @@ dependencies = [
  "futures 0.3.29",
  "http 1.0.0",
  "json",
- "matchit",
+ "matchit 0.8.2",
  "metrics",
  "prost 0.12.2",
  "prost-wkt",
@@ -2014,6 +2014,12 @@ name = "matchit"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
+
+[[package]]
+name = "matchit"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "540f1c43aed89909c0cc0cc604e3bb2f7e7a341a3728a9e6cfe760e733cd11ed"
 
 [[package]]
 name = "maybe-owned"
