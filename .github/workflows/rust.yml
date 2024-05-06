@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@bb45937a053e097f8591208d8e74c90db1873d07
+      - uses: dtolnay/rust-toolchain@d8352f6b1d2e870bc5716e7a6d9b65c4cc244a1a
         with:
           toolchain: stable
           components: rustfmt
@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@bb45937a053e097f8591208d8e74c90db1873d07
+        uses: dtolnay/rust-toolchain@d8352f6b1d2e870bc5716e7a6d9b65c4cc244a1a
         with:
           toolchain: stable
           components: clippy
@@ -47,7 +47,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@bb45937a053e097f8591208d8e74c90db1873d07
+        uses: dtolnay/rust-toolchain@d8352f6b1d2e870bc5716e7a6d9b65c4cc244a1a
         with:
           toolchain: stable
           components: clippy
@@ -108,7 +108,7 @@ jobs:
         run: /usr/bin/docker run -d --name envoy --network "${{ job.container.network }}" --network-alias envoy -p 8080:8080 -e GITHUB_ACTIONS=true -e CI=true -v "./tests/gha_envoy.yaml":"/etc/envoy/envoy.yaml" envoyproxy/envoy:v${{ matrix.envoy-version }}-latest envoy -l debug -c /etc/envoy/envoy.yaml
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@bb45937a053e097f8591208d8e74c90db1873d07
+        uses: dtolnay/rust-toolchain@d8352f6b1d2e870bc5716e7a6d9b65c4cc244a1a
         with:
           toolchain: ${{ matrix.rust_version }}
           components: clippy
