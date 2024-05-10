@@ -737,7 +737,7 @@ impl ProcessorContext {
             tags: self.combined_output.tags.clone(),
             labels,
         };
-        self.plugin_outputs = plugin_outputs.clone();
+        self.plugin_outputs.clone_from(&plugin_outputs);
     }
 
     async fn execute_response_phase(&mut self) {
@@ -852,7 +852,7 @@ impl ProcessorContext {
             tags: self.combined_output.tags.clone(),
             labels,
         };
-        self.plugin_outputs = new_plugin_outputs.clone();
+        self.plugin_outputs.clone_from(&new_plugin_outputs);
     }
 
     async fn execute_decision_feedback(&mut self) {
