@@ -32,7 +32,7 @@ tracing = { workspace = true }
 
 bytes = "1"
 json = "0.12.4"
-matchit = "0.8.2"
+matchit = "0.7.0"
 prost = "0.12"
 prost-wkt = "=0.3.0"
 sfv = "0.9.2"
