@@ -4,6 +4,7 @@
 
 mod errors;
 mod format;
+pub mod protobuf;
 mod service;
 
 pub use errors::*;
