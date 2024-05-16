@@ -1,6 +1,7 @@
 pub mod envoy {
     pub mod config {
         pub mod core {
+            #[allow(clippy::large_enum_variant)]
             pub mod v3 {
                 include!(concat!(env!("OUT_DIR"), "/envoy.config.core.v3.rs"));
             }
