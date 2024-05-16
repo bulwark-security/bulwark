@@ -19,7 +19,6 @@ bulwark-build = { workspace = true }
 bulwark-ext-processor = { workspace = true }
 
 chrono = { workspace = true }
-envoy-control-plane = { workspace = true }
 http = { workspace = true }
 metrics = { workspace = true }
 serde = { workspace = true }
@@ -114,7 +113,6 @@ anyhow = "=1.0.72"
 approx = "0.5"
 bytes = "1.5"
 chrono = { version = "0.4.26", features = ["serde"] }
-envoy-control-plane = { version = "0.4.0", features = ["grpc"] }
 forwarded-header-value = "0.1.1"
 futures = "0.3"
 http = "1.0"
