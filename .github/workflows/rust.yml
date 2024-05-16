@@ -33,6 +33,9 @@ jobs:
           components: clippy
           target: wasm32-wasi
 
+      - name: Install protobuf compiler
+        run: /usr/bin/sudo /usr/bin/apt install -y protobuf-compiler
+
       - name: Rust cache
         uses: swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2.7.3
 
@@ -52,6 +55,9 @@ jobs:
           toolchain: stable
           components: clippy
           target: wasm32-wasi
+
+      - name: Install protobuf compiler
+        run: /usr/bin/sudo /usr/bin/apt install -y protobuf-compiler
 
       - name: Rust cache
         uses: swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2.7.3
@@ -114,10 +120,13 @@ jobs:
           components: clippy
           target: wasm32-wasi
 
+      - name: Install protobuf compiler
+        run: /usr/bin/sudo /usr/bin/apt install -y protobuf-compiler
+
       - name: Rust cache
         uses: swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2.7.3
 
-      - name: Docker services
+      - name: List Docker services
         run: /usr/bin/docker ps
 
       - name: Run bulwark tests

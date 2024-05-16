@@ -1,0 +1,3 @@
+The envoy protobufs are copied and modified from the envoy-control-plane crate
+originally written by Bobby Powers. It has been trimmed down to include only the
+types necessary for the ext-processor crate.

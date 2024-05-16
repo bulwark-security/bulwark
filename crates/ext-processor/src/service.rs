@@ -4,12 +4,7 @@ use crate::{PluginGroupInstantiationError, ProcessingMessageError, RequestError,
 use bulwark_config::Config;
 use bulwark_sdk::Verdict;
 
-use bulwark_host::{
-    ForwardedIP, HandlerOutput, Plugin, PluginCtx, PluginExecutionError, PluginInstance,
-    PluginLoadError, RedisCtx, ScriptRegistry,
-};
-use bulwark_sdk::Decision;
-use envoy_control_plane::envoy::{
+use crate::protobuf::envoy::{
     config::core::v3::HeaderMap,
     extensions::filters::http::ext_proc::v3::{processing_mode, ProcessingMode},
     r#type::v3::HttpStatus,
@@ -19,6 +14,11 @@ use envoy_control_plane::envoy::{
         ProcessingRequest, ProcessingResponse,
     },
 };
+use bulwark_host::{
+    ForwardedIP, HandlerOutput, Plugin, PluginCtx, PluginExecutionError, PluginInstance,
+    PluginLoadError, RedisCtx, ScriptRegistry,
+};
+use bulwark_sdk::Decision;
 use forwarded_header_value::ForwardedHeaderValue;
 use futures::lock::Mutex;
 use futures::{channel::mpsc::UnboundedSender, SinkExt, Stream};

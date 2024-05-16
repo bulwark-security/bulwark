@@ -1,5 +1,5 @@
+use bulwark_ext_processor::protobuf::envoy::service::ext_proc::v3::external_processor_server::ExternalProcessorServer;
 use bulwark_ext_processor::BulwarkProcessor;
-use envoy_control_plane::envoy::service::ext_proc::v3::external_processor_server::ExternalProcessorServer;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::Path;
 use tokio::task::JoinSet;
