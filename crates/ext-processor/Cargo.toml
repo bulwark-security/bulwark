@@ -47,7 +47,7 @@ redis-test = { workspace = true }
 [build-dependencies]
 # This dependency declaration and the other prost dependencies above prevent `cargo update`
 # and other parts of cargo from upgrading to > 0.3.0, which would break the build.
-prost-wkt-build = "=0.3.0"
+prost-wkt-build = "=0.4.2"
 pbjson-build = "0.6.2"
 tonic-build = "0.9.2"
 
