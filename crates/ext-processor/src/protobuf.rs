@@ -1,7 +1,3 @@
-// pub use pbjson_types;
-// pub use prost;
-// pub use prost_wkt_types;
-
 pub mod envoy {
     pub mod config {
         pub mod core {
@@ -59,14 +55,6 @@ pub mod google {
     pub mod rpc {
         include!(concat!(env!("OUT_DIR"), "/google.rpc.rs"));
     }
-}
-pub mod udpa {
-    pub mod annotations {
-        include!(concat!(env!("OUT_DIR"), "/udpa.annotations.rs"));
-    }
-}
-pub mod validate {
-    include!(concat!(env!("OUT_DIR"), "/validate.rs"));
 }
 pub mod xds {
     pub mod core {
