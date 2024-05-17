@@ -14,7 +14,6 @@ fn main() -> Result<()> {
         .build_client(true)
         .file_descriptor_set_path(descriptor_path.clone())
         .compile_well_known_types(true)
-        .extern_path(".google.protobuf.Any", "::prost_wkt_types::Any")
         .extern_path(".google.protobuf", "::pbjson_types")
         .compile(
             &[
