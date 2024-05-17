@@ -1,6 +1,6 @@
 // Copyright 2021 The rust-control-plane Authors. All rights reserved.
 // Use of this source code is governed by the Apache License,
-// Version 2.0, that can be found in the LICENSE file.
+// Version 2.0, that can be found in the protobuf/LICENSE file.
 
 use std::env;
 use std::io::Result;
