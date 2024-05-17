@@ -18,6 +18,7 @@ fn main() -> Result<()> {
         .extern_path(".google.protobuf", "::pbjson_types")
         .compile(
             &[
+                "protobuf/data-plane-api/envoy/config/common/mutation_rules/v3/mutation_rules.proto",
                 "protobuf/data-plane-api/envoy/config/core/v3/address.proto",
                 "protobuf/data-plane-api/envoy/config/core/v3/base.proto",
                 "protobuf/data-plane-api/envoy/config/core/v3/socket_option.proto",
