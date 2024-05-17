@@ -23,11 +23,19 @@ def xds_api_dependencies():
         locations = REPOSITORY_LOCATIONS,
     )
     xds_http_archive(
+        name = "dev_cel",
+        locations = REPOSITORY_LOCATIONS,
+    )
+    xds_http_archive(
         "io_bazel_rules_go",
+        locations = REPOSITORY_LOCATIONS,
+    )
+    xds_http_archive(
+        "rules_proto",
         locations = REPOSITORY_LOCATIONS,
     )
 
 # Old name for backward compatibility.
 # TODO(roth): Remove once all callers are updated to use the new name.
 def udpa_api_dependencies():
-  xds_api_dependencies()
+    xds_api_dependencies()

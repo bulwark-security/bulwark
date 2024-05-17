@@ -1,8 +1,13 @@
 load("@com_envoyproxy_protoc_gen_validate//bazel:pgv_proto_library.bzl", "pgv_cc_proto_library")
-load("@com_google_protobuf//:protobuf.bzl", _py_proto_library = "py_proto_library")
+load("@com_github_grpc_grpc//bazel:python_rules.bzl", _py_proto_library = "py_proto_library")
 load("@io_bazel_rules_go//go:def.bzl", "go_test")
 load("@io_bazel_rules_go//proto:def.bzl", "go_grpc_library", "go_proto_library")
 load("@rules_proto//proto:defs.bzl", "proto_library")
+load(
+    "//bazel:external_proto_deps.bzl",
+    "EXTERNAL_PROTO_CC_BAZEL_DEP_MAP",
+    "EXTERNAL_PROTO_GO_BAZEL_DEP_MAP",
+)
 
 _PY_PROTO_SUFFIX = "_py_proto"
 _CC_PROTO_SUFFIX = "_cc_proto"
@@ -24,57 +29,18 @@ _COMMON_PROTO_DEPS = [
     "@com_envoyproxy_protoc_gen_validate//validate:validate_proto",
 ]
 
-def _proto_mapping(dep, proto_suffix):
-    prefix = "@" + Label(dep).workspace_name if not dep.startswith("//") else ""
-    return prefix + "//" + Label(dep).package + ":" + Label(dep).name + proto_suffix
+def _proto_mapping(dep, proto_dep_map, proto_suffix):
+    mapped = proto_dep_map.get(dep)
+    if mapped == None:
+        prefix = "@" + Label(dep).workspace_name if not dep.startswith("//") else ""
+        return prefix + "//" + Label(dep).package + ":" + Label(dep).name + proto_suffix
+    return mapped
 
 def _go_proto_mapping(dep):
-    return _proto_mapping(dep, _GO_PROTO_SUFFIX)
+    return _proto_mapping(dep, EXTERNAL_PROTO_GO_BAZEL_DEP_MAP, _GO_PROTO_SUFFIX)
 
 def _cc_proto_mapping(dep):
-    return _proto_mapping(dep, _CC_PROTO_SUFFIX)
-
-def _py_proto_mapping(dep):
-    return _proto_mapping(dep, _PY_PROTO_SUFFIX)
-
-# TODO(htuch): Convert this to native py_proto_library once
-# https://github.com/bazelbuild/bazel/issues/3935 and/or
-# https://github.com/bazelbuild/bazel/issues/2626 are resolved.
-def _xds_py_proto_library(name, srcs = [], deps = []):
-    _py_proto_library(
-        name = name + _PY_PROTO_SUFFIX,
-        srcs = srcs,
-        default_runtime = "@com_google_protobuf//:protobuf_python",
-        protoc = "@com_google_protobuf//:protoc",
-        deps = [_py_proto_mapping(dep) for dep in deps] + [
-            "@com_envoyproxy_protoc_gen_validate//validate:validate_py",
-            "@com_google_googleapis//google/rpc:status_py_proto",
-            "@com_google_googleapis//google/api:annotations_py_proto",
-            "@com_google_googleapis//google/api:http_py_proto",
-            "@com_google_googleapis//google/api:httpbody_py_proto",
-        ],
-        visibility = ["//visibility:public"],
-    )
-
-# This defines googleapis py_proto_library. The repository does not provide its definition and requires
-# overriding it in the consuming project (see https://github.com/grpc/grpc/issues/19255 for more details).
-def py_proto_library(name, deps = []):
-    srcs = [dep[:-6] + ".proto" if dep.endswith("_proto") else dep for dep in deps]
-    proto_deps = []
-
-    # py_proto_library in googleapis specifies *_proto rules in dependencies.
-    # By rewriting *_proto to *.proto above, the dependencies in *_proto rules are not preserved.
-    # As a workaround, manually specify the proto dependencies for the imported python rules.
-    if name == "annotations_py_proto":
-        proto_deps = proto_deps + [":http_py_proto"]
-    _py_proto_library(
-        name = name,
-        srcs = srcs,
-        default_runtime = "@com_google_protobuf//:protobuf_python",
-        protoc = "@com_google_protobuf//:protoc",
-        deps = proto_deps + ["@com_google_protobuf//:protobuf_python"],
-        visibility = ["//visibility:public"],
-    )
+    return _proto_mapping(dep, EXTERNAL_PROTO_CC_BAZEL_DEP_MAP, _CC_PROTO_SUFFIX)
 
 def _xds_cc_py_proto_library(
         name,
@@ -103,14 +69,27 @@ def _xds_cc_py_proto_library(
         deps = [relative_name],
         visibility = ["//visibility:public"],
     )
-    _xds_py_proto_library(name, srcs, deps)
+
+    # Uses gRPC implementation of py_proto_library.
+    # https://github.com/grpc/grpc/blob/v1.59.1/bazel/python_rules.bzl#L160
+    _py_proto_library(
+        name = name + _PY_PROTO_SUFFIX,
+        # Actual dependencies are resolved automatically from the proto_library dep tree.
+        deps = [relative_name],
+        visibility = ["//visibility:public"],
+    )
 
     # Optionally define gRPC services
     if has_services:
         # TODO: neither C++ or Python service generation is supported today, follow the Envoy example to implementthis.
         pass
 
-def xds_proto_package(srcs = [], deps = [], has_services = False, visibility = ["//visibility:public"]):
+def xds_proto_package(
+        name = "pkg",
+        srcs = [],
+        deps = [],
+        has_services = False,
+        visibility = ["//visibility:public"]):
     if srcs == []:
         srcs = native.glob(["*.proto"])
 
@@ -123,27 +102,29 @@ def xds_proto_package(srcs = [], deps = [], has_services = False, visibility = [
         has_services = has_services,
     )
 
-    compilers = ["@io_bazel_rules_go//proto:go_proto", "//bazel:pgv_plugin_go"]
+    compilers = ["@io_bazel_rules_go//proto:go_proto", "@com_envoyproxy_protoc_gen_validate//bazel/go:pgv_plugin_go"]
     if has_services:
-        compilers = ["@io_bazel_rules_go//proto:go_grpc", "//bazel:pgv_plugin_go"]
+        compilers = ["@io_bazel_rules_go//proto:go_proto", "@io_bazel_rules_go//proto:go_grpc_v2", "@com_envoyproxy_protoc_gen_validate//bazel/go:pgv_plugin_go"]
 
+    # Because RBAC proro depends on googleapis syntax.proto and checked.proto,
+    # which share the same go proto library, it causes duplicative dependencies.
+    # Thus, we use depset().to_list() to remove duplicated depenencies.
     go_proto_library(
         name = name + _GO_PROTO_SUFFIX,
         compilers = compilers,
         importpath = _GO_IMPORTPATH_PREFIX + native.package_name(),
         proto = name,
         visibility = ["//visibility:public"],
-        deps = [_go_proto_mapping(dep) for dep in deps] + [
+        deps = depset([_go_proto_mapping(dep) for dep in deps] + [
             "@com_envoyproxy_protoc_gen_validate//validate:go_default_library",
-            "@com_github_golang_protobuf//ptypes:go_default_library_gen",
-            "@go_googleapis//google/api:annotations_go_proto",
-            "@go_googleapis//google/rpc:status_go_proto",
-            "@io_bazel_rules_go//proto/wkt:any_go_proto",
-            "@io_bazel_rules_go//proto/wkt:duration_go_proto",
-            "@io_bazel_rules_go//proto/wkt:struct_go_proto",
-            "@io_bazel_rules_go//proto/wkt:timestamp_go_proto",
-            "@io_bazel_rules_go//proto/wkt:wrappers_go_proto",
-        ],
+            "@org_golang_google_genproto_googleapis_api//annotations:annotations",
+            "@org_golang_google_genproto_googleapis_rpc//status:status",
+            "@org_golang_google_protobuf//types/known/anypb:go_default_library",
+            "@org_golang_google_protobuf//types/known/durationpb:go_default_library",
+            "@org_golang_google_protobuf//types/known/structpb:go_default_library",
+            "@org_golang_google_protobuf//types/known/timestamppb:go_default_library",
+            "@org_golang_google_protobuf//types/known/wrapperspb:go_default_library",
+        ]).to_list(),
     )
 
 def xds_cc_test(name, **kwargs):
@@ -161,10 +142,10 @@ def xds_go_test(name, **kwargs):
 # Old names for backward compatibility.
 # TODO(roth): Remove these once all callers are migrated to the new names.
 def udpa_proto_package(srcs = [], deps = [], has_services = False, visibility = ["//visibility:public"]):
-  xds_proto_package(srcs=srcs, deps=deps, has_services=has_services, visibility=visibility)
+    xds_proto_package(srcs = srcs, deps = deps, has_services = has_services, visibility = visibility)
 
 def udpa_cc_test(name, **kwargs):
-  xds_cc_test(name, **kwargs)
+    xds_cc_test(name, **kwargs)
 
 def udpa_go_test(name, **kwargs):
-  xds_go_test(name, **kwargs)
+    xds_go_test(name, **kwargs)
