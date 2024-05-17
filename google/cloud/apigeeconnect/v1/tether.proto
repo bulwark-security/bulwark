@@ -1,4 +1,4 @@
-// Copyright 2021 Google LLC
+// Copyright 2024 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import "google/rpc/status.proto";
 import "google/api/client.proto";
 
 option csharp_namespace = "Google.Cloud.ApigeeConnect.V1";
-option go_package = "google.golang.org/genproto/googleapis/cloud/apigeeconnect/v1;apigeeconnect";
+option go_package = "cloud.google.com/go/apigeeconnect/apiv1/apigeeconnectpb;apigeeconnectpb";
 option java_multiple_files = true;
 option java_outer_classname = "TetherProto";
 option java_package = "com.google.cloud.apigeeconnect.v1";
