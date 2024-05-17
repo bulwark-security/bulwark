@@ -1,11 +1,12 @@
 module github.com/envoyproxy/protoc-gen-validate/tests
 
-go 1.12
+go 1.21.1
 
 require (
-	github.com/envoyproxy/protoc-gen-validate v0.6.1
-	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d
-	google.golang.org/protobuf v1.27.1
+	golang.org/x/net v0.25.0
+	google.golang.org/protobuf v1.34.1
 )
+
+require golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 
 replace github.com/envoyproxy/protoc-gen-validate => ../

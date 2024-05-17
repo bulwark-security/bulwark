@@ -6,6 +6,7 @@ import (
 
 	cases "github.com/envoyproxy/protoc-gen-validate/tests/harness/cases/go"
 	other_package "github.com/envoyproxy/protoc-gen-validate/tests/harness/cases/other_package/go"
+	sort "github.com/envoyproxy/protoc-gen-validate/tests/harness/cases/sort/go"
 	yet_another_package "github.com/envoyproxy/protoc-gen-validate/tests/harness/cases/yet_another_package/go"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -279,6 +280,10 @@ var int64Cases = []TestCase{
 	{"int64 - exclusive gte & lte - invalid", &cases.Int64ExGTELTE{Val: 200}, 1},
 
 	{"int64 - ignore_empty gte & lte - valid", &cases.Int64Ignore{Val: 0}, 0},
+
+	{"int64 optional - lte - valid", &cases.Int64LTEOptional{Val: &wrapperspb.Int64(63).Value}, 0},
+	{"int64 optional - lte - valid (equal)", &cases.Int64LTEOptional{Val: &wrapperspb.Int64(64).Value}, 0},
+	{"int64 optional - lte - valid (unset)", &cases.Int64LTEOptional{}, 0},
 }
 
 var uint32Cases = []TestCase{
@@ -1017,6 +1022,12 @@ var enumCases = []TestCase{
 
 	{"enum external - defined_only - valid", &cases.EnumExternal{Val: other_package.Embed_VALUE}, 0},
 	{"enum external - defined_only - invalid", &cases.EnumExternal{Val: math.MaxInt32}, 1},
+	{"enum external - in - valid", &cases.EnumExternal3{Foo: other_package.Embed_ZERO}, 0},
+	{"enum external - in - invalid", &cases.EnumExternal3{Foo: other_package.Embed_ONE}, 1},
+	{"enum external - not in - valid", &cases.EnumExternal3{Bar: yet_another_package.Embed_ZERO}, 0},
+	{"enum external - not in - invalid", &cases.EnumExternal3{Bar: yet_another_package.Embed_ONE}, 1},
+	{"enum external - const - valid", &cases.EnumExternal4{SortDirection: sort.Direction_ASC}, 0},
+	{"enum external - const - invalid", &cases.EnumExternal4{SortDirection: sort.Direction_DESC}, 1},
 
 	{"enum repeated - defined_only - valid", &cases.RepeatedEnumDefined{Val: []cases.TestEnum{cases.TestEnum_ONE, cases.TestEnum_TWO}}, 0},
 	{"enum repeated - defined_only - invalid", &cases.RepeatedEnumDefined{Val: []cases.TestEnum{cases.TestEnum_ONE, math.MaxInt32}}, 1},
@@ -1025,6 +1036,11 @@ var enumCases = []TestCase{
 	{"enum repeated (external) - defined_only - invalid", &cases.RepeatedExternalEnumDefined{Val: []other_package.Embed_Enumerated{math.MaxInt32}}, 1},
 
 	{"enum repeated (another external) - defined_only - valid", &cases.RepeatedYetAnotherExternalEnumDefined{Val: []yet_another_package.Embed_Enumerated{yet_another_package.Embed_VALUE}}, 0},
+
+	{"enum repeated (external) - in - valid", &cases.RepeatedEnumExternal{Foo: []other_package.Embed_FooNumber{other_package.Embed_ZERO, other_package.Embed_TWO}}, 0},
+	{"enum repeated (external) - in - invalid", &cases.RepeatedEnumExternal{Foo: []other_package.Embed_FooNumber{other_package.Embed_ONE}}, 1},
+	{"enum repeated (external) - not in - valid", &cases.RepeatedEnumExternal{Bar: []yet_another_package.Embed_BarNumber{yet_another_package.Embed_ZERO, yet_another_package.Embed_TWO}}, 0},
+	{"enum repeated (external) - not in - invalid", &cases.RepeatedEnumExternal{Bar: []yet_another_package.Embed_BarNumber{yet_another_package.Embed_ONE}}, 1},
 
 	{"enum map - defined_only - valid", &cases.MapEnumDefined{Val: map[string]cases.TestEnum{"foo": cases.TestEnum_TWO}}, 0},
 	{"enum map - defined_only - invalid", &cases.MapEnumDefined{Val: map[string]cases.TestEnum{"foo": math.MaxInt32}}, 1},
@@ -1051,7 +1067,7 @@ var messageCases = []TestCase{
 	{"message - skip - valid", &cases.MessageSkip{Val: &cases.TestMsg{}}, 0},
 
 	{"message - required - valid", &cases.MessageRequired{Val: &cases.TestMsg{Const: "foo"}}, 0},
-	{"message - required - valid (oneof)", &cases.MessageRequiredOneof{One: &cases.MessageRequiredOneof_Val{&cases.TestMsg{Const: "foo"}}}, 0},
+	{"message - required - valid (oneof)", &cases.MessageRequiredOneof{One: &cases.MessageRequiredOneof_Val{Val: &cases.TestMsg{Const: "foo"}}}, 0},
 	{"message - required - invalid", &cases.MessageRequired{}, 1},
 	{"message - required - invalid (oneof)", &cases.MessageRequiredOneof{}, 1},
 
@@ -1059,6 +1075,9 @@ var messageCases = []TestCase{
 	{"message - cross-package embed none - valid (nil)", &cases.MessageCrossPackage{}, 0},
 	{"message - cross-package embed none - valid (empty)", &cases.MessageCrossPackage{Val: &other_package.Embed{}}, 1},
 	{"message - cross-package embed none - invalid", &cases.MessageCrossPackage{Val: &other_package.Embed{Val: -1}}, 1},
+
+	{"message - required - valid", &cases.MessageRequiredButOptional{Val: &cases.TestMsg{Const: "foo"}}, 0},
+	{"message - required - valid (unset)", &cases.MessageRequiredButOptional{}, 0},
 }
 
 var repeatedCases = []TestCase{
@@ -1117,6 +1136,11 @@ var repeatedCases = []TestCase{
 	{"repeated - items - invalid (embedded enum not_in)", &cases.RepeatedEmbeddedEnumNotIn{Val: []cases.RepeatedEmbeddedEnumNotIn_AnotherNotInEnum{0}}, 1},
 	{"repeated - items - valid (embedded enum not_in)", &cases.RepeatedEmbeddedEnumNotIn{Val: []cases.RepeatedEmbeddedEnumNotIn_AnotherNotInEnum{1}}, 0},
 
+	{"repeated - items - invalid (any in)", &cases.RepeatedAnyIn{Val: []*anypb.Any{{TypeUrl: "type.googleapis.com/google.protobuf.Timestamp"}}}, 1},
+	{"repeated - items - valid (any in)", &cases.RepeatedAnyIn{Val: []*anypb.Any{{TypeUrl: "type.googleapis.com/google.protobuf.Duration"}}}, 0},
+	{"repeated - items - invalid (any not_in)", &cases.RepeatedAnyNotIn{Val: []*anypb.Any{{TypeUrl: "type.googleapis.com/google.protobuf.Timestamp"}}}, 1},
+	{"repeated - items - valid (any not_in)", &cases.RepeatedAnyNotIn{Val: []*anypb.Any{{TypeUrl: "type.googleapis.com/google.protobuf.Duration"}}}, 0},
+
 	{"repeated - embed skip - valid", &cases.RepeatedEmbedSkip{Val: []*cases.Embed{{Val: 1}}}, 0},
 	{"repeated - embed skip - valid (invalid element)", &cases.RepeatedEmbedSkip{Val: []*cases.Embed{{Val: -1}}}, 0},
 	{"repeated - min and items len - valid", &cases.RepeatedMinAndItemLen{Val: []string{"aaa", "bbb"}}, 0},
@@ -1163,8 +1187,12 @@ var mapCases = []TestCase{
 	{"map - keys - valid", &cases.MapKeys{Val: map[int64]string{-1: "a", -2: "b"}}, 0},
 	{"map - keys - valid (empty)", &cases.MapKeys{Val: map[int64]string{}}, 0},
 	{"map - keys - valid (pattern)", &cases.MapKeysPattern{Val: map[string]string{"A": "a"}}, 0},
+	{"map - keys - valid (in)", &cases.MapKeysIn{Val: map[string]string{"foo": "value"}}, 0},
+	{"map - keys - valid (not_in)", &cases.MapKeysNotIn{Val: map[string]string{"baz": "value"}}, 0},
 	{"map - keys - invalid", &cases.MapKeys{Val: map[int64]string{1: "a"}}, 1},
 	{"map - keys - invalid (pattern)", &cases.MapKeysPattern{Val: map[string]string{"A": "a", "!@#$%^&*()": "b"}}, 1},
+	{"map - keys - invalid (in)", &cases.MapKeysIn{Val: map[string]string{"baz": "value"}}, 1},
+	{"map - keys - invalid (not_in)", &cases.MapKeysNotIn{Val: map[string]string{"foo": "value"}}, 1},
 
 	{"map - values - valid", &cases.MapValues{Val: map[string]string{"a": "Alpha", "b": "Beta"}}, 0},
 	{"map - values - valid (empty)", &cases.MapValues{Val: map[string]string{}}, 0},
@@ -1192,6 +1220,10 @@ var oneofCases = []TestCase{
 
 	{"oneof - required - valid", &cases.OneOfRequired{O: &cases.OneOfRequired_X{X: ""}}, 0},
 	{"oneof - require - invalid", &cases.OneOfRequired{}, 1},
+
+	{"oneof - ignore_empty - valid (X)", &cases.OneOfIgnoreEmpty{O: &cases.OneOfIgnoreEmpty_X{X: ""}}, 0},
+	{"oneof - ignore_empty - valid (Y)", &cases.OneOfIgnoreEmpty{O: &cases.OneOfIgnoreEmpty_Y{Y: []byte("")}}, 0},
+	{"oneof - ignore_empty - valid (Z)", &cases.OneOfIgnoreEmpty{O: &cases.OneOfIgnoreEmpty_Z{Z: 0}}, 0},
 }
 
 var wrapperCases = []TestCase{
