@@ -8,12 +8,13 @@ import (
 	"text/template"
 	"unicode"
 
-	"github.com/envoyproxy/protoc-gen-validate/templates/shared"
 	"github.com/iancoleman/strcase"
-	pgs "github.com/lyft/protoc-gen-star"
-	pgsgo "github.com/lyft/protoc-gen-star/lang/go"
+	pgs "github.com/lyft/protoc-gen-star/v2"
+	pgsgo "github.com/lyft/protoc-gen-star/v2/lang/go"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/envoyproxy/protoc-gen-validate/templates/shared"
 )
 
 func RegisterIndex(tpl *template.Template, params pgs.Parameters) {
@@ -123,14 +124,14 @@ func JavaFilePath(f pgs.File, ctx pgsgo.Context, tpl *template.Template) *pgs.Fi
 		return nil
 	}
 
-	fullPath := strings.Replace(javaPackage(f), ".", string(os.PathSeparator), -1)
+	fullPath := strings.ReplaceAll(javaPackage(f), ".", string(os.PathSeparator))
 	fileName := classNameFile(f) + "Validator.java"
 	filePath := pgs.JoinPaths(fullPath, fileName)
 	return &filePath
 }
 
 func JavaMultiFilePath(f pgs.File, m pgs.Message) pgs.FilePath {
-	fullPath := strings.Replace(javaPackage(f), ".", string(os.PathSeparator), -1)
+	fullPath := strings.ReplaceAll(javaPackage(f), ".", string(os.PathSeparator))
 	fileName := classNameMessage(m) + "Validator.java"
 	filePath := pgs.JoinPaths(fullPath, fileName)
 	return filePath
@@ -166,9 +167,9 @@ func classNameMessage(m pgs.Message) string {
 	// When multiple files is false, underscores are stripped. Short of rewriting all the name sanitization
 	// logic for java, using "UnderscoreUnderscoreUnderscore" is an escape sequence seems to work with an extremely
 	// small likelihood of name conflict.
-	className = strings.Replace(className, "_", "UnderscoreUnderscoreUnderscore", -1)
+	className = strings.ReplaceAll(className, "_", "UnderscoreUnderscoreUnderscore")
 	className = sanitizeClassName(className)
-	className = strings.Replace(className, "UnderscoreUnderscoreUnderscore", "_", -1)
+	className = strings.ReplaceAll(className, "UnderscoreUnderscoreUnderscore", "_")
 	return className
 }
 
@@ -269,13 +270,13 @@ func underscoreBetweenConsecutiveUppercase(name string) string {
 func appendOuterClassName(outerClassName string, file pgs.File) string {
 	conflict := false
 
-	for _, enum := range file.Enums() {
+	for _, enum := range file.AllEnums() {
 		if enum.Name().String() == outerClassName {
 			conflict = true
 		}
 	}
 
-	for _, message := range file.Messages() {
+	for _, message := range file.AllMessages() {
 		if message.Name().String() == outerClassName {
 			conflict = true
 		}
@@ -377,7 +378,6 @@ func (fns javaFuncs) javaTypeFor(ctx shared.RuleContext) string {
 }
 
 func (fns javaFuncs) javaTypeForProtoType(t pgs.ProtoType) string {
-
 	switch t {
 	case pgs.Int32T, pgs.UInt32T, pgs.SInt32, pgs.Fixed32T, pgs.SFixed32:
 		return "Integer"
@@ -442,10 +442,10 @@ func (fns javaFuncs) javaTypeLiteralSuffixForPrototype(t pgs.ProtoType) string {
 func (fns javaFuncs) javaStringEscape(s string) string {
 	s = fmt.Sprintf("%q", s)
 	s = s[1 : len(s)-1]
-	s = strings.Replace(s, `\u00`, `\x`, -1)
-	s = strings.Replace(s, `\x`, `\\x`, -1)
-	// s = strings.Replace(s, `\`, `\\`, -1)
-	s = strings.Replace(s, `"`, `\"`, -1)
+	s = strings.ReplaceAll(s, `\u00`, `\x`)
+	s = strings.ReplaceAll(s, `\x`, `\\x`)
+	// s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
 	return `"` + s + `"`
 }
 
@@ -466,18 +466,18 @@ func (fns javaFuncs) byteArrayLit(bytes []uint8) string {
 
 func (fns javaFuncs) durLit(dur *durationpb.Duration) string {
 	return fmt.Sprintf(
-		"io.envoyproxy.pgv.TimestampValidation.toDuration(%d,%d)",
+		"io.envoyproxy.pgv.TimestampValidation.toDuration(%dL,%d)",
 		dur.GetSeconds(), dur.GetNanos())
 }
 
 func (fns javaFuncs) tsLit(ts *timestamppb.Timestamp) string {
 	return fmt.Sprintf(
-		"io.envoyproxy.pgv.TimestampValidation.toTimestamp(%d,%d)",
+		"io.envoyproxy.pgv.TimestampValidation.toTimestamp(%dL,%d)",
 		ts.GetSeconds(), ts.GetNanos())
 }
 
 func (fns javaFuncs) oneofTypeName(f pgs.Field) pgsgo.TypeName {
-	return pgsgo.TypeName(fmt.Sprintf("%s", strings.ToUpper(f.Name().String())))
+	return pgsgo.TypeName(strings.ToUpper(f.Name().String()))
 }
 
 func (fns javaFuncs) isOfFileType(o interface{}) bool {

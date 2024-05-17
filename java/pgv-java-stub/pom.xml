@@ -2,8 +2,8 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
         <artifactId>pgv-java</artifactId>
-        <groupId>io.envoyproxy.protoc-gen-validate</groupId>
-        <version>0.6.3-SNAPSHOT</version>
+        <groupId>build.buf.protoc-gen-validate</groupId>
+        <version>VERSION</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -39,7 +39,7 @@
         </dependency>
         <!-- Depend on artifacts to ensure they are built before this module -->
         <dependency>
-            <groupId>io.envoyproxy.protoc-gen-validate</groupId>
+            <groupId>build.buf.protoc-gen-validate</groupId>
             <artifactId>protoc-gen-validate</artifactId>
             <version>${project.version}</version>
             <type>pom</type>
@@ -61,7 +61,7 @@
             <extension>
                 <groupId>kr.motd.maven</groupId>
                 <artifactId>os-maven-plugin</artifactId>
-                <version>1.4.1.Final</version>
+                <version>1.7.1</version>
             </extension>
         </extensions>
 
@@ -76,7 +76,7 @@
                      ~ Protobuf guarantees API stability for all 3.x version.
                      ~ https://github.com/protocolbuffers/protobuf/blob/17cc42a45aeab0f78a137fa6be6c36095db32e58/CHANGES.txt#L107-L122
                     -->
-                    <protocArtifact>com.google.protobuf:protoc:3.0.0:exe:${os.detected.classifier}</protocArtifact>
+                    <protocArtifact>com.google.protobuf:protoc:${protoc.version}:exe:${os.detected.classifier}</protocArtifact>
                 </configuration>
                 <executions>
                     <execution>
@@ -105,8 +105,27 @@
                         <configuration>
                             <pluginParameter>lang=java</pluginParameter>
                             <pluginId>java-pgv</pluginId>
-                            <pluginArtifact>io.envoyproxy.protoc-gen-validate:protoc-gen-validate:${project.version}:exe:${os.detected.classifier}</pluginArtifact>
+                            <pluginArtifact>build.buf.protoc-gen-validate:protoc-gen-validate:${project.version}:exe:${os.detected.classifier}</pluginArtifact>
                         </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.11</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
                     </execution>
                 </executions>
             </plugin>

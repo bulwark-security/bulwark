@@ -15,7 +15,10 @@ const msgInnerTpl = `
 	{{- range .NonOneOfFields }}
 		{{ renderConstants (context .) }}
 	{{ end }}
-	{{ range .OneOfs }}
+	{{ range .SyntheticOneOfFields }}
+		{{ renderConstants (context .) }}
+	{{ end }}
+	{{ range .RealOneOfs }}
 		{{ template "oneOfConst" . }}
 	{{ end }}
 
@@ -27,7 +30,12 @@ const msgInnerTpl = `
 	{{ range .NonOneOfFields -}}
 		{{ render (context .) }}
 	{{ end -}}
-	{{ range .OneOfs }}
+	{{ range .SyntheticOneOfFields }}
+		if ({{ hasAccessor (context .) }}) {
+			{{ render (context .) }}
+		}
+	{{ end }}
+	{{ range .RealOneOfs }}
 		{{ template "oneOf" . }}
 	{{- end -}}
 	{{- end }}
