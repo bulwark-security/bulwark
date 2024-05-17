@@ -1,3 +1,4 @@
+import ast
 import re
 import struct
 import sys
@@ -10,6 +11,12 @@ from urllib import parse as urlparse
 from google.protobuf.message import Message
 from jinja2 import Template
 from validate_email import validate_email
+
+if sys.version_info > (3, 9):
+    unparse = ast.unparse
+else:
+    import astunparse
+    unparse = astunparse.unparse
 
 printer = ""
 
@@ -61,6 +68,168 @@ def _validate_inner(proto_message: Message):
         return generate_validate
     except NameError:
         return locals()['generate_validate']
+
+
+class ChangeFuncName(ast.NodeTransformer):
+    def visit_FunctionDef(self, node: ast.FunctionDef):
+        node.name = node.name + "_all"  # add a suffix to the function name
+        return node
+
+
+class InitErr(ast.NodeTransformer):
+    def visit_FunctionDef(self, node: ast.FunctionDef):
+        node.body.insert(0, ast.parse("err = []").body[0])
+        return node
+
+
+class ReturnErr(ast.NodeTransformer):
+    def visit_Return(self, node: ast.Return):
+        # Change the return value of the function from None to err
+        if hasattr(node.value, "value") and getattr(node.value, "value") is None:
+            return ast.parse("return err").body[0]
+        return node
+
+
+class ChangeInnerCall(ast.NodeTransformer):
+    def visit_Call(self, node: ast.Call):
+        """Changed the validation function of nested messages from `validate` to
+        `_validate_all`"""
+        if isinstance(node.func, ast.Name) and node.func.id == "validate":
+            node.func.id = "_validate_all"
+        return node
+
+
+class ChangeRaise(ast.NodeTransformer):
+    def visit_Raise(self, node: ast.Raise):
+        """
+        before:
+            raise ValidationFailed(reason)
+        after:
+            err.append(reason)
+        """
+        # According to the content in the template, the exception object of all `raise`
+        # statements is `ValidationFailed`.
+        if not isinstance(node.exc, ast.Call):
+            return node
+        return ast.Expr(
+            value=ast.Call(
+                args=node.exc.args,
+                keywords=node.exc.keywords,
+                func=ast.Attribute(
+                    attr="append", ctx=ast.Load(), value=ast.Name(id="err", ctx=ast.Load())
+                ),
+            )
+        )
+
+
+class ChangeEmbedded(ast.NodeTransformer):
+    """For embedded messages, there is a special structure in the template as follows:
+
+    if _has_field(p, \"{{ name.split('.')[-1] }}\"):
+        embedded = validate(p.{{ name }})
+        if embedded is not None:
+            return embedded
+
+    We need to convert this code into the following form:
+
+    if _has_field(p, \"{{ name.split('.')[-1] }}\"):
+        err += _validate_all(p.{{ name }}
+
+    """
+    @staticmethod
+    def _is_embedded_node(node: ast.Assign):
+        """Check if substructures match
+
+        pattern:
+        embedded = validate(p.{{ name }})
+        """
+        if not isinstance(node, ast.Assign):
+            return False
+        if len(node.targets) != 1:
+            return False
+        target = node.targets[0]
+        value = node.value
+        if not (isinstance(target, ast.Name) and isinstance(value, ast.Call)):
+            return False
+        if not target.id == "embedded":
+            return False
+        return True
+
+    def visit_If(self, node: ast.If):
+        self.generic_visit(node)
+        for child in ast.iter_child_nodes(node):
+            if self._is_embedded_node(child):
+                new_node = ast.AugAssign(
+                    target=ast.Name(id="err", ctx=ast.Store()), op=ast.Add(), value=child.value
+                )  # err += _validate_all(p.{{ name }}
+                node.body = [new_node]
+                return node
+        return node
+
+
+class ChangeExpr(ast.NodeTransformer):
+
+    """If there is a pure `_validate_all` function call in the template function,
+    its return value needs to be recorded in err
+
+    before:
+    _validate_all(item)
+
+    after:
+    err += _validate_all(item}
+
+    """
+
+    def visit_Expr(self, node: ast.Expr):
+        if not isinstance(node.value, ast.Call):
+            return node
+        call_node = node.value
+        if not isinstance(call_node.func, ast.Name):
+            return node
+        if not call_node.func.id == "_validate_all":
+            return node
+        return ast.AugAssign(
+            target=ast.Name(id="err", ctx=ast.Store()), op=ast.Add(), value=call_node
+        )  # err += _validate_all(item}
+
+
+# Cache generated functions with the message descriptor's full_name as the cache key
+@lru_cache()
+def _validate_all_inner(proto_message: Message):
+    func = file_template(ValidatingMessage(proto_message))
+    comment = func.split("\n")[1]
+    func_ast = ast.parse(rf"{func}")
+    for transformer in [
+        ChangeFuncName,
+        InitErr,
+        ReturnErr,
+        ChangeInnerCall,
+        ChangeRaise,
+        ChangeEmbedded,
+        ChangeExpr,
+    ]:  # order is important!
+        func_ast = ast.fix_missing_locations(transformer().visit(func_ast))
+    func_ast = ast.fix_missing_locations(func_ast)
+    func = unparse(func_ast)
+    func = comment + " All" + "\n" + func
+    global printer
+    printer += func + "\n"
+    exec(func)
+    try:
+        return generate_validate_all
+    except NameError:
+        return locals()['generate_validate_all']
+
+
+def _validate_all(proto_message: Message) -> str:
+    return _validate_all_inner(ValidatingMessage(proto_message))(proto_message)
+
+
+# raise ValidationFailed if err
+def validate_all(proto_message: Message):
+    err = _validate_all(proto_message)
+    if err:
+        raise ValidationFailed('\n'.join(err))
 
 
 def print_validate():
@@ -139,9 +308,6 @@ def const_template(option_value, name):
     {%- elif str(o.bool) and o.bool['const'] != "" -%}
     if {{ name }} != {{ o.bool['const'] }}:
         raise ValidationFailed(\"{{ name }} not equal to {{ o.bool['const'] }}\")
-    {%- elif str(o.enum) and o.enum['const'] -%}
-    if {{ name }} != {{ o.enum['const'] }}:
-        raise ValidationFailed(\"{{ name }} not equal to {{ o.enum['const'] }}\")
     {%- elif str(o.bytes) and o.bytes.HasField('const') -%}
         {% if sys.version_info[0] >= 3 %}
     if {{ name }} != {{ o.bytes['const'] }}:
@@ -181,7 +347,7 @@ def string_template(option_value, name):
     str_templ = """
     {%- set s = o.string -%}
     {% set i = 0 %}
-    {%- if s['ignore_empty'] -%}
+    {%- if s['ignore_empty'] %}
     if {{ name }}:
     {% set i = 4 %}
     {%- endif -%}
@@ -326,7 +492,7 @@ def bool_template(option_value, name):
 def num_template(option_value, name, num):
     num_tmpl = """
     {% set i = 0 %}
-    {%- if num.HasField('ignore_empty') -%}
+    {%- if num.HasField('ignore_empty') %}
     if {{ name }}:
     {% set i = 4 %}
     {%- endif -%}
@@ -659,17 +825,52 @@ def enum_values(field):
     return [x.number for x in field.enum_type.values]
 
 
+def enum_name(field, number):
+    for x in field.enum_type.values:
+        if x.number == number:
+            return x.name
+    return ""
+
+
+def enum_names(field, numbers):
+    m = {x.number: x.name for x in field.enum_type.values}
+    return "[" + "".join([m[n] for n in numbers]) + "]"
+
+
+def enum_const_template(value, name, field):
+    const_tmpl = """{%- if str(value) and value['const'] -%}
+    if {{ name }} != {{ value['const'] }}:
+        raise ValidationFailed(\"{{ name }} not equal to {{ enum_name(field, value['const']) }}\")
+    {%- endif -%}
+    """
+    return Template(const_tmpl).render(value=value, name=name, field=field, enum_name=enum_name, str=str)
+
+
+def enum_in_template(value, name, field):
+    in_tmpl = """
+    {%- if value['in'] %}
+    if {{ name }} not in {{ value['in'] }}:
+        raise ValidationFailed(\"{{ name }} not in {{ enum_names(field, value['in']) }}\")
+    {%- endif -%}
+    {%- if value['not_in'] %}
+    if {{ name }} in {{ value['not_in'] }}:
+        raise ValidationFailed(\"{{ name }} in {{ enum_names(field, value['not_in']) }}\")
+    {%- endif -%}
+    """
+    return Template(in_tmpl).render(value=value, name=name, field=field, enum_names=enum_names)
+
+
 def enum_template(option_value, name, field):
     enum_tmpl = """
-    {{ const_template(option_value, name) -}}
-    {{ in_template(option_value.enum, name) -}}
+    {{ enum_const_template(option_value.enum, name, field) -}}
+    {{ enum_in_template(option_value.enum, name, field) -}}
     {% if option_value.enum['defined_only'] %}
     if {{ name }} not in {{ enum_values(field) }}:
         raise ValidationFailed(\"{{ name }} is not defined\")
     {% endif %}
     """
-    return Template(enum_tmpl).render(option_value=option_value, name=name, const_template=const_template,
-                                      in_template=in_template, field=field, enum_values=enum_values)
+    return Template(enum_tmpl).render(option_value=option_value, name=name, enum_const_template=enum_const_template,
+                                      enum_in_template=enum_in_template, field=field, enum_values=enum_values)
 
 
 def any_template(option_value, name, repeated=False):
@@ -701,7 +902,7 @@ def any_template(option_value, name, repeated=False):
 def bytes_template(option_value, name):
     bytes_tmpl = """
     {% set i = 0 %}
-    {%- if b['ignore_empty'] -%}
+    {%- if b['ignore_empty'] %}
     if {{ name }}:
     {% set i = 4 %}
     {%- endif -%}

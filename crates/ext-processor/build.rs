@@ -1,6 +1,6 @@
 // Copyright 2021 The rust-control-plane Authors. All rights reserved.
 // Use of this source code is governed by the Apache License,
-// Version 2.0, that can be found in the LICENSE file.
+// Version 2.0, that can be found in the protobuf/LICENSE file.
 
 use std::env;
 use std::io::Result;
@@ -11,13 +11,13 @@ fn main() -> Result<()> {
 
     tonic_build::configure()
         .build_server(true)
-        .build_client(true)
+        .build_client(false)
         .file_descriptor_set_path(descriptor_path.clone())
         .compile_well_known_types(true)
-        .extern_path(".google.protobuf.Any", "::prost_wkt_types::Any")
         .extern_path(".google.protobuf", "::pbjson_types")
         .compile(
             &[
+                "protobuf/data-plane-api/envoy/config/common/mutation_rules/v3/mutation_rules.proto",
                 "protobuf/data-plane-api/envoy/config/core/v3/address.proto",
                 "protobuf/data-plane-api/envoy/config/core/v3/base.proto",
                 "protobuf/data-plane-api/envoy/config/core/v3/socket_option.proto",

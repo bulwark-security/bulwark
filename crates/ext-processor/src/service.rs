@@ -1224,7 +1224,7 @@ impl ProcessorContext {
                     status: Some(HttpStatus { code }),
                     // TODO: add decision debug
                     details: "blocked by bulwark".to_string(),
-                    body: body.to_string(),
+                    body: body.to_string().into(),
                     headers: None,
                     grpc_status: None,
                 },
@@ -1279,7 +1279,7 @@ impl ProcessorContext {
                     status: Some(HttpStatus { code }),
                     // TODO: add decision debug
                     details: "blocked by bulwark".to_string(),
-                    body: body.to_string(),
+                    body: body.to_string().into(),
                     headers: None,
                     grpc_status: None,
                 },

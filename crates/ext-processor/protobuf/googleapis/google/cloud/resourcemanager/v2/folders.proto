@@ -1,4 +1,4 @@
-// Copyright 2019 Google LLC.
+// Copyright 2024 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 
 option csharp_namespace = "Google.Cloud.ResourceManager.V2";
-option go_package = "google.golang.org/genproto/googleapis/cloud/resourcemanager/v2;resourcemanager";
+option go_package = "cloud.google.com/go/resourcemanager/apiv2/resourcemanagerpb;resourcemanagerpb";
 option java_multiple_files = true;
 option java_outer_classname = "FoldersProto";
 option java_package = "com.google.cloud.resourcemanager.v2";

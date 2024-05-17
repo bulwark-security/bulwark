@@ -1,4 +1,4 @@
-// Copyright 2020 Google LLC
+// Copyright 2024 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,14 +24,13 @@ import "google/cloud/vision/v1/product_search.proto";
 import "google/cloud/vision/v1/text_annotation.proto";
 import "google/cloud/vision/v1/web_detection.proto";
 import "google/longrunning/operations.proto";
-import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "google/rpc/status.proto";
 import "google/type/color.proto";
 import "google/type/latlng.proto";
 
 option cc_enable_arenas = true;
-option go_package = "google.golang.org/genproto/googleapis/cloud/vision/v1;vision";
+option go_package = "cloud.google.com/go/vision/v2/apiv1/visionpb;visionpb";
 option java_multiple_files = true;
 option java_outer_classname = "ImageAnnotatorProto";
 option java_package = "com.google.cloud.vision.v1";
@@ -146,6 +145,28 @@ service ImageAnnotator {
   }
 }
 
+// A bucketized representation of likelihood, which is intended to give clients
+// highly stable results across model upgrades.
+enum Likelihood {
+  // Unknown likelihood.
+  UNKNOWN = 0;
+
+  // It is very unlikely.
+  VERY_UNLIKELY = 1;
+
+  // It is unlikely.
+  UNLIKELY = 2;
+
+  // It is possible.
+  POSSIBLE = 3;
+
+  // It is likely.
+  LIKELY = 4;
+
+  // It is very likely.
+  VERY_LIKELY = 5;
+}
+
 // The type of Google Cloud Vision API detection to perform, and the maximum
 // number of results to return for that type. Multiple `Feature` objects can
 // be specified in the `features` list.
@@ -206,7 +227,8 @@ message Feature {
 
   // Model to use for the feature.
   // Supported values: "builtin/stable" (the default if unset) and
-  // "builtin/latest".
+  // "builtin/latest". `DOCUMENT_TEXT_DETECTION` and `TEXT_DETECTION` also
+  // support "builtin/weekly" for the bleeding edge release updated weekly.
   string model = 3;
 }
 
@@ -254,28 +276,6 @@ message Image {
   // URL. If both `content` and `source` are provided for an image, `content`
   // takes precedence and is used to perform the image annotation request.
   ImageSource source = 2;
-}
-
-// A bucketized representation of likelihood, which is intended to give clients
-// highly stable results across model upgrades.
-enum Likelihood {
-  // Unknown likelihood.
-  UNKNOWN = 0;
-
-  // It is very unlikely.
-  VERY_UNLIKELY = 1;
-
-  // It is unlikely.
-  UNLIKELY = 2;
-
-  // It is possible.
-  POSSIBLE = 3;
-
-  // It is likely.
-  LIKELY = 4;
-
-  // It is very likely.
-  VERY_LIKELY = 5;
 }
 
 // A face annotation object contains the results of face detection.
@@ -570,7 +570,9 @@ message SafeSearchAnnotation {
   // Likelihood that this is a medical image.
   Likelihood medical = 3;
 
-  // Likelihood that this image contains violent content.
+  // Likelihood that this image contains violent content. Violent content may
+  // include death, serious harm, or injury to individuals or groups of
+  // individuals.
   Likelihood violence = 4;
 
   // Likelihood that the request image contains racy content. Racy content may
@@ -578,30 +580,6 @@ message SafeSearchAnnotation {
   // covered nudity, lewd or provocative poses, or close-ups of sensitive
   // body areas.
   Likelihood racy = 9;
-
-  // Confidence of adult_score. Range [0, 1]. 0 means not confident, 1 means
-  // very confident.
-  float adult_confidence = 16 [deprecated = true];
-
-  // Confidence of spoof_score. Range [0, 1]. 0 means not confident, 1 means
-  // very confident.
-  float spoof_confidence = 18 [deprecated = true];
-
-  // Confidence of medical_score. Range [0, 1]. 0 means not confident, 1 means
-  // very confident.
-  float medical_confidence = 20 [deprecated = true];
-
-  // Confidence of violence_score. Range [0, 1]. 0 means not confident, 1 means
-  // very confident.
-  float violence_confidence = 22 [deprecated = true];
-
-  // Confidence of racy_score. Range [0, 1]. 0 means not confident, 1 means very
-  // confident.
-  float racy_confidence = 24 [deprecated = true];
-
-  // Confidence of nsfw_score. Range [0, 1]. 0 means not confident, 1 means very
-  // confident.
-  float nsfw_confidence = 26 [deprecated = true];
 }
 
 // Rectangle determined by min and max `LatLng` pairs.
@@ -672,8 +650,8 @@ message CropHintsParams {
 
 // Parameters for web detection request.
 message WebDetectionParams {
-  // Whether to include results derived from the geo information in the image.
-  bool include_geo_results = 2;
+  // This field has no effect on results.
+  bool include_geo_results = 2 [deprecated = true];
 }
 
 // Parameters for text detections. This is used to control TEXT_DETECTION and
@@ -683,6 +661,15 @@ message TextDetectionParams {
   // DOCUMENT_TEXT_DETECTION result. Set the flag to true to include confidence
   // score for TEXT_DETECTION as well.
   bool enable_text_detection_confidence_score = 9;
+
+  // A list of advanced OCR options to further fine-tune OCR behavior.
+  // Current valid values are:
+  //
+  // - `legacy_layout`: a heuristics layout detection algorithm, which serves as
+  // an alternative to the current ML-based layout detection algorithm.
+  // Customers can choose the best suitable layout algorithm based on their
+  // situation.
+  repeated string advanced_ocr_options = 11;
 }
 
 // Image context and/or feature-specific parameters.
@@ -808,6 +795,14 @@ message BatchAnnotateImagesRequest {
   //
   // Example: `projects/project-A/locations/eu`.
   string parent = 4;
+
+  // Optional. The labels with user-defined metadata for the request.
+  //
+  // Label keys and values can be no longer than 63 characters
+  // (Unicode codepoints), can only contain lowercase letters, numeric
+  // characters, underscores and dashes. International characters are allowed.
+  // Label values are optional. Label keys must start with a letter.
+  map<string, string> labels = 5 [(google.api.field_behavior) = OPTIONAL];
 }
 
 // Response to a batch image annotation request.
@@ -882,6 +877,14 @@ message BatchAnnotateFilesRequest {
   //
   // Example: `projects/project-A/locations/eu`.
   string parent = 3;
+
+  // Optional. The labels with user-defined metadata for the request.
+  //
+  // Label keys and values can be no longer than 63 characters
+  // (Unicode codepoints), can only contain lowercase letters, numeric
+  // characters, underscores and dashes. International characters are allowed.
+  // Label values are optional. Label keys must start with a letter.
+  map<string, string> labels = 5 [(google.api.field_behavior) = OPTIONAL];
 }
 
 // A list of file annotation responses.
@@ -934,6 +937,14 @@ message AsyncBatchAnnotateImagesRequest {
   //
   // Example: `projects/project-A/locations/eu`.
   string parent = 4;
+
+  // Optional. The labels with user-defined metadata for the request.
+  //
+  // Label keys and values can be no longer than 63 characters
+  // (Unicode codepoints), can only contain lowercase letters, numeric
+  // characters, underscores and dashes. International characters are allowed.
+  // Label values are optional. Label keys must start with a letter.
+  map<string, string> labels = 5 [(google.api.field_behavior) = OPTIONAL];
 }
 
 // Response to an async batch image annotation request.
@@ -962,6 +973,14 @@ message AsyncBatchAnnotateFilesRequest {
   //
   // Example: `projects/project-A/locations/eu`.
   string parent = 4;
+
+  // Optional. The labels with user-defined metadata for the request.
+  //
+  // Label keys and values can be no longer than 63 characters
+  // (Unicode codepoints), can only contain lowercase letters, numeric
+  // characters, underscores and dashes. International characters are allowed.
+  // Label values are optional. Label keys must start with a letter.
+  map<string, string> labels = 5 [(google.api.field_behavior) = OPTIONAL];
 }
 
 // Response to an async batch file annotation request.

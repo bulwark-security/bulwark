@@ -1,5 +1,15 @@
 pub mod envoy {
     pub mod config {
+        pub mod common {
+            pub mod mutation_rules {
+                pub mod v3 {
+                    include!(concat!(
+                        env!("OUT_DIR"),
+                        "/envoy.config.common.mutation_rules.v3.rs"
+                    ));
+                }
+            }
+        }
         pub mod core {
             #[allow(clippy::large_enum_variant)]
             pub mod v3 {
