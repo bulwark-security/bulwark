@@ -3,7 +3,10 @@ pub mod envoy {
         pub mod common {
             pub mod mutation_rules {
                 pub mod v3 {
-                    include!(concat!(env!("OUT_DIR"), "/envoy.config.common.mutation_rules.v3.rs"));
+                    include!(concat!(
+                        env!("OUT_DIR"),
+                        "/envoy.config.common.mutation_rules.v3.rs"
+                    ));
                 }
             }
         }
