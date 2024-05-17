@@ -9,12 +9,20 @@
         {
           "service": "google.cloud.kms.v1.KeyManagementService",
           "method": "ImportCryptoKeyVersion"
+        },
+        {
+          "service": "google.cloud.kms.v1.Autokey",
+          "method": "CreateKeyHandle"
         }
       ],
       "timeout": "60s"
     },
     {
       "name": [
+        {
+          "service": "google.cloud.kms.v1.EkmService",
+          "method": "ListEkmConnections"
+        },
         {
           "service": "google.cloud.kms.v1.KeyManagementService",
           "method": "ListKeyRings"
@@ -30,6 +38,10 @@
         {
           "service": "google.cloud.kms.v1.KeyManagementService",
           "method": "ListCryptoKeyVersions"
+        },
+        {
+          "service": "google.cloud.kms.v1.EkmService",
+          "method": "GetEkmConnection"
         },
         {
           "service": "google.cloud.kms.v1.KeyManagementService",
@@ -48,6 +60,10 @@
           "method": "GetCryptoKeyVersion"
         },
         {
+          "service": "google.cloud.kms.v1.EkmService",
+          "method": "CreateEkmConnection"
+        },
+        {
           "service": "google.cloud.kms.v1.KeyManagementService",
           "method": "CreateKeyRing"
         },
@@ -58,6 +74,10 @@
         {
           "service": "google.cloud.kms.v1.KeyManagementService",
           "method": "CreateCryptoKey"
+        },
+        {
+          "service": "google.cloud.kms.v1.EkmService",
+          "method": "UpdateEkmConnection"
         },
         {
           "service": "google.cloud.kms.v1.KeyManagementService",
@@ -112,16 +132,48 @@
           "method": "GenerateRandomBytes"
         },
         {
+          "service": "google.cloud.kms.v1.EkmService",
+          "method": "SetIamPolicy"
+        },
+        {
           "service": "google.cloud.kms.v1.KeyManagementService",
           "method": "SetIamPolicy"
+        },
+        {
+          "service": "google.cloud.kms.v1.EkmService",
+          "method": "GetIamPolicy"
         },
         {
           "service": "google.cloud.kms.v1.KeyManagementService",
           "method": "GetIamPolicy"
         },
         {
+          "service": "google.cloud.kms.v1.EkmService",
+          "method": "TestIamPermissions"
+        },
+        {
           "service": "google.cloud.kms.v1.KeyManagementService",
           "method": "TestIamPermissions"
+        },
+        {
+          "service": "google.cloud.kms.v1.AutokeyAdmin",
+          "method": "UpdateAutokeyConfig"
+        },
+        {
+          "service": "google.cloud.kms.v1.AutokeyAdmin",
+          "method": "GetAutokeyConfig"
+        },
+        {
+          "service": "google.cloud.kms.v1.AutokeyAdmin",
+          "method": "ShowEffectiveAutokeyConfig"
+        },
+        {
+          "service": "google.cloud.kms.v1.Autokey",
+          "method": "GetKeyHandle"
+        },
+        {
+          "service": "google.cloud.kms.v1.Autokey",
+          "method": "ListKeyHandles"
         }
       ],
       "timeout": "60s",

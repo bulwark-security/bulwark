@@ -81,6 +81,42 @@
         {
           "service": "google.privacy.dlp.v2.DlpService",
           "method": "DeleteStoredInfoType"
+        },
+        {
+          "service": "google.privacy.dlp.v2.DlpService",
+          "method": "ListDiscoveryConfigs"
+        },
+        {
+          "service": "google.privacy.dlp.v2.DlpService",
+          "method": "GetDiscoveryConfig"
+        },
+        {
+          "service": "google.privacy.dlp.v2.DlpService",
+          "method": "DeleteDiscoveryConfig"
+        },
+        {
+          "service": "google.privacy.dlp.v2.DlpService",
+          "method": "ListProjectDataProfiles"
+        },
+        {
+          "service": "google.privacy.dlp.v2.DlpService",
+          "method": "GetProjectDataProfile"
+        },
+        {
+          "service": "google.privacy.dlp.v2.DlpService",
+          "method": "ListTableDataProfiles"
+        },
+        {
+          "service": "google.privacy.dlp.v2.DlpService",
+          "method": "GetTableDataProfile"
+        },
+        {
+          "service": "google.privacy.dlp.v2.DlpService",
+          "method": "ListColumnDataProfiles"
+        },
+        {
+          "service": "google.privacy.dlp.v2.DlpService",
+          "method": "GetColumnDataProfile"
         }
       ],
       "timeout": "300s",
@@ -152,6 +188,14 @@
         {
           "service": "google.privacy.dlp.v2.DlpService",
           "method": "HybridInspectJobTrigger"
+        },
+        {
+          "service": "google.privacy.dlp.v2.DlpService",
+          "method": "UpdateDiscoveryConfig"
+        },
+        {
+          "service": "google.privacy.dlp.v2.DlpService",
+          "method": "CreateDiscoveryConfig"
         }
       ],
       "timeout": "300s"

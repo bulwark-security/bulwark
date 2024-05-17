@@ -20,6 +20,7 @@ option go_package = "google.golang.org/genproto/googleapis/grafeas/v1;grafeas";
 option java_multiple_files = true;
 option java_package = "io.grafeas.v1";
 option objc_class_prefix = "GRA";
+option java_outer_classname = "CVSSProto";
 
 // Common Vulnerability Scoring System version 3.
 // For details, see https://www.first.org/cvss/specification-document
@@ -86,10 +87,8 @@ message CVSSv3 {
 
 // Common Vulnerability Scoring System.
 // For details, see https://www.first.org/cvss/specification-document
-// This is a message we will try to use for storing multiple versions of
-// CVSS. The intention is that as new versions of CVSS scores get added, we
-// will be able to modify this message rather than adding new protos for each
-// new version of the score.
+// This is a message we will try to use for storing various versions of CVSS
+// rather than making a separate proto for storing a specific version.
 message CVSS {
   // The base score is a function of the base metric scores.
   float base_score = 1;
@@ -123,6 +122,7 @@ message CVSS {
     ATTACK_COMPLEXITY_UNSPECIFIED = 0;
     ATTACK_COMPLEXITY_LOW = 1;
     ATTACK_COMPLEXITY_HIGH = 2;
+    ATTACK_COMPLEXITY_MEDIUM = 3;
   }
 
   enum Authentication {
@@ -156,5 +156,14 @@ message CVSS {
     IMPACT_HIGH = 1;
     IMPACT_LOW = 2;
     IMPACT_NONE = 3;
+    IMPACT_PARTIAL = 4;
+    IMPACT_COMPLETE = 5;
   }
+}
+
+// CVSS Version.
+enum CVSSVersion {
+  CVSS_VERSION_UNSPECIFIED = 0;
+  CVSS_VERSION_2 = 1;
+  CVSS_VERSION_3 = 2;
 }

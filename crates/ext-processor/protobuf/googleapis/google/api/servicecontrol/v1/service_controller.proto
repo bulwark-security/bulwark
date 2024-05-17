@@ -1,4 +1,4 @@
-// Copyright 2021 Google LLC
+// Copyright 2024 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,12 +20,11 @@ import "google/api/annotations.proto";
 import "google/api/client.proto";
 import "google/api/servicecontrol/v1/check_error.proto";
 import "google/api/servicecontrol/v1/operation.proto";
-import "google/protobuf/timestamp.proto";
 import "google/rpc/status.proto";
 
 option cc_enable_arenas = true;
 option csharp_namespace = "Google.Cloud.ServiceControl.V1";
-option go_package = "google.golang.org/genproto/googleapis/api/servicecontrol/v1;servicecontrol";
+option go_package = "cloud.google.com/go/servicecontrol/apiv1/servicecontrolpb;servicecontrolpb";
 option java_multiple_files = true;
 option java_outer_classname = "ServiceControllerProto";
 option java_package = "com.google.api.servicecontrol.v1";
@@ -122,6 +121,11 @@ message CheckResponse {
 
     // Consumer info of this check.
     ConsumerInfo consumer_info = 2;
+
+    // The unique id of the api key in the format of "apikey:<UID>".
+    // This field will be populated when the consumer passed to Service Control
+    // is an API key and all the API key related validations are successful.
+    string api_key_uid = 5;
   }
 
   // `ConsumerInfo` provides information about the consumer.

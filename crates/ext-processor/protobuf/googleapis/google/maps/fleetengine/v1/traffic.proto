@@ -1,4 +1,4 @@
-// Copyright 2021 Google LLC
+// Copyright 2024 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,11 +16,13 @@ syntax = "proto3";
 
 package maps.fleetengine.v1;
 
-option go_package = "google.golang.org/genproto/googleapis/maps/fleetengine/v1;fleetengine";
+option csharp_namespace = "Google.Maps.FleetEngine.V1";
+option go_package = "cloud.google.com/go/maps/fleetengine/apiv1/fleetenginepb;fleetenginepb";
 option java_multiple_files = true;
 option java_outer_classname = "TrafficProto";
 option java_package = "google.maps.fleetengine.v1";
 option objc_class_prefix = "CFE";
+option ruby_package = "Google::Maps::FleetEngine::V1";
 
 // Traffic density indicator on a contiguous segment of a path. Given a path
 // with points P_0, P_1, ... , P_N (zero-based index), the SpeedReadingInterval

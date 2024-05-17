@@ -1,4 +1,4 @@
-// Copyright 2020 Google LLC
+// Copyright 2024 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package google.cloud.aiplatform.logging;
 
 import "google/rpc/status.proto";
 
-option go_package = "google.golang.org/genproto/googleapis/cloud/aiplatform/logging;logging";
+option go_package = "cloud.google.com/go/aiplatform/logging/loggingpb;loggingpb";
 option java_multiple_files = true;
 option java_outer_classname = "PredictionProto";
 option java_package = "com.google.cloud.aiplatform.logging";
