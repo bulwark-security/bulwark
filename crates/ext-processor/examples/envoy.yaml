@@ -33,6 +33,11 @@ static_resources:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                       message_timeout:
                         seconds: 2
+                      # After Envoy 1.27, either allow_mode_override or processing_mode must be set.
+                      # allow_mode_override: true
+                      processing_mode:
+                        request_body_mode: BUFFERED_PARTIAL
+                        response_body_mode: BUFFERED_PARTIAL
                       grpc_service:
                         timeout:
                           seconds: 300
