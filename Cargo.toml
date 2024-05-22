@@ -129,6 +129,7 @@ redis-test = "0.4"
 reqwest = { version = "0.11.14", features = ["rustls-tls", "blocking"] }
 serde = { version = "1.0.149", features = ["std", "serde_derive", "derive"] }
 serde_json = "1.0.93"
+sha2 = "0.10.8"
 thiserror = "=1.0.43"
 tokio = { version = "1", features = [
     "rt-multi-thread",

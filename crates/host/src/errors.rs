@@ -13,6 +13,8 @@ pub enum PluginLoadError {
     ResourceMissing,
     #[error(transparent)]
     HttpError(#[from] reqwest::Error),
+    #[error("expected {0}:{1}, got {0}:{2}")]
+    VerificationError(String, String, String),
     #[error(transparent)]
     AnyError(#[from] anyhow::Error),
 }

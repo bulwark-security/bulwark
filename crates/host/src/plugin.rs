@@ -1,6 +1,21 @@
+use crate::PluginCtx;
+use crate::{PluginExecutionError, PluginInstantiationError, PluginLoadError};
 use anyhow::Context as _;
-use bulwark_config::PluginAccess;
+use bulwark_config::{PluginAccess, PluginVerification};
+use bulwark_sdk::Decision;
+use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
+use sha2::{Digest, Sha256};
+use std::{
+    collections::{HashMap, HashSet},
+    net::IpAddr,
+    path::Path,
+    sync::Arc,
+};
+use wasmtime::component::{Component, Linker};
+use wasmtime::{AsContextMut, Config, Engine, Store};
+use wasmtime_wasi::{pipe::MemoryOutputPipe, HostOutputStream, StdoutStream};
 use wasmtime_wasi_http::body::HyperIncomingBody;
+use wasmtime_wasi_http::WasiHttpView;
 
 mod latest {
     pub mod http {
@@ -27,23 +42,6 @@ pub(crate) mod bindings {
         }
     });
 }
-
-use {
-    crate::PluginCtx,
-    crate::{PluginExecutionError, PluginInstantiationError, PluginLoadError},
-    bulwark_sdk::Decision,
-    http_body_util::{combinators::BoxBody, BodyExt, Empty, Full},
-    std::{
-        collections::{HashMap, HashSet},
-        net::IpAddr,
-        path::Path,
-        sync::Arc,
-    },
-    wasmtime::component::{Component, Linker},
-    wasmtime::{AsContextMut, Config, Engine, Store},
-    wasmtime_wasi::{pipe::MemoryOutputPipe, HostOutputStream, StdoutStream},
-    wasmtime_wasi_http::WasiHttpView,
-};
 
 extern crate redis;
 
@@ -180,6 +178,18 @@ impl Plugin {
                                 .header(reqwest::header::AUTHORIZATION, authorization.to_vec());
                         }
                         let bytes = request.send()?.bytes()?;
+                        if let PluginVerification::Sha256(digest) = &guest_config.verification {
+                            let mut hasher = Sha256::new();
+                            hasher.update(&bytes[..]);
+                            let plugin_digest = hasher.finalize();
+                            if plugin_digest.as_slice() != &digest[..] {
+                                return Err(PluginLoadError::VerificationError(
+                                    "sha256".to_string(),
+                                    String::from_utf8_lossy(&digest[..]).to_string(),
+                                    String::from_utf8_lossy(plugin_digest.as_slice()).to_string(),
+                                ));
+                            }
+                        }
                         Ok(Component::from_binary(engine, &bytes[..])?)
                     }
                     bulwark_config::PluginLocation::Bytes(bytes) => {
