@@ -1,4 +1,5 @@
 use anyhow::Context as _;
+use bulwark_config::PluginAccess;
 use wasmtime_wasi_http::body::HyperIncomingBody;
 
 mod latest {
@@ -172,7 +173,13 @@ impl Plugin {
                         Ok(Component::from_file(engine, path)?)
                     }
                     bulwark_config::PluginLocation::Https(uri) => {
-                        let bytes = reqwest::blocking::get(uri.clone())?.bytes()?;
+                        let client = reqwest::blocking::Client::new();
+                        let mut request = client.get(uri.clone());
+                        if let PluginAccess::Header(authorization) = &guest_config.access {
+                            request = request
+                                .header(reqwest::header::AUTHORIZATION, authorization.to_vec());
+                        }
+                        let bytes = request.send()?.bytes()?;
                         Ok(Component::from_binary(engine, &bytes[..])?)
                     }
                     bulwark_config::PluginLocation::Bytes(bytes) => {
