@@ -12,6 +12,8 @@ pub enum PluginLoadError {
     #[error("at least one resource required")]
     ResourceMissing,
     #[error(transparent)]
+    HttpError(#[from] reqwest::Error),
+    #[error(transparent)]
     AnyError(#[from] anyhow::Error),
 }
 

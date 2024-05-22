@@ -12,7 +12,7 @@ pub enum ConfigFileError {
     #[error(transparent)]
     Resolution(#[from] ResolutionError),
     #[error(transparent)]
-    InvalidRemoteUri(#[from] http::uri::InvalidUri),
+    InvalidRemoteUri(#[from] url::ParseError),
     #[error("uri must be https: '{0}'")]
     InsecureRemoteUri(String),
     #[error("missing parent: '{0}'")]

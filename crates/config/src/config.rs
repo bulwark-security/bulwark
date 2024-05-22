@@ -2,13 +2,13 @@
 
 use crate::ResolutionError;
 use bytes::Bytes;
-use http::Uri;
 use itertools::Itertools;
 use regex::Regex;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
+use url::Url;
 use validator::Validate;
 
 lazy_static! {
@@ -226,7 +226,7 @@ pub enum PluginLocation {
     /// The plugin is a local file.
     Local(PathBuf),
     /// The plugin is a remote file served over HTTPS.
-    Https(Uri),
+    Https(Url),
     /// The plugin is an binary blob.
     Bytes(Bytes),
 }

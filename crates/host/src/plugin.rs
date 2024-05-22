@@ -169,9 +169,12 @@ impl Plugin {
             |engine| -> Result<Component, PluginLoadError> {
                 match &guest_config.location {
                     bulwark_config::PluginLocation::Local(path) => {
-                        Ok(Component::from_file(engine, &path)?)
+                        Ok(Component::from_file(engine, path)?)
                     }
-                    bulwark_config::PluginLocation::Https(_) => todo!(),
+                    bulwark_config::PluginLocation::Https(uri) => {
+                        let bytes = reqwest::blocking::get(uri.clone())?.bytes()?;
+                        Ok(Component::from_binary(engine, &bytes[..])?)
+                    }
                     bulwark_config::PluginLocation::Bytes(bytes) => {
                         Ok(Component::from_binary(engine, &bytes[..])?)
                     }

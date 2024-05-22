@@ -5,10 +5,10 @@
 
 use crate::ConfigFileError;
 use bytes::Bytes;
-use http::Uri;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, ffi::OsString, fs, path::Path, path::PathBuf};
+use url::Url;
 use validator::Validate;
 
 lazy_static! {
@@ -323,7 +323,7 @@ impl From<&Plugin> for crate::config::Plugin {
             location: match (&plugin.path, &plugin.uri, &plugin.bytes) {
                 (Some(path), None, None) => crate::PluginLocation::Local(PathBuf::from(path)),
                 (None, Some(uri), None) => {
-                    crate::PluginLocation::Https(uri.parse::<Uri>().unwrap())
+                    crate::PluginLocation::Https(uri.parse::<Url>().unwrap())
                 }
                 (None, None, Some(bytes)) => {
                     crate::PluginLocation::Bytes(Bytes::from(bytes.clone()))
@@ -517,9 +517,9 @@ where
                         .uri
                         .as_ref()
                         .map(|uri| {
-                            uri.parse::<Uri>().map_err(ConfigFileError::from).and_then(
+                            uri.parse::<Url>().map_err(ConfigFileError::from).and_then(
                                 |parsed_uri| {
-                                    if parsed_uri.scheme() == Some(&http::uri::Scheme::HTTPS) {
+                                    if parsed_uri.scheme() == "https" {
                                         Ok(uri.clone())
                                     } else {
                                         Err(ConfigFileError::InsecureRemoteUri(uri.clone()))

@@ -24,21 +24,22 @@ wasmtime-wasi = { workspace = true }
 wasmtime-wasi-http = { workspace = true }
 
 anyhow = { workspace = true }
-deadpool-redis = { workspace = true }
 bytes = { workspace = true }
 chrono = { workspace = true }
+deadpool-redis = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 metrics = { workspace = true }
 redis = { workspace = true }
+reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+url = { workspace = true }
 validator = { workspace = true }
 
 async-trait = "0.1.68"
 http-body-util = "0.1.0"
-url = "2.5.0"
 
 [dev-dependencies]
 bulwark-build = { workspace = true }
