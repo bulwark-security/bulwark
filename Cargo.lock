@@ -398,7 +398,9 @@ version = "0.5.0"
 dependencies = [
  "bulwark-build",
  "bulwark-decision",
+ "bytes 1.6.0",
  "chrono",
+ "http 1.1.0",
  "itertools 0.12.1",
  "lazy_static",
  "num_cpus",
@@ -407,6 +409,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "toml",
+ "tracing",
  "validator",
 ]
 

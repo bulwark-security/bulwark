@@ -1,5 +1,9 @@
 use bulwark_host::{Plugin, PluginCtx, PluginInstance, RedisCtx, ScriptRegistry};
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 #[tokio::test]
 async fn test_redis_plugin() -> Result<(), Box<dyn std::error::Error>> {
@@ -31,11 +35,14 @@ async fn test_redis_plugin() -> Result<(), Box<dyn std::error::Error>> {
         metrics: bulwark_config::Metrics::default(),
         plugins: vec![bulwark_config::Plugin {
             reference: "redis_plugin".to_string(),
-            path: base
-                .join("dist/plugins/redis_plugin.wasm")
-                .to_str()
-                .unwrap()
-                .to_string(),
+            location: bulwark_config::PluginLocation::Local(PathBuf::from(
+                base.join("dist/plugins/redis_plugin.wasm")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+            )),
+            access: bulwark_config::PluginAccess::None,
+            verification: bulwark_config::PluginVerification::None,
             weight: 1.0,
             config: serde_json::map::Map::new(),
             permissions: bulwark_config::Permissions {

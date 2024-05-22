@@ -155,6 +155,31 @@ impl Plugin {
         )
     }
 
+    /// Creates and compiles a new [`Plugin`] from configuration.
+    ///
+    /// See [`bulwark_config::Plugin`].
+    pub fn from_config(
+        host_config: &bulwark_config::Config,
+        guest_config: &bulwark_config::Plugin,
+    ) -> Result<Self, PluginLoadError> {
+        Self::from_component(
+            guest_config.reference.clone(),
+            host_config,
+            guest_config,
+            |engine| -> Result<Component, PluginLoadError> {
+                match &guest_config.location {
+                    bulwark_config::PluginLocation::Local(path) => {
+                        Ok(Component::from_file(engine, &path)?)
+                    }
+                    bulwark_config::PluginLocation::Https(_) => todo!(),
+                    bulwark_config::PluginLocation::Bytes(bytes) => {
+                        Ok(Component::from_binary(engine, &bytes[..])?)
+                    }
+                }
+            },
+        )
+    }
+
     /// Helper method for the other `from_*` functions.
     fn from_component<F>(
         reference: String,

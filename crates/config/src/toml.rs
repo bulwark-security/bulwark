@@ -4,6 +4,8 @@
 // directly in the [`bulwark_config`](crate) module's structs.
 
 use crate::ConfigFileError;
+use bytes::Bytes;
+use http::Uri;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, ffi::OsString, fs, path::Path, path::PathBuf};
@@ -293,7 +295,11 @@ struct Plugin {
     #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
     reference: String,
     #[validate(length(min = 1))]
-    path: String,
+    path: Option<String>,
+    #[validate(length(min = 1))]
+    uri: Option<String>,
+    #[validate(length(min = 1))]
+    bytes: Option<Vec<u8>>,
     #[serde(default = "default_plugin_weight")]
     #[validate(range(min = 0.0))]
     weight: f64,
@@ -314,7 +320,18 @@ impl From<&Plugin> for crate::config::Plugin {
     fn from(plugin: &Plugin) -> Self {
         Self {
             reference: plugin.reference.clone(),
-            path: plugin.path.clone(),
+            location: match (&plugin.path, &plugin.uri, &plugin.bytes) {
+                (Some(path), None, None) => crate::PluginLocation::Local(PathBuf::from(path)),
+                (None, Some(uri), None) => {
+                    crate::PluginLocation::Https(uri.parse::<Uri>().unwrap())
+                }
+                (None, None, Some(bytes)) => {
+                    crate::PluginLocation::Bytes(Bytes::from(bytes.clone()))
+                }
+                _ => panic!("one and only one of path, uri, or bytes must be set"),
+            },
+            access: crate::PluginAccess::None,
+            verification: crate::PluginVerification::None,
             weight: plugin.weight,
             config: toml_map_to_json(plugin.config.clone()),
             permissions: plugin.permissions.clone().into(),
@@ -481,16 +498,37 @@ where
         // Strip includes once processed
         root.includes = vec![];
 
-        // Resolve plugins relative to config path
+        // Resolve plugins relative to config path or validate that remote URIs are secure.
         root.plugins = root
             .plugins
             .iter()
             .map(|plugin| -> Result<Plugin, ConfigFileError> {
                 Ok(Plugin {
                     reference: plugin.reference.clone(),
-                    path: resolve_path(config_path, Path::new(&plugin.path))?
-                        .to_string_lossy()
-                        .to_string(),
+                    path: plugin
+                        .path
+                        .as_ref()
+                        .map(|path| {
+                            resolve_path(config_path, Path::new(path.as_str()))
+                                .map(|path| path.to_string_lossy().to_string())
+                        })
+                        .transpose()?,
+                    uri: plugin
+                        .uri
+                        .as_ref()
+                        .map(|uri| {
+                            uri.parse::<Uri>().map_err(ConfigFileError::from).and_then(
+                                |parsed_uri| {
+                                    if parsed_uri.scheme() == Some(&http::uri::Scheme::HTTPS) {
+                                        Ok(uri.clone())
+                                    } else {
+                                        Err(ConfigFileError::InsecureRemoteUri(uri.clone()))
+                                    }
+                                },
+                            )
+                        })
+                        .transpose()?,
+                    bytes: plugin.bytes.clone(),
                     weight: plugin.weight,
                     config: plugin.config.clone(),
                     permissions: plugin.permissions.clone(),
@@ -732,6 +770,8 @@ mod tests {
             .first()
             .unwrap()
             .path
+            .clone()
+            .unwrap()
             .ends_with("bulwark_evil_bit.wasm"));
         assert_eq!(
             root.plugins.first().unwrap().config,
@@ -780,12 +820,12 @@ mod tests {
 
         assert_eq!(root.plugins.len(), 2);
         assert_eq!(root.plugins.first().unwrap().reference, "evil_bit");
-        assert!(root
-            .plugins
-            .first()
-            .unwrap()
-            .path
-            .ends_with("bulwark_evil_bit.wasm"));
+        match root.plugins.first().unwrap().location.clone() {
+            crate::PluginLocation::Local(path) => assert!(path.ends_with("bulwark_evil_bit.wasm")),
+            crate::PluginLocation::Https(_) => panic!("should not be https"),
+            crate::PluginLocation::Bytes(_) => panic!("should not be bytes"),
+        }
+
         assert_eq!(
             root.plugins.first().unwrap().config,
             serde_json::map::Map::default()

@@ -11,6 +11,10 @@ pub enum ConfigFileError {
     Validations(#[from] validator::ValidationErrors),
     #[error(transparent)]
     Resolution(#[from] ResolutionError),
+    #[error(transparent)]
+    InvalidRemoteUri(#[from] http::uri::InvalidUri),
+    #[error("uri must be https: '{0}'")]
+    InsecureRemoteUri(String),
     #[error("missing parent: '{0}'")]
     MissingParent(String),
     #[error("invalid circular include: '{0}'")]
