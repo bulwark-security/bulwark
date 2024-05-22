@@ -30,6 +30,8 @@ struct Config {
     metrics: Metrics,
     #[serde(default, rename(serialize = "include", deserialize = "include"))]
     includes: Vec<Include>,
+    #[serde(default, rename(serialize = "secret", deserialize = "secret"))]
+    secrets: Vec<Secret>,
     #[serde(default, rename(serialize = "plugin", deserialize = "plugin"))]
     plugins: Vec<Plugin>,
     #[serde(default, rename(serialize = "preset", deserialize = "preset"))]
@@ -286,6 +288,31 @@ impl From<Metrics> for crate::Metrics {
 #[derive(Serialize, Deserialize)]
 struct Include {
     path: String,
+}
+
+/// The TOML serialization for a Secret structure.
+#[derive(Validate, Serialize, Deserialize, Clone)]
+struct Secret {
+    #[serde(rename(serialize = "ref", deserialize = "ref"))]
+    #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
+    reference: String,
+    #[validate(length(min = 1))]
+    path: Option<String>,
+    #[validate(length(min = 1))]
+    env_var: Option<String>,
+}
+
+impl From<&Secret> for crate::config::Secret {
+    fn from(secret: &Secret) -> Self {
+        Self {
+            reference: secret.reference.clone(),
+            location: match (&secret.path, &secret.env_var) {
+                (Some(path), None) => crate::SecretLocation::File(PathBuf::from(path)),
+                (None, Some(env_var)) => crate::SecretLocation::EnvVar(env_var.clone()),
+                _ => panic!("one and only one of path or env_var must be set"),
+            },
+        }
+    }
 }
 
 /// The TOML serialization for a Plugin structure.
@@ -581,6 +608,11 @@ where
         state: root.state.into(),
         thresholds: root.thresholds.into(),
         metrics: root.metrics.into(),
+        secrets: root
+            .secrets
+            .iter()
+            .map(|secret: &Secret| secret.into())
+            .collect(),
         plugins: root.plugins.iter().map(|plugin| plugin.into()).collect(),
         presets: root
             .presets

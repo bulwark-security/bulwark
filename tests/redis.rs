@@ -33,6 +33,7 @@ async fn test_redis_plugin() -> Result<(), Box<dyn std::error::Error>> {
         },
         thresholds: bulwark_config::Thresholds::default(),
         metrics: bulwark_config::Metrics::default(),
+        secrets: vec![],
         plugins: vec![bulwark_config::Plugin {
             reference: "redis_plugin".to_string(),
             location: bulwark_config::PluginLocation::Local(PathBuf::from(

@@ -30,6 +30,8 @@ pub struct Config {
     pub thresholds: Thresholds,
     /// Configuration for metrics collection.
     pub metrics: Metrics,
+    /// A list of configurations for individual secrets.
+    pub secrets: Vec<Secret>,
     /// A list of configurations for individual plugins.
     pub plugins: Vec<Plugin>,
     /// A list of plugin groups that allows a plugin set to be loaded with a single reference.
@@ -217,6 +219,32 @@ impl Default for Metrics {
             statsd_buffer_size: DEFAULT_STATSD_BUFFER_SIZE,
             statsd_prefix: String::from(""),
         }
+    }
+}
+
+/// Configuration for a secret that Bulwark will need to reference.
+#[derive(Debug, Validate, Clone, Default)]
+pub struct Secret {
+    /// The secret reference key. Should be limited to ASCII lowercase a-z plus underscores. Maximum 96 characters.
+    #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
+    pub reference: String,
+    /// The location where the secret can be loaded from.
+    pub location: SecretLocation,
+}
+
+/// The location where a secret is stored.
+#[derive(Debug, Clone)]
+pub enum SecretLocation {
+    /// The secret is an environment variable.
+    EnvVar(String),
+    /// The secret is mounted as a file.
+    File(PathBuf),
+}
+
+impl Default for SecretLocation {
+    /// Defaults to an unusable empty environment variable.
+    fn default() -> Self {
+        Self::EnvVar(String::new())
     }
 }
 
