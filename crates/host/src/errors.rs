@@ -11,6 +11,10 @@ pub enum PluginLoadError {
     Resolution(#[from] bulwark_config::ResolutionError),
     #[error("at least one resource required")]
     ResourceMissing,
+    #[error("missing secret: '{0}'")]
+    SecretMissing(String),
+    #[error("unreadable secret: '{0}': {1}")]
+    SecretUnreadable(String, std::io::Error),
     #[error(transparent)]
     HttpError(#[from] reqwest::Error),
     #[error("expected {0}:{1}, got {0}:{2}")]

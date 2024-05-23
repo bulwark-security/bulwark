@@ -325,6 +325,7 @@ struct Plugin {
     path: Option<String>,
     #[validate(length(min = 1))]
     uri: Option<String>,
+    // TODO: add plugin access and verification fields
     #[validate(length(min = 1))]
     bytes: Option<Vec<u8>>,
     #[serde(default = "default_plugin_weight")]

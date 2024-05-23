@@ -4,6 +4,7 @@ use anyhow::Context as _;
 use bulwark_config::{PluginAccess, PluginVerification};
 use bulwark_sdk::Decision;
 use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
+use secrecy::ExposeSecret;
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
@@ -173,9 +174,45 @@ impl Plugin {
                     bulwark_config::PluginLocation::Https(uri) => {
                         let client = reqwest::blocking::Client::new();
                         let mut request = client.get(uri.clone());
-                        if let PluginAccess::Header(authorization) = &guest_config.access {
-                            request = request
-                                .header(reqwest::header::AUTHORIZATION, authorization.to_vec());
+                        if let PluginAccess::Header(authorization_secret) = &guest_config.access {
+                            let secret =
+                                host_config.secret(authorization_secret).ok_or_else(|| {
+                                    PluginLoadError::SecretMissing(authorization_secret.clone())
+                                })?;
+                            // In this case, secrecy::Secret might be overkill, because we immediately discard the value,
+                            // but it's probably a good habit to be using it anytime we touch a secret.
+                            let authorization_value = match &secret.location {
+                                bulwark_config::SecretLocation::EnvVar(env_var) => {
+                                    std::env::var_os(env_var)
+                                        .map(|value| {
+                                            secrecy::Secret::from(
+                                                value.to_string_lossy().to_string(),
+                                            )
+                                        })
+                                        .ok_or(PluginLoadError::SecretMissing(
+                                            secret.reference.clone(),
+                                        ))?
+                                }
+                                bulwark_config::SecretLocation::File(path) => {
+                                    secrecy::Secret::from(
+                                        std::fs::read(path)
+                                            .map(|value| {
+                                                String::from_utf8_lossy(value.as_slice())
+                                                    .to_string()
+                                            })
+                                            .map_err(|err| {
+                                                PluginLoadError::SecretUnreadable(
+                                                    secret.reference.clone(),
+                                                    err,
+                                                )
+                                            })?,
+                                    )
+                                }
+                            };
+                            request = request.header(
+                                reqwest::header::AUTHORIZATION,
+                                authorization_value.expose_secret(),
+                            );
                         }
                         let bytes = request.send()?.bytes()?;
                         if let PluginVerification::Sha256(digest) = &guest_config.verification {

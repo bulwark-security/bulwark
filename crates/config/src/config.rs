@@ -42,6 +42,20 @@ pub struct Config {
 }
 
 impl Config {
+    /// Looks up the [`Secret`] corresponding to the `reference` string.
+    ///
+    /// # Arguments
+    ///
+    /// * `reference` - A string that corresponds to a [`Secret::reference`] value.
+    pub fn secret<'a>(&self, reference: &str) -> Option<&Secret>
+    where
+        Secret: 'a,
+    {
+        self.secrets
+            .iter()
+            .find(|&secret| secret.reference == reference)
+    }
+
     /// Looks up the [`Plugin`] corresponding to the `reference` string.
     ///
     /// # Arguments
@@ -287,7 +301,9 @@ pub enum PluginAccess {
     ///
     /// The entire header value will be sent verbatim. This will generally only work for
     /// basic authentication or bearer tokens.
-    Header(Bytes),
+    ///
+    /// This is a secret reference. A corresponding [`Secret`] must be provided.
+    Header(String),
 }
 
 impl Default for PluginAccess {
