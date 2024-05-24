@@ -103,7 +103,7 @@ wasmtime = { version = "19.0.1", features = ["component-model"] }
 wasmtime-types = { version = "19" }
 wasmtime-wasi = { version = "19" }
 wasmtime-wasi-http = { version = "19" }
-wat = "1.202.0"
+wat = "1.208.1"
 wit-bindgen = "0.24.0"
 wit-component = "0.202.0"
 
