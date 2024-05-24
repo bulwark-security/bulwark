@@ -6,12 +6,10 @@ use bulwark_sdk::Decision;
 use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
 use secrecy::ExposeSecret;
 use sha2::{Digest, Sha256};
-use std::{
-    collections::{HashMap, HashSet},
-    net::IpAddr,
-    path::Path,
-    sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
+use std::net::IpAddr;
+use std::path::Path;
+use std::sync::Arc;
 use wasmtime::component::{Component, Linker};
 use wasmtime::{AsContextMut, Config, Engine, Store};
 use wasmtime_wasi::{pipe::MemoryOutputPipe, HostOutputStream, StdoutStream};
@@ -216,14 +214,16 @@ impl Plugin {
                         }
                         let bytes = request.send()?.bytes()?;
                         if let PluginVerification::Sha256(digest) = &guest_config.verification {
+                            // The expected digest should already be in raw byte form here, not hex-encoded.
                             let mut hasher = Sha256::new();
                             hasher.update(&bytes[..]);
                             let plugin_digest = hasher.finalize();
                             if plugin_digest.as_slice() != &digest[..] {
+                                // Need to make both sides hex-encoded to make the error message readable.
                                 return Err(PluginLoadError::VerificationError(
                                     "sha256".to_string(),
-                                    String::from_utf8_lossy(&digest[..]).to_string(),
-                                    String::from_utf8_lossy(plugin_digest.as_slice()).to_string(),
+                                    hex::encode(&digest[..]),
+                                    hex::encode(plugin_digest.as_slice()),
                                 ));
                             }
                         }

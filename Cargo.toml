@@ -18,6 +18,7 @@ bulwark-config = { workspace = true }
 bulwark-build = { workspace = true }
 bulwark-ext-processor = { workspace = true }
 
+axum = { workspace = true }
 chrono = { workspace = true }
 http = { workspace = true }
 metrics = { workspace = true }
@@ -29,7 +30,6 @@ toml = { workspace = true }
 tonic = { workspace = true }
 tracing = { workspace = true }
 
-axum = { version = "0.7.5", features = ["http2"] }
 clap = { version = "4.4.3", features = ["derive"] }
 clap_complete = "4.5.2"
 color-eyre = "0.6.2"
@@ -62,8 +62,7 @@ deadpool-redis = { workspace = true }
 bytes = { workspace = true }
 reqwest = { workspace = true }
 approx = { workspace = true }
-
-tokio-test = "0.4.2"
+tokio-test = { workspace = true }
 
 [build-dependencies]
 reqwest = { workspace = true }
@@ -111,10 +110,12 @@ wit-component = "0.202.0"
 # Other shared external dependencies
 anyhow = "=1.0.72"
 approx = "0.5"
+axum = { version = "0.7.5", features = ["http2"] }
 bytes = "1.5"
 chrono = { version = "0.4.26", features = ["serde"] }
 forwarded-header-value = "0.1.1"
 futures = "0.3"
+hex = "0.4.3"
 http = "1.0"
 metrics = "0.21.1"
 deadpool-redis = "0.15.0"
@@ -137,6 +138,7 @@ tokio = { version = "1", features = [
     "tracing",
     "time",
 ] }
+tokio-test = "0.4.2"
 toml = { version = "0.8.6", features = ["preserve_order"] }
 tonic = "^0.9"
 tracing = "0.1.37"

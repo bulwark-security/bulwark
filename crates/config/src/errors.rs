@@ -32,6 +32,15 @@ pub enum ConfigSerializationError {
     Json(#[from] serde_json::Error),
 }
 
+/// This error will be returned if an attempt to convert a plugin fails.
+#[derive(thiserror::Error, Debug)]
+pub enum PluginConversionError {
+    #[error("one and only one of path, uri, or bytes must be set")]
+    InvalidLocation,
+    #[error(transparent)]
+    InvalidHexEncoding(#[from] hex::FromHexError),
+}
+
 /// This error will be returned if attempting to resolve references fails.
 #[derive(thiserror::Error, Debug)]
 pub enum ResolutionError {

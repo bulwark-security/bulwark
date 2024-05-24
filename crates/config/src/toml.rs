@@ -347,9 +347,11 @@ fn default_plugin_weight() -> f64 {
     crate::DEFAULT_PLUGIN_WEIGHT
 }
 
-impl From<&Plugin> for crate::config::Plugin {
-    fn from(plugin: &Plugin) -> Self {
-        Self {
+impl TryFrom<&Plugin> for crate::config::Plugin {
+    type Error = crate::PluginConversionError;
+
+    fn try_from(plugin: &Plugin) -> Result<Self, Self::Error> {
+        Ok(Self {
             reference: plugin.reference.clone(),
             location: match (&plugin.path, &plugin.uri, &plugin.bytes) {
                 (Some(path), None, None) => crate::PluginLocation::Local(PathBuf::from(path)),
@@ -359,7 +361,7 @@ impl From<&Plugin> for crate::config::Plugin {
                 (None, None, Some(bytes)) => {
                     crate::PluginLocation::Bytes(Bytes::from(bytes.clone()))
                 }
-                _ => panic!("one and only one of path, uri, or bytes must be set"),
+                _ => return Err(Self::Error::InvalidLocation),
             },
             access: match &plugin.authorization_header {
                 Some(header) => crate::PluginAccess::Header(header.clone()),
@@ -367,9 +369,9 @@ impl From<&Plugin> for crate::config::Plugin {
             },
             verification: match &plugin.verification {
                 Some(verification) => match verification.split_once(':') {
-                    Some(("sha256", digest)) => crate::PluginVerification::Sha256(
-                        bytes::Bytes::from(digest.as_bytes().to_vec()),
-                    ),
+                    Some(("sha256", digest)) => {
+                        crate::PluginVerification::Sha256(bytes::Bytes::from(hex::decode(digest)?))
+                    }
                     Some((_, _)) => crate::PluginVerification::None,
                     None => crate::PluginVerification::None,
                 },
@@ -378,7 +380,7 @@ impl From<&Plugin> for crate::config::Plugin {
             weight: plugin.weight,
             config: toml_map_to_json(plugin.config.clone()),
             permissions: plugin.permissions.clone().into(),
-        }
+        })
     }
 }
 
@@ -631,7 +633,12 @@ where
             .iter()
             .map(|secret: &Secret| secret.into())
             .collect(),
-        plugins: root.plugins.iter().map(|plugin| plugin.into()).collect(),
+        plugins: root
+            .plugins
+            .iter()
+            .map(|plugin| plugin.try_into())
+            .collect::<Result<Vec<crate::Plugin>, _>>()
+            .map_err(|err| ConfigFileError::InvalidPluginConfig(err.to_string()))?,
         presets: root
             .presets
             .iter()

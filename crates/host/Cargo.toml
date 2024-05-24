@@ -28,6 +28,7 @@ bytes = { workspace = true }
 chrono = { workspace = true }
 deadpool-redis = { workspace = true }
 futures = { workspace = true }
+hex = { workspace = true }
 http = { workspace = true }
 metrics = { workspace = true }
 redis = { workspace = true }
@@ -45,6 +46,7 @@ secrecy = "0.8.0"
 
 [dev-dependencies]
 bulwark-build = { workspace = true }
+
 redis-test = { workspace = true }
 
 wat = { workspace = true }
