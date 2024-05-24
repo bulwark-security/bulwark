@@ -1,5 +1,20 @@
+use crate::PluginCtx;
+use crate::{PluginExecutionError, PluginInstantiationError, PluginLoadError};
 use anyhow::Context as _;
+use bulwark_config::{PluginAccess, PluginVerification};
+use bulwark_sdk::Decision;
+use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
+use secrecy::ExposeSecret;
+use sha2::{Digest, Sha256};
+use std::collections::{HashMap, HashSet};
+use std::net::IpAddr;
+use std::path::Path;
+use std::sync::Arc;
+use wasmtime::component::{Component, Linker};
+use wasmtime::{AsContextMut, Config, Engine, Store};
+use wasmtime_wasi::{pipe::MemoryOutputPipe, HostOutputStream, StdoutStream};
 use wasmtime_wasi_http::body::HyperIncomingBody;
+use wasmtime_wasi_http::WasiHttpView;
 
 mod latest {
     pub mod http {
@@ -26,23 +41,6 @@ pub(crate) mod bindings {
         }
     });
 }
-
-use {
-    crate::PluginCtx,
-    crate::{PluginExecutionError, PluginInstantiationError, PluginLoadError},
-    bulwark_sdk::Decision,
-    http_body_util::{combinators::BoxBody, BodyExt, Empty, Full},
-    std::{
-        collections::{HashMap, HashSet},
-        net::IpAddr,
-        path::Path,
-        sync::Arc,
-    },
-    wasmtime::component::{Component, Linker},
-    wasmtime::{AsContextMut, Config, Engine, Store},
-    wasmtime_wasi::{pipe::MemoryOutputPipe, HostOutputStream, StdoutStream},
-    wasmtime_wasi_http::WasiHttpView,
-};
 
 extern crate redis;
 
@@ -151,6 +149,90 @@ impl Plugin {
             guest_config,
             |engine| -> Result<Component, PluginLoadError> {
                 Ok(Component::from_file(engine, &path)?)
+            },
+        )
+    }
+
+    /// Creates and compiles a new [`Plugin`] from configuration.
+    ///
+    /// See [`bulwark_config::Plugin`].
+    pub fn from_config(
+        host_config: &bulwark_config::Config,
+        guest_config: &bulwark_config::Plugin,
+    ) -> Result<Self, PluginLoadError> {
+        Self::from_component(
+            guest_config.reference.clone(),
+            host_config,
+            guest_config,
+            |engine| -> Result<Component, PluginLoadError> {
+                match &guest_config.location {
+                    bulwark_config::PluginLocation::Local(path) => {
+                        Ok(Component::from_file(engine, path)?)
+                    }
+                    bulwark_config::PluginLocation::Remote(uri) => {
+                        let client = reqwest::blocking::Client::new();
+                        let mut request = client.get(uri.clone());
+                        if let PluginAccess::Header(authorization_secret) = &guest_config.access {
+                            let secret =
+                                host_config.secret(authorization_secret).ok_or_else(|| {
+                                    PluginLoadError::SecretMissing(authorization_secret.clone())
+                                })?;
+                            // In this case, secrecy::Secret might be overkill, because we immediately discard the value,
+                            // but it's probably a good habit to be using it anytime we touch a secret.
+                            let authorization_value = match &secret.location {
+                                bulwark_config::SecretLocation::EnvVar(env_var) => {
+                                    std::env::var_os(env_var)
+                                        .map(|value| {
+                                            secrecy::Secret::from(
+                                                value.to_string_lossy().to_string(),
+                                            )
+                                        })
+                                        .ok_or(PluginLoadError::SecretMissing(
+                                            secret.reference.clone(),
+                                        ))?
+                                }
+                                bulwark_config::SecretLocation::File(path) => {
+                                    secrecy::Secret::from(
+                                        std::fs::read(path)
+                                            .map(|value| {
+                                                String::from_utf8_lossy(value.as_slice())
+                                                    .to_string()
+                                            })
+                                            .map_err(|err| {
+                                                PluginLoadError::SecretUnreadable(
+                                                    secret.reference.clone(),
+                                                    err,
+                                                )
+                                            })?,
+                                    )
+                                }
+                            };
+                            request = request.header(
+                                reqwest::header::AUTHORIZATION,
+                                authorization_value.expose_secret(),
+                            );
+                        }
+                        let bytes = request.send()?.bytes()?;
+                        if let PluginVerification::Sha256(digest) = &guest_config.verification {
+                            // The expected digest should already be in raw byte form here, not hex-encoded.
+                            let mut hasher = Sha256::new();
+                            hasher.update(&bytes[..]);
+                            let plugin_digest = hasher.finalize();
+                            if plugin_digest.as_slice() != &digest[..] {
+                                // Need to make both sides hex-encoded to make the error message readable.
+                                return Err(PluginLoadError::VerificationError(
+                                    "sha256".to_string(),
+                                    hex::encode(&digest[..]),
+                                    hex::encode(plugin_digest.as_slice()),
+                                ));
+                            }
+                        }
+                        Ok(Component::from_binary(engine, &bytes[..])?)
+                    }
+                    bulwark_config::PluginLocation::Bytes(bytes) => {
+                        Ok(Component::from_binary(engine, &bytes[..])?)
+                    }
+                }
             },
         )
     }

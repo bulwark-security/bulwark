@@ -398,7 +398,9 @@ version = "0.5.0"
 dependencies = [
  "bulwark-build",
  "bulwark-decision",
+ "bytes 1.6.0",
  "chrono",
+ "hex",
  "itertools 0.13.0",
  "lazy_static",
  "num_cpus",
@@ -407,6 +409,8 @@ dependencies = [
  "serde_json",
  "thiserror",
  "toml",
+ "tracing",
+ "url",
  "validator",
 ]
 
@@ -465,14 +469,17 @@ dependencies = [
  "chrono",
  "deadpool-redis",
  "futures 0.3.30",
+ "hex",
  "http 1.1.0",
  "http-body-util",
  "metrics",
  "redis",
  "redis-test",
  "reqwest",
+ "secrecy",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "url",
  "validator",
@@ -1539,6 +1546,12 @@ name = "hermit-abi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d231dfb89cfffdbc30e7fc41579ed6066ad03abda9e567ccafae602b97ec5024"
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "home"
@@ -3111,6 +3124,15 @@ checksum = "da046153aa2352493d6cb7da4b6e5c0c057d8a1d0a9aa8560baffdd945acd414"
 dependencies = [
  "ring",
  "untrusted",
+]
+
+[[package]]
+name = "secrecy"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9bd1c54ea06cfd2f6b63219704de0b9b4f72dcc2b8fdef820be6cd799780e91e"
+dependencies = [
+ "zeroize",
 ]
 
 [[package]]

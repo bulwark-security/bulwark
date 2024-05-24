@@ -4,9 +4,11 @@
 // directly in the [`bulwark_config`](crate) module's structs.
 
 use crate::ConfigFileError;
+use bytes::Bytes;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, ffi::OsString, fs, path::Path, path::PathBuf};
+use url::Url;
 use validator::Validate;
 
 lazy_static! {
@@ -28,6 +30,8 @@ struct Config {
     metrics: Metrics,
     #[serde(default, rename(serialize = "include", deserialize = "include"))]
     includes: Vec<Include>,
+    #[serde(default, rename(serialize = "secret", deserialize = "secret"))]
+    secrets: Vec<Secret>,
     #[serde(default, rename(serialize = "plugin", deserialize = "plugin"))]
     plugins: Vec<Plugin>,
     #[serde(default, rename(serialize = "preset", deserialize = "preset"))]
@@ -286,6 +290,32 @@ struct Include {
     path: String,
 }
 
+/// The TOML serialization for a Secret structure.
+#[derive(Validate, Serialize, Deserialize, Clone)]
+struct Secret {
+    #[serde(rename(serialize = "ref", deserialize = "ref"))]
+    #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
+    reference: String,
+    #[validate(length(min = 1))]
+    path: Option<String>,
+    #[validate(length(min = 1))]
+    env_var: Option<String>,
+}
+
+impl TryFrom<&Secret> for crate::config::Secret {
+    type Error = crate::SecretConversionError;
+
+    fn try_from(secret: &Secret) -> Result<Self, Self::Error> {
+        Ok(Self {
+            reference: secret.reference.clone(),
+            location: match (&secret.path, &secret.env_var) {
+                (Some(path), None) => crate::SecretLocation::File(PathBuf::from(path)),
+                (None, Some(env_var)) => crate::SecretLocation::EnvVar(env_var.clone()),
+                _ => return Err(Self::Error::InvalidSecretLocation),
+            },
+        })
+    }
+}
 /// The TOML serialization for a Plugin structure.
 #[derive(Validate, Serialize, Deserialize, Clone)]
 struct Plugin {
@@ -293,7 +323,15 @@ struct Plugin {
     #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
     reference: String,
     #[validate(length(min = 1))]
-    path: String,
+    path: Option<String>,
+    #[validate(length(min = 1))]
+    uri: Option<String>,
+    #[validate(length(min = 1))]
+    authorization_header: Option<String>,
+    #[validate(length(min = 1))]
+    verification: Option<String>,
+    #[validate(length(min = 1))]
+    bytes: Option<Vec<u8>>,
     #[serde(default = "default_plugin_weight")]
     #[validate(range(min = 0.0))]
     weight: f64,
@@ -310,15 +348,38 @@ fn default_plugin_weight() -> f64 {
     crate::DEFAULT_PLUGIN_WEIGHT
 }
 
-impl From<&Plugin> for crate::config::Plugin {
-    fn from(plugin: &Plugin) -> Self {
-        Self {
+impl TryFrom<&Plugin> for crate::config::Plugin {
+    type Error = crate::PluginConversionError;
+
+    fn try_from(plugin: &Plugin) -> Result<Self, Self::Error> {
+        Ok(Self {
             reference: plugin.reference.clone(),
-            path: plugin.path.clone(),
+            location: match (&plugin.path, &plugin.uri, &plugin.bytes) {
+                (Some(path), None, None) => crate::PluginLocation::Local(PathBuf::from(path)),
+                (None, Some(uri), None) => crate::PluginLocation::Remote(uri.parse::<Url>()?),
+                (None, None, Some(bytes)) => {
+                    crate::PluginLocation::Bytes(Bytes::from(bytes.clone()))
+                }
+                _ => return Err(Self::Error::InvalidLocation),
+            },
+            access: match &plugin.authorization_header {
+                Some(header) => crate::PluginAccess::Header(header.clone()),
+                None => crate::PluginAccess::None,
+            },
+            verification: match &plugin.verification {
+                Some(verification) => match verification.split_once(':') {
+                    Some(("sha256", digest)) => {
+                        crate::PluginVerification::Sha256(bytes::Bytes::from(hex::decode(digest)?))
+                    }
+                    Some((_, _)) => crate::PluginVerification::None,
+                    None => crate::PluginVerification::None,
+                },
+                None => crate::PluginVerification::None,
+            },
             weight: plugin.weight,
             config: toml_map_to_json(plugin.config.clone()),
             permissions: plugin.permissions.clone().into(),
-        }
+        })
     }
 }
 
@@ -481,16 +542,39 @@ where
         // Strip includes once processed
         root.includes = vec![];
 
-        // Resolve plugins relative to config path
+        // Resolve plugins relative to config path or validate that remote URIs are secure.
         root.plugins = root
             .plugins
             .iter()
             .map(|plugin| -> Result<Plugin, ConfigFileError> {
                 Ok(Plugin {
                     reference: plugin.reference.clone(),
-                    path: resolve_path(config_path, Path::new(&plugin.path))?
-                        .to_string_lossy()
-                        .to_string(),
+                    path: plugin
+                        .path
+                        .as_ref()
+                        .map(|path| {
+                            resolve_path(config_path, Path::new(path.as_str()))
+                                .map(|path| path.to_string_lossy().to_string())
+                        })
+                        .transpose()?,
+                    uri: plugin
+                        .uri
+                        .as_ref()
+                        .map(|uri| {
+                            uri.parse::<Url>().map_err(ConfigFileError::from).and_then(
+                                |parsed_uri| {
+                                    if parsed_uri.scheme() == "https" {
+                                        Ok(uri.clone())
+                                    } else {
+                                        Err(ConfigFileError::InsecureRemoteUri(uri.clone()))
+                                    }
+                                },
+                            )
+                        })
+                        .transpose()?,
+                    authorization_header: plugin.authorization_header.clone(),
+                    verification: plugin.verification.clone(),
+                    bytes: plugin.bytes.clone(),
                     weight: plugin.weight,
                     config: plugin.config.clone(),
                     permissions: plugin.permissions.clone(),
@@ -543,7 +627,18 @@ where
         state: root.state.into(),
         thresholds: root.thresholds.into(),
         metrics: root.metrics.into(),
-        plugins: root.plugins.iter().map(|plugin| plugin.into()).collect(),
+        secrets: root
+            .secrets
+            .iter()
+            .map(|secret: &Secret| secret.try_into())
+            .collect::<Result<Vec<crate::Secret>, _>>()
+            .map_err(|err| ConfigFileError::InvalidSecretConfig(err.to_string()))?,
+        plugins: root
+            .plugins
+            .iter()
+            .map(|plugin| plugin.try_into())
+            .collect::<Result<Vec<crate::Plugin>, _>>()
+            .map_err(|err| ConfigFileError::InvalidPluginConfig(err.to_string()))?,
         presets: root
             .presets
             .iter()
@@ -732,6 +827,8 @@ mod tests {
             .first()
             .unwrap()
             .path
+            .clone()
+            .unwrap()
             .ends_with("bulwark_evil_bit.wasm"));
         assert_eq!(
             root.plugins.first().unwrap().config,
@@ -780,12 +877,12 @@ mod tests {
 
         assert_eq!(root.plugins.len(), 2);
         assert_eq!(root.plugins.first().unwrap().reference, "evil_bit");
-        assert!(root
-            .plugins
-            .first()
-            .unwrap()
-            .path
-            .ends_with("bulwark_evil_bit.wasm"));
+        match root.plugins.first().unwrap().location.clone() {
+            crate::PluginLocation::Local(path) => assert!(path.ends_with("bulwark_evil_bit.wasm")),
+            crate::PluginLocation::Remote(_) => panic!("should not be https"),
+            crate::PluginLocation::Bytes(_) => panic!("should not be bytes"),
+        }
+
         assert_eq!(
             root.plugins.first().unwrap().config,
             serde_json::map::Map::default()

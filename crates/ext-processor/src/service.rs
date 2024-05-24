@@ -280,10 +280,10 @@ impl BulwarkProcessor {
                 // TODO: pass in the plugin config
                 debug!(
                     message = "load plugin",
-                    path = plugin_config.path,
+                    location = tracing::field::display(&plugin_config.location),
                     resource = resource.route
                 );
-                let plugin = Plugin::from_file(plugin_config.path.clone(), &config, plugin_config)?;
+                let plugin = Plugin::from_config(&config, plugin_config)?;
                 plugins.push(Arc::new(plugin));
             }
             router

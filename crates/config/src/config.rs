@@ -1,10 +1,14 @@
 //! The config module provides the internal representation of Bulwark's configuration.
 
 use crate::ResolutionError;
+use bytes::Bytes;
 use itertools::Itertools;
 use regex::Regex;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
+use std::fmt::{Display, Formatter};
+use std::path::PathBuf;
+use url::Url;
 use validator::Validate;
 
 lazy_static! {
@@ -26,6 +30,8 @@ pub struct Config {
     pub thresholds: Thresholds,
     /// Configuration for metrics collection.
     pub metrics: Metrics,
+    /// A list of configurations for individual secrets.
+    pub secrets: Vec<Secret>,
     /// A list of configurations for individual plugins.
     pub plugins: Vec<Plugin>,
     /// A list of plugin groups that allows a plugin set to be loaded with a single reference.
@@ -36,6 +42,20 @@ pub struct Config {
 }
 
 impl Config {
+    /// Looks up the [`Secret`] corresponding to the `reference` string.
+    ///
+    /// # Arguments
+    ///
+    /// * `reference` - A string that corresponds to a [`Secret::reference`] value.
+    pub fn secret<'a>(&self, reference: &str) -> Option<&Secret>
+    where
+        Secret: 'a,
+    {
+        self.secrets
+            .iter()
+            .find(|&secret| secret.reference == reference)
+    }
+
     /// Looks up the [`Plugin`] corresponding to the `reference` string.
     ///
     /// # Arguments
@@ -216,6 +236,99 @@ impl Default for Metrics {
     }
 }
 
+/// Configuration for a secret that Bulwark will need to reference.
+#[derive(Debug, Validate, Clone, Default)]
+pub struct Secret {
+    /// The secret reference key. Should be limited to ASCII lowercase a-z plus underscores. Maximum 96 characters.
+    #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
+    pub reference: String,
+    /// The location where the secret can be loaded from.
+    pub location: SecretLocation,
+}
+
+/// The location where a secret is stored.
+#[derive(Debug, Clone)]
+pub enum SecretLocation {
+    /// The secret is an environment variable.
+    EnvVar(String),
+    /// The secret is mounted as a file.
+    File(PathBuf),
+}
+
+impl Default for SecretLocation {
+    /// Defaults to an unusable empty environment variable.
+    fn default() -> Self {
+        Self::EnvVar(String::new())
+    }
+}
+
+/// The location where the plugin WASM can be loaded from.
+#[derive(Debug, Clone)]
+pub enum PluginLocation {
+    /// The plugin is a local file.
+    Local(PathBuf),
+    /// The plugin is a remote file served over HTTPS.
+    Remote(Url),
+    /// The plugin is an binary blob.
+    Bytes(Bytes),
+}
+
+impl Default for PluginLocation {
+    /// Defaults to an unusable empty byte vector.
+    fn default() -> Self {
+        Self::Bytes(Bytes::new())
+    }
+}
+
+impl Display for PluginLocation {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            PluginLocation::Local(path) => write!(f, "[local: {}]", path.display()),
+            PluginLocation::Remote(uri) => write!(f, "[remote: {}]", uri),
+            PluginLocation::Bytes(bytes) => write!(f, "[{} bytes]", bytes.len()),
+        }
+    }
+}
+
+/// The access control applied to the plugin.
+///
+/// Typically used in conjunction with privately distributed remote plugins.
+#[derive(Debug, Clone)]
+pub enum PluginAccess {
+    /// No authentication provided.
+    None,
+    /// The authentication is provided via an HTTPS Authorization header.
+    ///
+    /// The entire header value will be sent verbatim. This will generally only work for
+    /// basic authentication or bearer tokens.
+    ///
+    /// This is a secret reference. A corresponding [`Secret`] must be provided.
+    Header(String),
+}
+
+impl Default for PluginAccess {
+    /// Defaults to no authentication.
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+/// Verification that plugin contents are what was expected.
+#[derive(Debug, Clone)]
+pub enum PluginVerification {
+    /// No verification.
+    None,
+    /// The plugin is hashed with a SHA-256 digest.
+    Sha256(Bytes),
+}
+
+impl Default for PluginVerification {
+    /// Defaults to no verification.
+    fn default() -> Self {
+        Self::None
+    }
+}
+
 /// The configuration for an individual plugin.
 ///
 /// This structure will be wrapped by structs in the host environment.
@@ -224,11 +337,12 @@ pub struct Plugin {
     /// The plugin reference key. Should be limited to ASCII lowercase a-z plus underscores. Maximum 96 characters.
     #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
     pub reference: String,
-    // TODO: plugin path should be absolute; once it's in this structure the config base path is no longer known
-    // TODO: should this be a URI? That would allow e.g. data: URI values to embed WASM into config over the wire
-    /// The path to the plugin WASM file.
-    #[validate(length(min = 1))]
-    pub path: String,
+    /// The location where the plugin WASM can be loaded from.
+    pub location: PluginLocation,
+    /// The access requirements for the plugin. If the plugin requires authentication, this can be provided here.
+    pub access: PluginAccess,
+    /// Verification that plugin contents match what was expected.
+    pub verification: PluginVerification,
     /// A weight to multiply this plugin's decision values by.
     ///
     /// A 1.0 value has no effect on the decision. See [`bulwark_decision::Decision::weight`].
