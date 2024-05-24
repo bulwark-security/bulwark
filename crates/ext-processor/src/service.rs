@@ -27,7 +27,6 @@ use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
     pin::Pin,
-    str::{self, FromStr},
     sync::Arc,
     time::Duration,
 };
@@ -497,7 +496,7 @@ impl ProcessorContext {
             let _scheme = Self::get_header_value(&header_msg.headers, ":scheme")
                 .ok_or(RequestError::MissingScheme)?;
 
-            let method = http::Method::from_str(
+            let method = http::Method::from_bytes(
                 Self::get_header_value(&header_msg.headers, ":method")
                     .ok_or(RequestError::MissingMethod)?,
             )?;
@@ -516,7 +515,11 @@ impl ProcessorContext {
                     for header in &headers.headers {
                         // must not pass through Envoy pseudo headers here, http module treats them as invalid
                         if !header.key.starts_with(':') {
-                            request = request.header(&header.key, &header.value);
+                            if !header.raw_value.is_empty() {
+                                request = request.header(&header.key, header.raw_value.as_slice());
+                            } else {
+                                request = request.header(&header.key, header.value.as_str());
+                            }
                         }
                     }
                 }
@@ -571,7 +574,12 @@ impl ProcessorContext {
                     for header in &headers.headers {
                         // must not pass through Envoy pseudo headers here, http module treats them as invalid
                         if !header.key.starts_with(':') {
-                            response = response.header(&header.key, &header.value);
+                            if !header.raw_value.is_empty() {
+                                response =
+                                    response.header(&header.key, header.raw_value.as_slice());
+                            } else {
+                                response = response.header(&header.key, header.value.as_str());
+                            }
                         }
                     }
                 }
@@ -1148,7 +1156,7 @@ impl ProcessorContext {
             let stdout = plugin_instance.stdio().stdout_buffer();
             let stderr = plugin_instance.stdio().stderr_buffer();
             if !stdout.is_empty() {
-                let stdout = str::from_utf8(&stdout).unwrap();
+                let stdout = String::from_utf8_lossy(&stdout);
                 for line in stdout.lines() {
                     info!(
                         message = "stdout",
@@ -1158,7 +1166,7 @@ impl ProcessorContext {
                 }
             }
             if !stderr.is_empty() {
-                let stderr = str::from_utf8(&stderr).unwrap();
+                let stderr = String::from_utf8_lossy(&stdout);
                 for line in stderr.lines() {
                     error!(
                         message = "stderr",
@@ -1387,12 +1395,16 @@ impl ProcessorContext {
         Ok(None)
     }
 
-    fn get_header_value<'a>(header_map: &'a Option<HeaderMap>, name: &str) -> Option<&'a str> {
+    fn get_header_value<'a>(header_map: &'a Option<HeaderMap>, name: &str) -> Option<&'a [u8]> {
         match header_map {
             Some(headers) => {
                 for header in &headers.headers {
                     if header.key == name {
-                        return Some(&header.value);
+                        if !header.raw_value.is_empty() {
+                            return Some(header.raw_value.as_slice());
+                        } else {
+                            return Some(header.value.as_bytes());
+                        }
                     }
                 }
                 None
@@ -1401,8 +1413,9 @@ impl ProcessorContext {
         }
     }
 
-    fn parse_forwarded_ip(forwarded: &str, proxy_hops: usize) -> Option<IpAddr> {
-        let value = ForwardedHeaderValue::from_forwarded(forwarded).ok();
+    fn parse_forwarded_ip(forwarded: &[u8], proxy_hops: usize) -> Option<IpAddr> {
+        let forwarded = String::from_utf8_lossy(forwarded);
+        let value = ForwardedHeaderValue::from_forwarded(forwarded.as_ref()).ok();
         value.and_then(|fhv| {
             if proxy_hops > fhv.len() {
                 None
@@ -1413,8 +1426,9 @@ impl ProcessorContext {
         })
     }
 
-    fn parse_x_forwarded_for_ip(forwarded: &str, proxy_hops: usize) -> Option<IpAddr> {
-        let value = ForwardedHeaderValue::from_x_forwarded_for(forwarded).ok();
+    fn parse_x_forwarded_for_ip(forwarded: &[u8], proxy_hops: usize) -> Option<IpAddr> {
+        let forwarded = String::from_utf8_lossy(forwarded);
+        let value = ForwardedHeaderValue::from_x_forwarded_for(forwarded.as_ref()).ok();
         value.and_then(|fhv| {
             if proxy_hops > fhv.len() {
                 None
@@ -1465,7 +1479,7 @@ mod tests {
         ];
 
         for (forwarded, hops, expected) in test_cases {
-            let parsed = ProcessorContext::parse_forwarded_ip(forwarded, hops);
+            let parsed = ProcessorContext::parse_forwarded_ip(forwarded.as_bytes(), hops);
             assert_eq!(parsed, expected);
         }
 
@@ -1503,7 +1517,7 @@ mod tests {
         ];
 
         for (forwarded, hops, expected) in test_cases {
-            let parsed = ProcessorContext::parse_x_forwarded_for_ip(forwarded, hops);
+            let parsed = ProcessorContext::parse_x_forwarded_for_ip(forwarded.as_bytes(), hops);
             assert_eq!(parsed, expected);
         }
 
