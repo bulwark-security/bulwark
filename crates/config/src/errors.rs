@@ -25,6 +25,8 @@ pub enum ConfigFileError {
     InvalidSecretConfig(String),
     #[error("invalid plugin config: {0}")]
     InvalidPluginConfig(String),
+    #[error("invalid resource config: {0}")]
+    InvalidResourceConfig(String),
 }
 
 /// This error will be returned if an attempt to serialize a config structure fails.
