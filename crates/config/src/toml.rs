@@ -325,7 +325,10 @@ struct Plugin {
     path: Option<String>,
     #[validate(length(min = 1))]
     uri: Option<String>,
-    // TODO: add plugin access and verification fields
+    #[validate(length(min = 1))]
+    authorization_header: Option<String>,
+    #[validate(length(min = 1))]
+    verification: Option<String>,
     #[validate(length(min = 1))]
     bytes: Option<Vec<u8>>,
     #[serde(default = "default_plugin_weight")]
@@ -358,8 +361,20 @@ impl From<&Plugin> for crate::config::Plugin {
                 }
                 _ => panic!("one and only one of path, uri, or bytes must be set"),
             },
-            access: crate::PluginAccess::None,
-            verification: crate::PluginVerification::None,
+            access: match &plugin.authorization_header {
+                Some(header) => crate::PluginAccess::Header(header.clone()),
+                None => crate::PluginAccess::None,
+            },
+            verification: match &plugin.verification {
+                Some(verification) => match verification.split_once(':') {
+                    Some(("sha256", digest)) => crate::PluginVerification::Sha256(
+                        bytes::Bytes::from(digest.as_bytes().to_vec()),
+                    ),
+                    Some((_, _)) => crate::PluginVerification::None,
+                    None => crate::PluginVerification::None,
+                },
+                None => crate::PluginVerification::None,
+            },
             weight: plugin.weight,
             config: toml_map_to_json(plugin.config.clone()),
             permissions: plugin.permissions.clone().into(),
@@ -556,6 +571,8 @@ where
                             )
                         })
                         .transpose()?,
+                    authorization_header: plugin.authorization_header.clone(),
+                    verification: plugin.verification.clone(),
                     bytes: plugin.bytes.clone(),
                     weight: plugin.weight,
                     config: plugin.config.clone(),
