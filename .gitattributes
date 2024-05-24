@@ -1,0 +1,4 @@
+/crates/ext-processor/protobuf/data-plane-api linguist-vendored
+/crates/ext-processor/protobuf/googleapis linguist-vendored
+/crates/ext-processor/protobuf/protoc-gen-validate linguist-vendored
+/crates/ext-processor/protobuf/xds linguist-vendored
