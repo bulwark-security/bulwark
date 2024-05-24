@@ -34,16 +34,13 @@ bytes = "1"
 json = "0.12.4"
 matchit = "0.7.0"
 prost = "^0.11"
+prost-types = "^0.11"
 sfv = "0.9.2"
-pbjson = "^0.5"
-pbjson-types = "^0.5"
-# typetag = "^0.2"
 
 [dev-dependencies]
 redis-test = { workspace = true }
 
 [build-dependencies]
-pbjson-build = "0.6.2"
 tonic-build = "0.9.2"
 
 [lib]

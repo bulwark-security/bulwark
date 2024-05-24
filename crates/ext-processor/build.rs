@@ -13,8 +13,6 @@ fn main() -> Result<()> {
         .build_server(true)
         .build_client(false)
         .file_descriptor_set_path(descriptor_path.clone())
-        .compile_well_known_types(true)
-        .extern_path(".google.protobuf", "::pbjson_types")
         .compile(
             &[
                 "protobuf/data-plane-api/envoy/config/common/mutation_rules/v3/mutation_rules.proto",

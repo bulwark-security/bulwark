@@ -21,6 +21,7 @@ pub mod envoy {
         pub mod filters {
             pub mod http {
                 pub mod ext_authz {
+                    #[allow(clippy::large_enum_variant)]
                     pub mod v3 {
                         include!(concat!(
                             env!("OUT_DIR"),
