@@ -38,6 +38,8 @@ pub enum PluginConversionError {
     #[error("one and only one of path, uri, or bytes must be set")]
     InvalidLocation,
     #[error(transparent)]
+    InvalidRemoteUri(#[from] url::ParseError),
+    #[error(transparent)]
     InvalidHexEncoding(#[from] hex::FromHexError),
 }
 

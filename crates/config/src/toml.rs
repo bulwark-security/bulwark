@@ -355,9 +355,7 @@ impl TryFrom<&Plugin> for crate::config::Plugin {
             reference: plugin.reference.clone(),
             location: match (&plugin.path, &plugin.uri, &plugin.bytes) {
                 (Some(path), None, None) => crate::PluginLocation::Local(PathBuf::from(path)),
-                (None, Some(uri), None) => {
-                    crate::PluginLocation::Remote(uri.parse::<Url>().unwrap())
-                }
+                (None, Some(uri), None) => crate::PluginLocation::Remote(uri.parse::<Url>()?),
                 (None, None, Some(bytes)) => {
                     crate::PluginLocation::Bytes(Bytes::from(bytes.clone()))
                 }
