@@ -356,7 +356,7 @@ impl TryFrom<&Plugin> for crate::config::Plugin {
             location: match (&plugin.path, &plugin.uri, &plugin.bytes) {
                 (Some(path), None, None) => crate::PluginLocation::Local(PathBuf::from(path)),
                 (None, Some(uri), None) => {
-                    crate::PluginLocation::Https(uri.parse::<Url>().unwrap())
+                    crate::PluginLocation::Remote(uri.parse::<Url>().unwrap())
                 }
                 (None, None, Some(bytes)) => {
                     crate::PluginLocation::Bytes(Bytes::from(bytes.clone()))
@@ -879,7 +879,7 @@ mod tests {
         assert_eq!(root.plugins.first().unwrap().reference, "evil_bit");
         match root.plugins.first().unwrap().location.clone() {
             crate::PluginLocation::Local(path) => assert!(path.ends_with("bulwark_evil_bit.wasm")),
-            crate::PluginLocation::Https(_) => panic!("should not be https"),
+            crate::PluginLocation::Remote(_) => panic!("should not be https"),
             crate::PluginLocation::Bytes(_) => panic!("should not be bytes"),
         }
 

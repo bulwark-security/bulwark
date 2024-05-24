@@ -169,7 +169,7 @@ impl Plugin {
                     bulwark_config::PluginLocation::Local(path) => {
                         Ok(Component::from_file(engine, path)?)
                     }
-                    bulwark_config::PluginLocation::Https(uri) => {
+                    bulwark_config::PluginLocation::Remote(uri) => {
                         let client = reqwest::blocking::Client::new();
                         let mut request = client.get(uri.clone());
                         if let PluginAccess::Header(authorization_secret) = &guest_config.access {

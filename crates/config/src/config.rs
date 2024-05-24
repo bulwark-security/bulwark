@@ -268,7 +268,7 @@ pub enum PluginLocation {
     /// The plugin is a local file.
     Local(PathBuf),
     /// The plugin is a remote file served over HTTPS.
-    Https(Url),
+    Remote(Url),
     /// The plugin is an binary blob.
     Bytes(Bytes),
 }
@@ -284,7 +284,7 @@ impl Display for PluginLocation {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match self {
             PluginLocation::Local(path) => write!(f, "[local: {}]", path.display()),
-            PluginLocation::Https(uri) => write!(f, "[remote: {}]", uri),
+            PluginLocation::Remote(uri) => write!(f, "[remote: {}]", uri),
             PluginLocation::Bytes(bytes) => write!(f, "[{} bytes]", bytes.len()),
         }
     }
