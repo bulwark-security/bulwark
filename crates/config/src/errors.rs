@@ -21,6 +21,8 @@ pub enum ConfigFileError {
     CircularInclude(String),
     #[error("duplicate named plugin or preset: '{0}'")]
     Duplicate(String),
+    #[error("invalid secret config: {0}")]
+    InvalidSecretConfig(String),
     #[error("invalid plugin config: {0}")]
     InvalidPluginConfig(String),
 }
@@ -30,6 +32,13 @@ pub enum ConfigFileError {
 pub enum ConfigSerializationError {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+}
+
+/// This error will be returned if an attempt to convert a secret fails.
+#[derive(thiserror::Error, Debug)]
+pub enum SecretConversionError {
+    #[error("one and only one of path or env_var must be set")]
+    InvalidSecretLocation,
 }
 
 /// This error will be returned if an attempt to convert a plugin fails.

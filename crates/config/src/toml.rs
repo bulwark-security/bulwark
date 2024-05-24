@@ -302,19 +302,20 @@ struct Secret {
     env_var: Option<String>,
 }
 
-impl From<&Secret> for crate::config::Secret {
-    fn from(secret: &Secret) -> Self {
-        Self {
+impl TryFrom<&Secret> for crate::config::Secret {
+    type Error = crate::SecretConversionError;
+
+    fn try_from(secret: &Secret) -> Result<Self, Self::Error> {
+        Ok(Self {
             reference: secret.reference.clone(),
             location: match (&secret.path, &secret.env_var) {
                 (Some(path), None) => crate::SecretLocation::File(PathBuf::from(path)),
                 (None, Some(env_var)) => crate::SecretLocation::EnvVar(env_var.clone()),
-                _ => panic!("one and only one of path or env_var must be set"),
+                _ => return Err(Self::Error::InvalidSecretLocation),
             },
-        }
+        })
     }
 }
-
 /// The TOML serialization for a Plugin structure.
 #[derive(Validate, Serialize, Deserialize, Clone)]
 struct Plugin {
@@ -629,8 +630,9 @@ where
         secrets: root
             .secrets
             .iter()
-            .map(|secret: &Secret| secret.into())
-            .collect(),
+            .map(|secret: &Secret| secret.try_into())
+            .collect::<Result<Vec<crate::Secret>, _>>()
+            .map_err(|err| ConfigFileError::InvalidSecretConfig(err.to_string()))?,
         plugins: root
             .plugins
             .iter()
