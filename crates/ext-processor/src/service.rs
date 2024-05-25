@@ -169,43 +169,47 @@ impl ExternalProcessor for BulwarkProcessor {
                             for (key, value) in route_match.params.iter() {
                                 router_labels.insert(format!("route.{}", key), value.to_string());
                             }
-                            route_match.value
+                            Some(route_match.value)
                         }
-                        Err(_) => default_route.as_ref().expect("match error"),
+                        Err(_) => default_route.as_ref(),
                     };
 
-                    // TODO: figure out how best to bubble the error out of the task and up to the parent
-                    // TODO: figure out if tonic-error or some other option is the best way to convert to a tonic Status error
-                    // TODO: we probably want to be initializing only when necessary now rather than on every request
-                    let plugin_instances = bulwark_processor
-                        .instantiate_plugins(&route_target.plugins)
-                        .await
-                        .unwrap();
-                    if let Some(millis) = route_target.timeout {
-                        timeout_duration = Duration::from_millis(millis);
+                    if let Some(route_target) = route_target {
+                        // TODO: figure out how best to bubble the error out of the task and up to the parent
+                        // TODO: figure out if tonic-error or some other option is the best way to convert to a tonic Status error
+                        // TODO: we probably want to be initializing only when necessary now rather than on every request
+                        let plugin_instances = bulwark_processor
+                            .instantiate_plugins(&route_target.plugins)
+                            .await
+                            .unwrap();
+                        if let Some(millis) = route_target.timeout {
+                            timeout_duration = Duration::from_millis(millis);
+                        }
+
+                        let mut ctx = ProcessorContext {
+                            sender: arc_sender,
+                            stream: arc_stream,
+                            plugin_semaphore,
+                            plugin_instances: plugin_instances.clone(),
+                            router_labels,
+                            request: request.clone(),
+                            response: None,
+                            verdict: None,
+                            combined_output: HandlerOutput::default(),
+                            plugin_outputs: HashMap::new(),
+                            thresholds,
+                            timeout_duration,
+                        };
+
+                        ctx.execute_init_phase().await;
+
+                        ctx.execute_request_enrichment_phase().await;
+                        ctx.execute_request_decision_phase().await;
+
+                        ctx.complete_request_phase().await;
+                    } else {
+                        warn!(message = "no resource matched request",);
                     }
-
-                    let mut ctx = ProcessorContext {
-                        sender: arc_sender,
-                        stream: arc_stream,
-                        plugin_semaphore,
-                        plugin_instances: plugin_instances.clone(),
-                        router_labels,
-                        request: request.clone(),
-                        response: None,
-                        verdict: None,
-                        combined_output: HandlerOutput::default(),
-                        plugin_outputs: HashMap::new(),
-                        thresholds,
-                        timeout_duration,
-                    };
-
-                    ctx.execute_init_phase().await;
-
-                    ctx.execute_request_enrichment_phase().await;
-                    ctx.execute_request_decision_phase().await;
-
-                    ctx.complete_request_phase().await;
                 }
                 drop(permit);
             }
