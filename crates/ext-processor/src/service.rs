@@ -98,6 +98,7 @@ async fn join_all<T, F>(
 pub struct BulwarkProcessor {
     // TODO: may need to have a plugin registry at some point
     router: Arc<RwLock<Router<RouteTarget>>>,
+    default_route: Arc<RwLock<Option<RouteTarget>>>,
     redis_ctx: RedisCtx,
     request_semaphore: Arc<tokio::sync::Semaphore>,
     plugin_semaphore: Arc<tokio::sync::Semaphore>,
@@ -156,59 +157,59 @@ impl ExternalProcessor for BulwarkProcessor {
                     );
 
                     let router = bulwark_processor.router.read().await;
+                    let default_route = bulwark_processor.default_route.read().await;
+                    let mut router_labels = HashMap::new();
                     let route_result = router.at(request.uri().path());
                     // TODO: router needs to point to a struct that bundles the plugin set and associated config like timeout duration
                     // TODO: put default timeout in a constant somewhere central
                     let mut timeout_duration = Duration::from_millis(10);
-                    match route_result {
+                    let route_target = match route_result {
                         Ok(route_match) => {
                             // TODO: may want to expose labels to logging after redaction
-                            let mut router_labels = HashMap::new();
                             for (key, value) in route_match.params.iter() {
                                 router_labels.insert(format!("route.{}", key), value.to_string());
                             }
-
-                            let route_target = route_match.value;
-                            // TODO: figure out how best to bubble the error out of the task and up to the parent
-                            // TODO: figure out if tonic-error or some other option is the best way to convert to a tonic Status error
-                            // TODO: we probably want to be initializing only when necessary now rather than on every request
-                            let plugin_instances = bulwark_processor
-                                .instantiate_plugins(&route_target.plugins)
-                                .await
-                                .unwrap();
-                            if let Some(millis) = route_match.value.timeout {
-                                timeout_duration = Duration::from_millis(millis);
-                            }
-
-                            let mut ctx = ProcessorContext {
-                                sender: arc_sender,
-                                stream: arc_stream,
-                                plugin_semaphore,
-                                plugin_instances: plugin_instances.clone(),
-                                router_labels,
-                                request: request.clone(),
-                                response: None,
-                                verdict: None,
-                                combined_output: HandlerOutput::default(),
-                                plugin_outputs: HashMap::new(),
-                                thresholds,
-                                timeout_duration,
-                            };
-
-                            ctx.execute_init_phase().await;
-
-                            ctx.execute_request_enrichment_phase().await;
-                            ctx.execute_request_decision_phase().await;
-
-                            ctx.complete_request_phase().await;
+                            Some(route_match.value)
                         }
-                        Err(_) => {
-                            // TODO: figure out how best to handle trailing slash errors, silent failure is probably undesirable
-                            error!(uri = request.uri().to_string(), message = "match error");
-                            // TODO: panic is undesirable, need to figure out if we should be returning a Status or changing the response or doing something else
-                            panic!("match error");
-                        }
+                        Err(_) => default_route.as_ref(),
                     };
+
+                    if let Some(route_target) = route_target {
+                        // TODO: figure out how best to bubble the error out of the task and up to the parent
+                        // TODO: figure out if tonic-error or some other option is the best way to convert to a tonic Status error
+                        // TODO: we probably want to be initializing only when necessary now rather than on every request
+                        let plugin_instances = bulwark_processor
+                            .instantiate_plugins(&route_target.plugins)
+                            .await
+                            .unwrap();
+                        if let Some(millis) = route_target.timeout {
+                            timeout_duration = Duration::from_millis(millis);
+                        }
+
+                        let mut ctx = ProcessorContext {
+                            sender: arc_sender,
+                            stream: arc_stream,
+                            plugin_semaphore,
+                            plugin_instances: plugin_instances.clone(),
+                            router_labels,
+                            request: request.clone(),
+                            response: None,
+                            verdict: None,
+                            combined_output: HandlerOutput::default(),
+                            plugin_outputs: HashMap::new(),
+                            thresholds,
+                            timeout_duration,
+                        };
+
+                        ctx.execute_init_phase().await;
+
+                        ctx.execute_request_enrichment_phase().await;
+                        ctx.execute_request_decision_phase().await;
+
+                        ctx.complete_request_phase().await;
+                    } else {
+                        warn!(message = "no resource matched request",);
+                    }
                 }
                 drop(permit);
             }
@@ -269,6 +270,7 @@ impl BulwarkProcessor {
         };
 
         let mut router: Router<RouteTarget> = Router::new();
+        let mut default_route = None;
         if config.resources.is_empty() {
             // TODO: return an init error not a plugin load error
             return Err(PluginLoadError::ResourceMissing);
@@ -281,24 +283,38 @@ impl BulwarkProcessor {
                 debug!(
                     message = "load plugin",
                     location = tracing::field::display(&plugin_config.location),
-                    resource = resource.route
+                    resource = tracing::field::display(&resource.route),
                 );
                 let plugin = Plugin::from_config(&config, plugin_config)?;
                 plugins.push(Arc::new(plugin));
             }
-            router
-                .insert(
-                    resource.route.clone(),
-                    // TODO: the route target will probably need access to the route itself in the future
-                    RouteTarget {
+            match &resource.route {
+                bulwark_config::RoutePattern::Default => {
+                    if default_route.is_some() {
+                        return Err(PluginLoadError::MultipleDefaultRoutes);
+                    }
+                    default_route = Some(RouteTarget {
                         timeout: resource.timeout,
                         plugins,
-                    },
-                )
-                .ok();
+                    });
+                }
+                bulwark_config::RoutePattern::Path(route) => {
+                    router
+                        .insert(
+                            route,
+                            // TODO: the route target will probably need access to the route itself in the future
+                            RouteTarget {
+                                timeout: resource.timeout,
+                                plugins,
+                            },
+                        )
+                        .ok();
+                }
+            }
         }
         Ok(Self {
             router: Arc::new(RwLock::new(router)),
+            default_route: Arc::new(RwLock::new(default_route)),
             request_semaphore: Arc::new(Semaphore::new(config.runtime.max_concurrent_requests)),
             plugin_semaphore: Arc::new(Semaphore::new(config.runtime.max_plugin_tasks)),
             thresholds: config.thresholds,

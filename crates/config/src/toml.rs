@@ -460,7 +460,8 @@ struct Preset {
 /// The TOML serialization for a [Resource](crate::Resource) structure.
 #[derive(Serialize, Deserialize, Clone)]
 struct Resource {
-    route: String,
+    default: Option<bool>,
+    route: Option<String>,
     plugins: Vec<String>,
     // TODO: default timeout
     timeout: Option<u64>,
@@ -650,12 +651,24 @@ where
         resources: root
             .resources
             .iter()
-            .map(|resource| crate::config::Resource {
-                route: resource.route.clone(),
-                plugins: resource.plugins.iter().map(resolve_reference).collect(),
-                timeout: resource.timeout,
+            .map(|resource| {
+                let route = match (&resource.default, &resource.route) {
+                    (None, Some(route)) => Ok(crate::config::RoutePattern::Path(route.clone())),
+                    (Some(true), None) => Ok(crate::config::RoutePattern::Default),
+                    _ => Err(ConfigFileError::InvalidResourceConfig(
+                        "resource must either be default or specify a route pattern".to_string(),
+                    )),
+                };
+                match route {
+                    Ok(route) => Ok(crate::config::Resource {
+                        route,
+                        plugins: resource.plugins.iter().map(resolve_reference).collect(),
+                        timeout: resource.timeout,
+                    }),
+                    Err(err) => Err(err),
+                }
             })
-            .collect(),
+            .collect::<Result<Vec<crate::Resource>, _>>()?,
     };
     for plugin in &config.plugins {
         // Read plugin configs to surface type errors immediately
@@ -725,6 +738,7 @@ fn validate_plugin_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::RoutePattern;
 
     fn build_plugins() -> Result<(), Box<dyn std::error::Error>> {
         let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -840,7 +854,7 @@ mod tests {
         assert_eq!(root.presets.first().unwrap().plugins, vec!["evil-bit"]);
 
         assert_eq!(root.resources.len(), 1);
-        assert_eq!(root.resources.first().unwrap().route, "/");
+        assert_eq!(root.resources.first().unwrap().route, Some("/".to_string()));
         assert_eq!(root.resources.first().unwrap().plugins, vec!["custom"]);
         assert_eq!(root.resources.first().unwrap().timeout, Some(25));
 
@@ -904,8 +918,14 @@ mod tests {
         );
 
         assert_eq!(root.resources.len(), 2);
-        assert_eq!(root.resources.first().unwrap().route, "/");
-        assert_eq!(root.resources.last().unwrap().route, "/*params");
+        assert_eq!(
+            root.resources.first().unwrap().route,
+            RoutePattern::Path("/".to_string())
+        );
+        assert_eq!(
+            root.resources.last().unwrap().route,
+            RoutePattern::Path("/*params".to_string())
+        );
         assert_eq!(
             root.resources.first().unwrap().plugins,
             vec![crate::config::Reference::Preset("default".to_string())]

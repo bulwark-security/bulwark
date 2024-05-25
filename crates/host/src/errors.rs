@@ -11,6 +11,8 @@ pub enum PluginLoadError {
     Resolution(#[from] bulwark_config::ResolutionError),
     #[error("at least one resource required")]
     ResourceMissing,
+    #[error("at most one default route allowed")]
+    MultipleDefaultRoutes,
     #[error("missing secret: '{0}'")]
     SecretMissing(String),
     #[error("unreadable secret: '{0}': {1}")]

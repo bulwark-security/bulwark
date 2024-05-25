@@ -444,13 +444,31 @@ impl Preset {
     }
 }
 
+/// A route pattern is either a default route that matches anything or a path-based route pattern.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RoutePattern {
+    /// Matches any request not matched by a path-based route.
+    Default,
+    /// Matches requests that correspond to the enclosed path pattern.
+    Path(String),
+}
+
+impl Display for RoutePattern {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::Default => write!(f, "[default route]"),
+            Self::Path(route) => write!(f, "[{}]", route),
+        }
+    }
+}
+
 /// A mapping between a route pattern and the plugins that should be run for matching requests.
 #[derive(Debug, Clone)]
 pub struct Resource {
     /// The route pattern used to match requests with.
     ///
     /// Uses `matchit` router patterns.
-    pub route: String,
+    pub route: RoutePattern,
     /// The plugin references for this route.
     pub plugins: Vec<Reference>,
     /// The maximum amount of time a plugin may take for each execution phase.
