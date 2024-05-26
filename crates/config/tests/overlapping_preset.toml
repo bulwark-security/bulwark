@@ -14,11 +14,6 @@ ref = "default"
 plugins = ["evil_bit", "starter_preset", "overlap"]
 
 [[resource]]
-route = "/"
-plugins = ["default"]
-timeout = 25
-
-[[resource]]
-route = "/*params"
+routes = ["/"]
 plugins = ["default"]
 timeout = 25

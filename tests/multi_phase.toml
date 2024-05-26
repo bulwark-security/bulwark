@@ -14,16 +14,6 @@ ref = "multi_phase_plugin_b"
 path = "dist/plugins/multi_phase_plugin_b.wasm"
 
 [[resource]]
-route = "/user/:userid"
-plugins = ["multi_phase_plugin_a", "multi_phase_plugin_b"]
-timeout = 50
-
-[[resource]]
-route = "/"
-plugins = ["multi_phase_plugin_a", "multi_phase_plugin_b"]
-timeout = 50
-
-[[resource]]
-route = "/*params"
+routes = ["/", "/user/:userid"]
 plugins = ["multi_phase_plugin_a", "multi_phase_plugin_b"]
 timeout = 50

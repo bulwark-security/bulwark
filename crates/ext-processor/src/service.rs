@@ -98,7 +98,6 @@ async fn join_all<T, F>(
 pub struct BulwarkProcessor {
     // TODO: may need to have a plugin registry at some point
     router: Arc<RwLock<Router<RouteTarget>>>,
-    default_route: Arc<RwLock<Option<RouteTarget>>>,
     redis_ctx: RedisCtx,
     request_semaphore: Arc<tokio::sync::Semaphore>,
     plugin_semaphore: Arc<tokio::sync::Semaphore>,
@@ -157,22 +156,18 @@ impl ExternalProcessor for BulwarkProcessor {
                     );
 
                     let router = bulwark_processor.router.read().await;
-                    let default_route = bulwark_processor.default_route.read().await;
                     let mut router_labels = HashMap::new();
                     let route_result = router.at(request.uri().path());
                     // TODO: router needs to point to a struct that bundles the plugin set and associated config like timeout duration
                     // TODO: put default timeout in a constant somewhere central
                     let mut timeout_duration = Duration::from_millis(10);
-                    let route_target = match route_result {
-                        Ok(route_match) => {
-                            // TODO: may want to expose labels to logging after redaction
-                            for (key, value) in route_match.params.iter() {
-                                router_labels.insert(format!("route.{}", key), value.to_string());
-                            }
-                            Some(route_match.value)
+                    let route_target = route_result.ok().map(|route_match| {
+                        // TODO: may want to expose labels to logging after redaction
+                        for (key, value) in route_match.params.iter() {
+                            router_labels.insert(format!("route.{}", key), value.to_string());
                         }
-                        Err(_) => default_route.as_ref(),
-                    };
+                        route_match.value
+                    });
 
                     if let Some(route_target) = route_target {
                         // TODO: figure out how best to bubble the error out of the task and up to the parent
@@ -270,7 +265,6 @@ impl BulwarkProcessor {
         };
 
         let mut router: Router<RouteTarget> = Router::new();
-        let mut default_route = None;
         if config.resources.is_empty() {
             // TODO: return an init error not a plugin load error
             return Err(PluginLoadError::ResourceMissing);
@@ -283,38 +277,26 @@ impl BulwarkProcessor {
                 debug!(
                     message = "load plugin",
                     location = tracing::field::display(&plugin_config.location),
-                    resource = tracing::field::display(&resource.route),
+                    resource = tracing::field::debug(&resource.routes),
                 );
                 let plugin = Plugin::from_config(&config, plugin_config)?;
                 plugins.push(Arc::new(plugin));
             }
-            match &resource.route {
-                bulwark_config::RoutePattern::Default => {
-                    if default_route.is_some() {
-                        return Err(PluginLoadError::MultipleDefaultRoutes);
-                    }
-                    default_route = Some(RouteTarget {
-                        timeout: resource.timeout,
-                        plugins,
-                    });
-                }
-                bulwark_config::RoutePattern::Path(route) => {
-                    router
-                        .insert(
-                            route,
-                            // TODO: the route target will probably need access to the route itself in the future
-                            RouteTarget {
-                                timeout: resource.timeout,
-                                plugins,
-                            },
-                        )
-                        .ok();
-                }
+            for route in &resource.routes {
+                router
+                    .insert(
+                        route,
+                        // TODO: the route target will probably need access to the route itself in the future
+                        RouteTarget {
+                            timeout: resource.timeout,
+                            plugins: plugins.clone(),
+                        },
+                    )
+                    .ok();
             }
         }
         Ok(Self {
             router: Arc::new(RwLock::new(router)),
-            default_route: Arc::new(RwLock::new(default_route)),
             request_semaphore: Arc::new(Semaphore::new(config.runtime.max_concurrent_requests)),
             plugin_semaphore: Arc::new(Semaphore::new(config.runtime.max_plugin_tasks)),
             thresholds: config.thresholds,

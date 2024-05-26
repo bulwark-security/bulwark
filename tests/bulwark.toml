@@ -13,11 +13,6 @@ ref = "evil_bit"
 path = "dist/plugins/bulwark_evil_bit.wasm"
 
 [[resource]]
-route = "/"
-plugins = ["evil_bit"]
-timeout = 50
-
-[[resource]]
-route = "/*params"
+routes = ["/"]
 plugins = ["evil_bit"]
 timeout = 50

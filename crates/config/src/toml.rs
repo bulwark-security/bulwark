@@ -7,7 +7,10 @@ use crate::ConfigFileError;
 use bytes::Bytes;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, ffi::OsString, fs, path::Path, path::PathBuf};
+use std::collections::HashSet;
+use std::ffi::OsString;
+use std::fs;
+use std::path::{Path, PathBuf};
 use url::Url;
 use validator::Validate;
 
@@ -460,11 +463,28 @@ struct Preset {
 /// The TOML serialization for a [Resource](crate::Resource) structure.
 #[derive(Serialize, Deserialize, Clone)]
 struct Resource {
-    default: Option<bool>,
-    route: Option<String>,
+    routes: Vec<String>,
+    #[serde(default = "default_resource_prefix")]
+    prefix: bool,
+    #[serde(default = "default_resource_exact")]
+    exact: bool,
     plugins: Vec<String>,
     // TODO: default timeout
     timeout: Option<u64>,
+}
+
+/// Resources default to being a prefix.
+///
+/// This allows the default resource to simply be the "/" route.
+fn default_resource_prefix() -> bool {
+    true
+}
+
+/// Resources default to being inexact.
+///
+/// This avoids surprises when matching against "/resource" and a request for "/resource/" is made.
+fn default_resource_exact() -> bool {
+    false
 }
 
 fn resolve_path<'a, B, P>(base: &'a B, path: &'a P) -> Result<PathBuf, ConfigFileError>
@@ -651,24 +671,16 @@ where
         resources: root
             .resources
             .iter()
-            .map(|resource| {
-                let route = match (&resource.default, &resource.route) {
-                    (None, Some(route)) => Ok(crate::config::RoutePattern::Path(route.clone())),
-                    (Some(true), None) => Ok(crate::config::RoutePattern::Default),
-                    _ => Err(ConfigFileError::InvalidResourceConfig(
-                        "resource must either be default or specify a route pattern".to_string(),
-                    )),
-                };
-                match route {
-                    Ok(route) => Ok(crate::config::Resource {
-                        route,
-                        plugins: resource.plugins.iter().map(resolve_reference).collect(),
-                        timeout: resource.timeout,
-                    }),
-                    Err(err) => Err(err),
-                }
+            .map(|resource| crate::config::Resource {
+                routes: crate::Resource::expand_routes(
+                    &resource.routes,
+                    resource.exact,
+                    resource.prefix,
+                ),
+                plugins: resource.plugins.iter().map(resolve_reference).collect(),
+                timeout: resource.timeout,
             })
-            .collect::<Result<Vec<crate::Resource>, _>>()?,
+            .collect(),
     };
     for plugin in &config.plugins {
         // Read plugin configs to surface type errors immediately
@@ -738,7 +750,6 @@ fn validate_plugin_config(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::RoutePattern;
 
     fn build_plugins() -> Result<(), Box<dyn std::error::Error>> {
         let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -807,7 +818,7 @@ mod tests {
         plugins = ["evil-bit"]
 
         [[resource]]
-        route = "/"
+        routes = ["/"]
         plugins = ["custom"]
         timeout = 25
     "#,
@@ -854,7 +865,10 @@ mod tests {
         assert_eq!(root.presets.first().unwrap().plugins, vec!["evil-bit"]);
 
         assert_eq!(root.resources.len(), 1);
-        assert_eq!(root.resources.first().unwrap().route, Some("/".to_string()));
+        assert_eq!(
+            root.resources.first().unwrap().routes,
+            vec!["/".to_string()]
+        );
         assert_eq!(root.resources.first().unwrap().plugins, vec!["custom"]);
         assert_eq!(root.resources.first().unwrap().timeout, Some(25));
 
@@ -917,14 +931,10 @@ mod tests {
             vec![crate::config::Reference::Plugin("blank_slate".to_string())]
         );
 
-        assert_eq!(root.resources.len(), 2);
+        assert_eq!(root.resources.len(), 1);
         assert_eq!(
-            root.resources.first().unwrap().route,
-            RoutePattern::Path("/".to_string())
-        );
-        assert_eq!(
-            root.resources.last().unwrap().route,
-            RoutePattern::Path("/*params".to_string())
+            root.resources.first().unwrap().routes,
+            vec!["/*suffix".to_string(), "/".to_string()]
         );
         assert_eq!(
             root.resources.first().unwrap().plugins,
@@ -1072,6 +1082,91 @@ mod tests {
             .unwrap_err()
             .to_string()
             .starts_with("No such file or directory"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_exact_resource_route() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
+        let root = load_config("tests/exact_resource_route.toml")?;
+
+        assert_eq!(root.resources.len(), 1);
+        assert_eq!(
+            root.resources.first().unwrap().routes,
+            vec![
+                "/user/:userid/*suffix".to_string(),
+                "/user/:userid".to_string(),
+                "/*suffix".to_string(),
+                "/".to_string()
+            ]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_inexact_resource_route() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
+        let root = load_config("tests/inexact_resource_route.toml")?;
+
+        assert_eq!(root.resources.len(), 1);
+        assert_eq!(
+            root.resources.first().unwrap().routes,
+            vec![
+                "/logout/*suffix".to_string(),
+                "/login/*suffix".to_string(),
+                "/api/*suffix".to_string(),
+                "/logout/".to_string(),
+                "/*suffix".to_string(),
+                "/login/".to_string(),
+                "/logout".to_string(),
+                "/login".to_string(),
+                "/".to_string(),
+            ]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_prefixed_resource_route() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
+        let root = load_config("tests/prefixed_resource_route.toml")?;
+
+        assert_eq!(root.resources.len(), 1);
+        assert_eq!(
+            root.resources.first().unwrap().routes,
+            vec![
+                "/api/*suffix".to_string(),
+                "/*suffix".to_string(),
+                "/".to_string(),
+            ]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_nonprefixed_resource_route() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
+        let root = load_config("tests/nonprefixed_resource_route.toml")?;
+
+        assert_eq!(root.resources.len(), 1);
+        assert_eq!(
+            root.resources.first().unwrap().routes,
+            vec![
+                "/logout/".to_string(),
+                "/login/".to_string(),
+                "/logout".to_string(),
+                "/login".to_string(),
+                "/".to_string(),
+            ]
+        );
+
         Ok(())
     }
 
