@@ -444,31 +444,13 @@ impl Preset {
     }
 }
 
-/// A route pattern is either a default route that matches anything or a path-based route pattern.
-#[derive(Debug, Clone, PartialEq)]
-pub enum RoutePattern {
-    /// Matches any request not matched by a path-based route.
-    Default,
-    /// Matches requests that correspond to the enclosed path pattern.
-    Path(String),
-}
-
-impl Display for RoutePattern {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        match self {
-            Self::Default => write!(f, "[default route]"),
-            Self::Path(route) => write!(f, "[{}]", route),
-        }
-    }
-}
-
 /// A mapping between a route pattern and the plugins that should be run for matching requests.
 #[derive(Debug, Clone)]
 pub struct Resource {
     /// The route pattern used to match requests with.
     ///
     /// Uses `matchit` router patterns.
-    pub route: RoutePattern,
+    pub routes: Vec<String>,
     /// The plugin references for this route.
     pub plugins: Vec<Reference>,
     /// The maximum amount of time a plugin may take for each execution phase.
@@ -476,6 +458,46 @@ pub struct Resource {
 }
 
 impl Resource {
+    /// Expands routes to make them more user-friendly.
+    ///
+    /// # Arguments
+    ///
+    /// * `routes` - The route patterns to expand.
+    /// * `exact` - Whether route expansion should ignore trailing slashes or not.
+    /// * `prefix` - Whether route expansion should add a catch-all '/*suffix' pattern to each route.
+    pub(crate) fn expand_routes(routes: &[String], exact: bool, prefix: bool) -> Vec<String> {
+        let mut new_routes = routes.to_vec();
+        if !exact {
+            for route in routes.iter() {
+                let new_route = if route.ends_with('/') && route.len() > 1 {
+                    route[..route.len() - 1].to_string()
+                } else if !route.contains('*') && !route.ends_with('/') {
+                    route.clone() + "/"
+                } else {
+                    continue;
+                };
+                if !new_routes.contains(&new_route) {
+                    new_routes.push(new_route);
+                }
+            }
+        }
+        if prefix {
+            for route in new_routes.clone().iter() {
+                if !route.contains('*') {
+                    let new_route = PathBuf::from(route)
+                        .join("*suffix")
+                        .to_string_lossy()
+                        .to_string();
+                    if !new_routes.contains(&new_route) {
+                        new_routes.push(new_route);
+                    }
+                }
+            }
+        }
+        new_routes.sort_by_key(|route| -(route.len() as i64));
+        new_routes
+    }
+
     /// Resolves all references within a `Resource`, producing a flattened list of the corresponding [`Plugin`]s.
     ///
     /// # Arguments

@@ -17,11 +17,6 @@ ref = "circular_two"
 plugins = ["circular_one", "another_blank_slate"]
 
 [[resource]]
-route = "/"
+routes = ["/"]
 plugins = ["circular_one"]
-timeout = 25
-
-[[resource]]
-route = "/*params"
-plugins = ["circular_two"]
 timeout = 25

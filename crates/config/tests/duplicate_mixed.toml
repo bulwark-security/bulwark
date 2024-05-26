@@ -13,11 +13,6 @@ ref = "blank_slate"
 plugins = ["blank_slate", "another_blank_slate"]
 
 [[resource]]
-route = "/"
-plugins = ["blank_slate"]
-timeout = 25
-
-[[resource]]
-route = "/*params"
+routes = ["/"]
 plugins = ["blank_slate"]
 timeout = 25

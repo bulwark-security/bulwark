@@ -1,12 +1,10 @@
-[[include]]
-path = "does_not_exist.toml"
-
 [[plugin]]
 ref = "blank_slate"
 path = "bulwark_blank_slate.wasm"
 config = {}
 
 [[resource]]
-routes = ["/"]
+routes = ["/", "/login", "/logout/", "/api/*suffix"]
+exact = false
 plugins = ["blank_slate"]
 timeout = 25

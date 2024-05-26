@@ -4,11 +4,6 @@ path = "bulwark_blank_slate.wasm"
 config = { key = { subkey = ["not a primitive"] } }
 
 [[resource]]
-route = "/"
-plugins = ["blank_slate"]
-timeout = 25
-
-[[resource]]
-route = "/*params"
+routes = ["/"]
 plugins = ["blank_slate"]
 timeout = 25
