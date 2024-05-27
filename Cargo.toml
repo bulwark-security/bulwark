@@ -48,7 +48,6 @@ tower-layer = "0.3.2"
 tracing-appender = "0.2.2"
 tracing-core = "0.1.31"
 tracing-forest = { version = "0.1.5", features = ["tokio", "chrono", "uuid"] }
-tracing-futures = { version = "0.2.5", features = ["tokio"] }
 tracing-log = "0.2.0"
 tracing-opentelemetry = "0.22.0"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
@@ -141,7 +140,7 @@ tokio = { version = "1", features = [
 tokio-test = "0.4.2"
 toml = { version = "0.8.6", features = ["preserve_order"] }
 tonic = "^0.9"
-tracing = "0.1.37"
+tracing = "0.1.40"
 url = "2.5.0"
 validator = { version = "0.16", features = ["derive"] }
 
