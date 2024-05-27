@@ -750,6 +750,7 @@ fn validate_plugin_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use matchit::Router;
 
     fn build_plugins() -> Result<(), Box<dyn std::error::Error>> {
         let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -1105,6 +1106,54 @@ mod tests {
         Ok(())
     }
 
+    // Integration test w/ matchit to verify that generated route syntax is valid.
+    #[test]
+    fn test_exact_resource_route() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
+        let root = load_config("tests/exact_resource_route.toml")?;
+        let mut router = Router::new();
+
+        for resource in root.resources.iter() {
+            for route in resource.routes.iter() {
+                router.insert(route, true)?;
+            }
+        }
+        for route in [
+            "/user/anonymous/account/suffix",
+            "/user/anonymous",
+            "/arbitrary/suffix",
+            "/",
+        ] {
+            assert!(router.at(route)?.value);
+        }
+        assert_eq!(
+            router
+                .at("/user/anonymous/account/suffix")?
+                .params
+                .get("userid"),
+            Some("anonymous")
+        );
+        assert_eq!(
+            router
+                .at("/user/anonymous/account/suffix")?
+                .params
+                .get("suffix"),
+            Some("account/suffix")
+        );
+        assert_eq!(
+            router.at("/user/anonymous")?.params.get("userid"),
+            Some("anonymous")
+        );
+        assert_eq!(router.at("/user/anonymous")?.params.get("suffix"), None);
+        assert_eq!(
+            router.at("/arbitrary/suffix")?.params.get("suffix"),
+            Some("arbitrary/suffix")
+        );
+
+        Ok(())
+    }
+
     #[test]
     fn test_load_config_inexact_resource_route() -> Result<(), Box<dyn std::error::Error>> {
         build_plugins()?;
@@ -1130,6 +1179,52 @@ mod tests {
         Ok(())
     }
 
+    // Integration test w/ matchit to verify that generated route syntax is valid.
+    #[test]
+    fn test_inexact_resource_route() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
+        let root = load_config("tests/inexact_resource_route.toml")?;
+        let mut router = Router::new();
+
+        for resource in root.resources.iter() {
+            for route in resource.routes.iter() {
+                router.insert(route, true)?;
+            }
+        }
+        for route in [
+            "/logout/logout/suffix",
+            "/login/login/suffix",
+            "/api/api/suffix",
+            "/logout/",
+            "/arbitrary/suffix",
+            "/login/",
+            "/logout",
+            "/login",
+            "/",
+        ] {
+            assert!(router.at(route)?.value);
+        }
+        assert_eq!(
+            router.at("/logout/logout/suffix")?.params.get("suffix"),
+            Some("logout/suffix")
+        );
+        assert_eq!(
+            router.at("/login/login/suffix")?.params.get("suffix"),
+            Some("login/suffix")
+        );
+        assert_eq!(
+            router.at("/api/api/suffix")?.params.get("suffix"),
+            Some("api/suffix")
+        );
+        assert_eq!(
+            router.at("/arbitrary/suffix")?.params.get("suffix"),
+            Some("arbitrary/suffix")
+        );
+
+        Ok(())
+    }
+
     #[test]
     fn test_load_config_prefixed_resource_route() -> Result<(), Box<dyn std::error::Error>> {
         build_plugins()?;
@@ -1144,6 +1239,34 @@ mod tests {
                 "/*suffix".to_string(),
                 "/".to_string(),
             ]
+        );
+
+        Ok(())
+    }
+
+    // Integration test w/ matchit to verify that generated route syntax is valid.
+    #[test]
+    fn test_prefixed_resource_route_match() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
+        let root = load_config("tests/prefixed_resource_route.toml")?;
+        let mut router = Router::new();
+
+        for resource in root.resources.iter() {
+            for route in resource.routes.iter() {
+                router.insert(route, true)?;
+            }
+        }
+        for route in ["/api/api/suffix", "/arbitrary/suffix", "/"] {
+            assert!(router.at(route)?.value);
+        }
+        assert_eq!(
+            router.at("/api/api/suffix")?.params.get("suffix"),
+            Some("api/suffix")
+        );
+        assert_eq!(
+            router.at("/arbitrary/suffix")?.params.get("suffix"),
+            Some("arbitrary/suffix")
         );
 
         Ok(())
@@ -1166,6 +1289,27 @@ mod tests {
                 "/".to_string(),
             ]
         );
+
+        Ok(())
+    }
+
+    // Integration test w/ matchit to verify that generated route syntax is valid.
+    #[test]
+    fn test_nonprefixed_resource_route_match() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
+        let root = load_config("tests/nonprefixed_resource_route.toml")?;
+        let mut router = Router::new();
+
+        for resource in root.resources.iter() {
+            for route in resource.routes.iter() {
+                router.insert(route, true)?;
+            }
+        }
+        assert!(router.at("/no/match").is_err());
+        for route in ["/logout/", "/login/", "/logout", "/login", "/"] {
+            assert!(router.at(route)?.value);
+        }
 
         Ok(())
     }
