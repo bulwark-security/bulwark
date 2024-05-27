@@ -464,14 +464,14 @@ impl Resource {
     ///
     /// * `routes` - The route patterns to expand.
     /// * `exact` - Whether route expansion should ignore trailing slashes or not.
-    /// * `prefix` - Whether route expansion should add a catch-all '/*suffix' pattern to each route.
+    /// * `prefix` - Whether route expansion should add a catch-all '/{*suffix}' pattern to each route.
     pub(crate) fn expand_routes(routes: &[String], exact: bool, prefix: bool) -> Vec<String> {
         let mut new_routes = routes.to_vec();
         if !exact {
             for route in routes.iter() {
                 let new_route = if route.ends_with('/') && route.len() > 1 {
                     route[..route.len() - 1].to_string()
-                } else if !route.contains('*') && !route.ends_with('/') {
+                } else if !route.contains("{*") && !route.ends_with('/') {
                     route.clone() + "/"
                 } else {
                     continue;
@@ -483,9 +483,9 @@ impl Resource {
         }
         if prefix {
             for route in new_routes.clone().iter() {
-                if !route.contains('*') {
+                if !route.contains("{*") {
                     let new_route = PathBuf::from(route)
-                        .join("*suffix")
+                        .join("{*suffix}")
                         .to_string_lossy()
                         .to_string();
                     if !new_routes.contains(&new_route) {

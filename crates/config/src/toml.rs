@@ -935,7 +935,7 @@ mod tests {
         assert_eq!(root.resources.len(), 1);
         assert_eq!(
             root.resources.first().unwrap().routes,
-            vec!["/*suffix".to_string(), "/".to_string()]
+            vec!["/{*suffix}".to_string(), "/".to_string()]
         );
         assert_eq!(
             root.resources.first().unwrap().plugins,
@@ -1096,9 +1096,9 @@ mod tests {
         assert_eq!(
             root.resources.first().unwrap().routes,
             vec![
-                "/user/:userid/*suffix".to_string(),
-                "/user/:userid".to_string(),
-                "/*suffix".to_string(),
+                "/user/{userid}/{*suffix}".to_string(),
+                "/user/{userid}".to_string(),
+                "/{*suffix}".to_string(),
                 "/".to_string()
             ]
         );
@@ -1164,11 +1164,11 @@ mod tests {
         assert_eq!(
             root.resources.first().unwrap().routes,
             vec![
-                "/logout/*suffix".to_string(),
-                "/login/*suffix".to_string(),
-                "/api/*suffix".to_string(),
+                "/logout/{*suffix}".to_string(),
+                "/login/{*suffix}".to_string(),
+                "/api/{*suffix}".to_string(),
+                "/{*suffix}".to_string(),
                 "/logout/".to_string(),
-                "/*suffix".to_string(),
                 "/login/".to_string(),
                 "/logout".to_string(),
                 "/login".to_string(),
@@ -1235,8 +1235,8 @@ mod tests {
         assert_eq!(
             root.resources.first().unwrap().routes,
             vec![
-                "/api/*suffix".to_string(),
-                "/*suffix".to_string(),
+                "/api/{*suffix}".to_string(),
+                "/{*suffix}".to_string(),
                 "/".to_string(),
             ]
         );
