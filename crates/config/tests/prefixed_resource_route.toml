@@ -4,7 +4,7 @@ path = "bulwark_blank_slate.wasm"
 config = {}
 
 [[resource]]
-routes = ["/", "/api/*suffix"]
+routes = ["/", "/api/{*suffix}"]
 prefix = true
 plugins = ["blank_slate"]
 timeout = 25
