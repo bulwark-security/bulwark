@@ -34,3 +34,5 @@ num_cpus = "^1.11.1"
 
 [dev-dependencies]
 bulwark-build = { workspace = true }
+
+matchit = { workspace = true }

@@ -396,6 +396,7 @@ dependencies = [
  "hex",
  "itertools 0.13.0",
  "lazy_static",
+ "matchit",
  "num_cpus",
  "regex",
  "serde",
