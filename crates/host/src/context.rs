@@ -8,7 +8,8 @@ use url::Url;
 use wasmtime::component::Resource;
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView};
 use wasmtime_wasi_http::{
-    types::{HostFutureIncomingResponse, HostIncomingResponse, OutgoingRequest},
+    body::HyperOutgoingBody,
+    types::{HostFutureIncomingResponse, HostIncomingResponse, OutgoingRequestConfig},
     WasiHttpCtx, WasiHttpView,
 };
 
@@ -197,7 +198,7 @@ impl PluginCtx {
 
         Ok(PluginCtx {
             wasi_ctx,
-            wasi_http: WasiHttpCtx,
+            wasi_http: WasiHttpCtx::new(),
             wasi_table: ResourceTable::new(),
             stdio,
             host_config: Arc::new(plugin.host_config().clone()),
@@ -235,15 +236,28 @@ impl WasiHttpView for PluginCtx {
         &mut self.wasi_table
     }
 
+    /// Send an outgoing request.
     fn send_request(
         &mut self,
-        request: OutgoingRequest,
-    ) -> wasmtime::Result<Resource<HostFutureIncomingResponse>>
+        request: http::Request<HyperOutgoingBody>,
+        config: OutgoingRequestConfig,
+    ) -> wasmtime_wasi_http::HttpResult<HostFutureIncomingResponse>
     where
         Self: Sized,
     {
-        verify_http_domains(&self.permissions.http, &request.authority)?;
-        wasmtime_wasi_http::types::default_send_request(self, request)
+        let authority = request
+            .uri()
+            .authority()
+            .map(|authority| authority.to_string())
+            .unwrap_or_default();
+        verify_http_domains(&self.permissions.http, authority.as_str()).map_err(|err| {
+            wasmtime_wasi_http::bindings::http::outgoing_handler::ErrorCode::InternalError(Some(
+                err.to_string(),
+            ))
+        })?;
+        Ok(wasmtime_wasi_http::types::default_send_request(
+            request, config,
+        ))
     }
 }
 
@@ -253,12 +267,12 @@ impl crate::bindings::bulwark::plugin::config::Host for PluginCtx {
     /// Returns all config key names.
     fn config_keys<'ctx, 'async_trait>(
         &'ctx mut self,
-    ) -> Pin<Box<dyn Future<Output = wasmtime::Result<Vec<String>>> + Send + 'async_trait>>
+    ) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + 'async_trait>>
     where
         'ctx: 'async_trait,
         Self: 'async_trait,
     {
-        Box::pin(async move { Ok(self.guest_config.keys().cloned().collect()) })
+        Box::pin(async move { self.guest_config.keys().cloned().collect() })
     }
 
     /// Returns the named config value.
@@ -267,11 +281,8 @@ impl crate::bindings::bulwark::plugin::config::Host for PluginCtx {
         key: String,
     ) -> Pin<
         Box<
-            dyn Future<
-                    Output = wasmtime::Result<
-                        Option<crate::bindings::bulwark::plugin::config::Value>,
-                    >,
-                > + Send
+            dyn Future<Output = Option<crate::bindings::bulwark::plugin::config::Value>>
+                + Send
                 + 'async_trait,
         >,
     >
@@ -288,19 +299,19 @@ impl crate::bindings::bulwark::plugin::config::Host for PluginCtx {
                     // This is also why the map_or default above is Ok(None).
                     value.clone().try_into().map(Some)
                 });
-            Ok(result.expect("config should already be validated"))
+            result.expect("config should already be validated")
         })
     }
 
     /// Returns the number of proxy hops expected exterior to Bulwark.
     fn proxy_hops<'ctx, 'async_trait>(
         &'ctx mut self,
-    ) -> Pin<Box<dyn Future<Output = wasmtime::Result<u8>> + Send + 'async_trait>>
+    ) -> Pin<Box<dyn Future<Output = u8> + Send + 'async_trait>>
     where
         'ctx: 'async_trait,
         Self: 'async_trait,
     {
-        Box::pin(async move { Ok(self.host_config.service.proxy_hops) })
+        Box::pin(async move { self.host_config.service.proxy_hops })
     }
 }
 
@@ -312,8 +323,9 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
     ) -> Pin<
         Box<
             dyn Future<
-                    Output = wasmtime::Result<
-                        Result<Option<Vec<u8>>, crate::bindings::bulwark::plugin::redis::Error>,
+                    Output = Result<
+                        Option<Vec<u8>>,
+                        crate::bindings::bulwark::plugin::redis::Error,
                     >,
                 > + Send
                 + 'async_trait,
@@ -326,8 +338,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         Box::pin(async move {
             verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            // Outer Ok is for the largely unused wasmtime::Result
-            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+            if let Some(pool) = self.redis_ctx.pool.clone() {
                 let mut conn = pool.get().await.map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
@@ -339,7 +350,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                 Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
                     "no remote state configured".to_string(),
                 ))
-            })
+            }
         })
     }
 
@@ -352,11 +363,8 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         value: Vec<u8>,
     ) -> Pin<
         Box<
-            dyn Future<
-                    Output = wasmtime::Result<
-                        Result<(), crate::bindings::bulwark::plugin::redis::Error>,
-                    >,
-                > + Send
+            dyn Future<Output = Result<(), crate::bindings::bulwark::plugin::redis::Error>>
+                + Send
                 + 'async_trait,
         >,
     >
@@ -367,8 +375,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         Box::pin(async move {
             verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            // Outer Ok is for the largely unused wasmtime::Result
-            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+            if let Some(pool) = self.redis_ctx.pool.clone() {
                 let mut conn = pool.get().await.map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
@@ -382,7 +389,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                 Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
                     "no remote state configured".to_string(),
                 ))
-            })
+            }
         })
     }
 
@@ -394,11 +401,8 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         keys: Vec<String>,
     ) -> Pin<
         Box<
-            dyn Future<
-                    Output = wasmtime::Result<
-                        Result<u32, crate::bindings::bulwark::plugin::redis::Error>,
-                    >,
-                > + Send
+            dyn Future<Output = Result<u32, crate::bindings::bulwark::plugin::redis::Error>>
+                + Send
                 + 'async_trait,
         >,
     >
@@ -411,8 +415,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                 verify_redis_prefixes(&self.permissions.state, key)?;
             }
 
-            // Outer Ok is for the largely unused wasmtime::Result
-            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+            if let Some(pool) = self.redis_ctx.pool.clone() {
                 let mut conn = pool.get().await.map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
@@ -423,7 +426,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                 Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
                     "no remote state configured".to_string(),
                 ))
-            })
+            }
         })
     }
 
@@ -436,11 +439,8 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         key: String,
     ) -> Pin<
         Box<
-            dyn Future<
-                    Output = wasmtime::Result<
-                        Result<i64, crate::bindings::bulwark::plugin::redis::Error>,
-                    >,
-                > + Send
+            dyn Future<Output = Result<i64, crate::bindings::bulwark::plugin::redis::Error>>
+                + Send
                 + 'async_trait,
         >,
     >
@@ -462,8 +462,9 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
     ) -> Pin<
         Box<
             dyn Future<
-                    Output = wasmtime::Result<
-                        Result<i64, crate::bindings::bulwark::plugin::redis::Error>,
+                    Output = std::result::Result<
+                        i64,
+                        crate::bindings::bulwark::plugin::redis::Error,
                     >,
                 > + Send
                 + 'async_trait,
@@ -476,8 +477,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         Box::pin(async move {
             verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            // Outer Ok is for the largely unused wasmtime::Result
-            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+            if let Some(pool) = self.redis_ctx.pool.clone() {
                 let mut conn = pool.get().await.map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
@@ -488,7 +488,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                 Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
                     "no remote state configured".to_string(),
                 ))
-            })
+            }
         })
     }
 
@@ -502,11 +502,8 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         values: Vec<String>,
     ) -> Pin<
         Box<
-            dyn Future<
-                    Output = wasmtime::Result<
-                        Result<u32, crate::bindings::bulwark::plugin::redis::Error>,
-                    >,
-                > + Send
+            dyn Future<Output = Result<u32, crate::bindings::bulwark::plugin::redis::Error>>
+                + Send
                 + 'async_trait,
         >,
     >
@@ -517,8 +514,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         Box::pin(async move {
             verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            // Outer Ok is for the largely unused wasmtime::Result
-            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+            if let Some(pool) = self.redis_ctx.pool.clone() {
                 let mut conn = pool.get().await.map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
@@ -529,7 +525,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                 Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
                     "no remote state configured".to_string(),
                 ))
-            })
+            }
         })
     }
 
@@ -539,11 +535,8 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         key: String,
     ) -> Pin<
         Box<
-            dyn Future<
-                    Output = wasmtime::Result<
-                        Result<Vec<String>, crate::bindings::bulwark::plugin::redis::Error>,
-                    >,
-                > + Send
+            dyn Future<Output = Result<Vec<String>, crate::bindings::bulwark::plugin::redis::Error>>
+                + ::core::marker::Send
                 + 'async_trait,
         >,
     >
@@ -554,8 +547,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         Box::pin(async move {
             verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            // Outer Ok is for the largely unused wasmtime::Result
-            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+            if let Some(pool) = self.redis_ctx.pool.clone() {
                 let mut conn = pool.get().await.map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
@@ -566,7 +558,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                 Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
                     "no remote state configured".to_string(),
                 ))
-            })
+            }
         })
     }
 
@@ -580,11 +572,8 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         values: Vec<String>,
     ) -> Pin<
         Box<
-            dyn Future<
-                    Output = wasmtime::Result<
-                        Result<u32, crate::bindings::bulwark::plugin::redis::Error>,
-                    >,
-                > + Send
+            dyn Future<Output = Result<u32, crate::bindings::bulwark::plugin::redis::Error>>
+                + Send
                 + 'async_trait,
         >,
     >
@@ -595,8 +584,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         Box::pin(async move {
             verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            // Outer Ok is for the largely unused wasmtime::Result
-            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+            if let Some(pool) = self.redis_ctx.pool.clone() {
                 let mut conn = pool.get().await.map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
@@ -607,7 +595,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                 Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
                     "no remote state configured".to_string(),
                 ))
-            })
+            }
         })
     }
 
@@ -618,11 +606,8 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         ttl: u64,
     ) -> Pin<
         Box<
-            dyn Future<
-                    Output = wasmtime::Result<
-                        Result<(), crate::bindings::bulwark::plugin::redis::Error>,
-                    >,
-                > + Send
+            dyn Future<Output = Result<(), crate::bindings::bulwark::plugin::redis::Error>>
+                + Send
                 + 'async_trait,
         >,
     >
@@ -633,8 +618,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         Box::pin(async move {
             verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            // Outer Ok is for the largely unused wasmtime::Result
-            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+            if let Some(pool) = self.redis_ctx.pool.clone() {
                 let mut conn = pool.get().await.map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
@@ -653,7 +637,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                 Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
                     "no remote state configured".to_string(),
                 ))
-            })
+            }
         })
     }
 
@@ -664,11 +648,8 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         unix_time: u64,
     ) -> Pin<
         Box<
-            dyn Future<
-                    Output = wasmtime::Result<
-                        Result<(), crate::bindings::bulwark::plugin::redis::Error>,
-                    >,
-                > + Send
+            dyn Future<Output = Result<(), crate::bindings::bulwark::plugin::redis::Error>>
+                + Send
                 + 'async_trait,
         >,
     >
@@ -679,8 +660,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         Box::pin(async move {
             verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            // Outer Ok is for the largely unused wasmtime::Result
-            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+            if let Some(pool) = self.redis_ctx.pool.clone() {
                 let mut conn = pool.get().await.map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
@@ -699,7 +679,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                 Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
                     "no remote state configured".to_string(),
                 ))
-            })
+            }
         })
     }
 
@@ -712,11 +692,9 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
     ) -> Pin<
         Box<
             dyn Future<
-                    Output = wasmtime::Result<
-                        Result<
-                            crate::bindings::bulwark::plugin::redis::Rate,
-                            crate::bindings::bulwark::plugin::redis::Error,
-                        >,
+                    Output = Result<
+                        crate::bindings::bulwark::plugin::redis::Rate,
+                        crate::bindings::bulwark::plugin::redis::Error,
                     >,
                 > + Send
                 + 'async_trait,
@@ -730,22 +708,21 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
             verify_redis_prefixes(&self.permissions.state, &key)?;
 
             if delta < 0 {
-                return Ok(Err(
+                return Err(
                     crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
                         "delta must be positive".to_string(),
                     ),
-                ));
+                );
             }
             if window < 0 {
-                return Ok(Err(
+                return Err(
                     crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
                         "window must be positive".to_string(),
                     ),
-                ));
+                );
             }
 
-            // Outer Ok is for the largely unused wasmtime::Result
-            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+            if let Some(pool) = self.redis_ctx.pool.clone() {
                 let mut conn = pool.get().await.map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
@@ -772,7 +749,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                 Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
                     "no remote state configured".to_string(),
                 ))
-            })
+            }
         })
     }
 
@@ -783,11 +760,9 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
     ) -> Pin<
         Box<
             dyn Future<
-                    Output = wasmtime::Result<
-                        Result<
-                            Option<crate::bindings::bulwark::plugin::redis::Rate>,
-                            crate::bindings::bulwark::plugin::redis::Error,
-                        >,
+                    Output = Result<
+                        Option<crate::bindings::bulwark::plugin::redis::Rate>,
+                        crate::bindings::bulwark::plugin::redis::Error,
                     >,
                 > + Send
                 + 'async_trait,
@@ -800,8 +775,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         Box::pin(async move {
             verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            // Outer Ok is for the largely unused wasmtime::Result
-            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+            if let Some(pool) = self.redis_ctx.pool.clone() {
                 let mut conn = pool.get().await.map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
@@ -830,7 +804,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                 Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
                     "no remote state configured".to_string(),
                 ))
-            })
+            }
         })
     }
 
@@ -845,11 +819,9 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
     ) -> Pin<
         Box<
             dyn Future<
-                    Output = wasmtime::Result<
-                        Result<
-                            crate::bindings::bulwark::plugin::redis::Breaker,
-                            crate::bindings::bulwark::plugin::redis::Error,
-                        >,
+                    Output = Result<
+                        crate::bindings::bulwark::plugin::redis::Breaker,
+                        crate::bindings::bulwark::plugin::redis::Error,
                     >,
                 > + Send
                 + 'async_trait,
@@ -863,29 +835,28 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
             verify_redis_prefixes(&self.permissions.state, &key)?;
 
             if success_delta < 0 {
-                return Ok(Err(
+                return Err(
                     crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
                         "success_delta must be positive".to_string(),
                     ),
-                ));
+                );
             }
             if failure_delta < 0 {
-                return Ok(Err(
+                return Err(
                     crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
                         "failure_delta must be positive".to_string(),
                     ),
-                ));
+                );
             }
             if window < 0 {
-                return Ok(Err(
+                return Err(
                     crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
                         "window must be positive".to_string(),
                     ),
-                ));
+                );
             }
 
-            // Outer Ok is for the largely unused wasmtime::Result
-            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+            if let Some(pool) = self.redis_ctx.pool.clone() {
                 let mut conn = pool.get().await.map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
@@ -924,7 +895,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                 Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
                     "no remote state configured".to_string(),
                 ))
-            })
+            }
         })
     }
 
@@ -936,11 +907,9 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
     ) -> Pin<
         Box<
             dyn Future<
-                    Output = wasmtime::Result<
-                        Result<
-                            Option<crate::bindings::bulwark::plugin::redis::Breaker>,
-                            crate::bindings::bulwark::plugin::redis::Error,
-                        >,
+                    Output = Result<
+                        Option<crate::bindings::bulwark::plugin::redis::Breaker>,
+                        crate::bindings::bulwark::plugin::redis::Error,
                     >,
                 > + Send
                 + 'async_trait,
@@ -953,8 +922,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
         Box::pin(async move {
             verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            // Outer Ok is for the largely unused wasmtime::Result
-            Ok(if let Some(pool) = self.redis_ctx.pool.clone() {
+            if let Some(pool) = self.redis_ctx.pool.clone() {
                 let mut conn = pool.get().await.map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
@@ -994,7 +962,7 @@ impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
                 Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
                     "no remote state configured".to_string(),
                 ))
-            })
+            }
         })
     }
 }

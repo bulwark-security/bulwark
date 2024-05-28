@@ -351,18 +351,25 @@ impl PluginInstance {
         plugin: Arc<Plugin>,
         plugin_ctx: PluginCtx,
     ) -> Result<PluginInstance, PluginInstantiationError> {
+        fn host_getter(ctx: &mut PluginCtx) -> &mut PluginCtx {
+            ctx
+        }
+
         // Clone the stdio so we can read the captured stdout and stderr buffers after execution has completed.
         let stdio = plugin_ctx.stdio.clone();
 
         let mut linker: Linker<PluginCtx> = Linker::new(&plugin.engine);
         let mut store = Store::new(&plugin.engine, plugin_ctx);
 
-        wasmtime_wasi::command::add_to_linker(&mut linker)?;
-        wasmtime_wasi_http::bindings::wasi::http::types::add_to_linker(&mut linker, |ctx| ctx)
-            .context("failed to link `wasi:http/types` interface")?;
-        wasmtime_wasi_http::bindings::wasi::http::outgoing_handler::add_to_linker(
+        wasmtime_wasi::add_to_linker_async(&mut linker)?;
+        wasmtime_wasi_http::bindings::wasi::http::types::add_to_linker_get_host(
             &mut linker,
-            |ctx| ctx,
+            host_getter,
+        )
+        .context("failed to link `wasi:http/types` interface")?;
+        wasmtime_wasi_http::bindings::wasi::http::outgoing_handler::add_to_linker_get_host(
+            &mut linker,
+            host_getter,
         )
         .context("failed to link `wasi:http/outgoing-handler` interface")?;
         bindings::bulwark::plugin::config::add_to_linker(&mut linker, |t| t)
@@ -548,8 +555,6 @@ impl PluginInstance {
                 },
                 std::time::Duration::from_millis(600 * 1000),
             )),
-            // No-op worker
-            worker: Arc::new(wasmtime_wasi::spawn(async {})),
         };
         let incoming_response_handle = self
             .store
@@ -616,8 +621,6 @@ impl PluginInstance {
                 },
                 std::time::Duration::from_millis(600 * 1000),
             )),
-            // No-op worker
-            worker: Arc::new(wasmtime_wasi::spawn(async {})),
         };
         let incoming_response_handle = self
             .store
