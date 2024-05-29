@@ -6,6 +6,7 @@ use {
 // For some reason, doc-tests in this module trigger a linker error, so they're set to no_run
 
 pub use crate::{Decision, Outcome};
+pub use serde_json::from_value;
 pub use serde_json::json as value;
 pub use serde_json::{Map, Value};
 
