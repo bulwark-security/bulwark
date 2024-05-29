@@ -1,0 +1,9 @@
+[[plugin]]
+ref = "blank_slate_v2"
+path = "bulwark_blank_slate.wasm"
+config = {}
+
+[[resource]]
+routes = ["/"]
+plugins = ["blank_slate_v2"]
+timeout = 25

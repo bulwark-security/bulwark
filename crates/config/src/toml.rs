@@ -15,7 +15,7 @@ use url::Url;
 use validator::Validate;
 
 lazy_static! {
-    static ref RE_VALID_REFERENCE: Regex = Regex::new(r"^[_a-z]+$").unwrap();
+    static ref RE_VALID_REFERENCE: Regex = Regex::new(r"^[a-z_]([a-z0-9_])*$").unwrap();
 }
 
 /// The TOML serialization for a [Config](crate::Config) structure.
@@ -1057,6 +1057,35 @@ mod tests {
             .unwrap_err()
             .to_string(),
             "invalid plugin config: config key 'key' contained an object with a non-primitive subtype");
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_invalid_plugin_reference() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
+        let result = load_config("tests/invalid_plugin_reference.toml");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("reference:"));
+        assert!(err.to_string().contains("\"not/okay-reference\""));
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_valid_numeric_plugin_reference() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
+        let root = load_config("tests/valid_numeric_plugin_reference.toml")?;
+
+        let resource = root.resources.first().unwrap();
+        let plugins = resource.resolve_plugins(&root)?;
+        assert_eq!(plugins.len(), 1);
+        assert_eq!(
+            plugins.first().unwrap().reference,
+            root.plugin("blank_slate_v2").unwrap().reference
+        );
+
         Ok(())
     }
 
