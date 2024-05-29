@@ -12,7 +12,7 @@ use url::Url;
 use validator::Validate;
 
 lazy_static! {
-    static ref RE_VALID_REFERENCE: Regex = Regex::new(r"^[_a-z]+$").unwrap();
+    static ref RE_VALID_REFERENCE: Regex = Regex::new(r"^[a-z_]([a-z0-9_])*$").unwrap();
 }
 
 /// The root of a Bulwark configuration.

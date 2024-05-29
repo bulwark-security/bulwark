@@ -1,0 +1,9 @@
+[[plugin]]
+ref = "not/okay-reference"
+path = "bulwark_blank_slate.wasm"
+config = {}
+
+[[resource]]
+routes = ["/"]
+plugins = ["not/okay-reference"]
+timeout = 25
