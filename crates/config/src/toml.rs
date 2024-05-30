@@ -524,7 +524,17 @@ where
         } else {
             loaded_files.insert(path_string);
         }
-        let toml_data = fs::read_to_string(config_path)?;
+        let toml_data = match fs::read_to_string(config_path) {
+            Ok(data) => data,
+            Err(err) => match err.kind() {
+                std::io::ErrorKind::NotFound => {
+                    return Err(ConfigFileError::NotFound(
+                        config_path.as_ref().to_path_buf(),
+                    ));
+                }
+                _ => Err(ConfigFileError::IO(err.into())),
+            }?,
+        };
         let mut root: Config = toml::from_str(&toml_data)?;
         let base = config_path
             .as_ref()
