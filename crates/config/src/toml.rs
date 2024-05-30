@@ -532,7 +532,7 @@ where
                         config_path.as_ref().to_path_buf(),
                     ));
                 }
-                _ => Err(ConfigFileError::IO(err.into())),
+                _ => Err(ConfigFileError::IO(err)),
             }?,
         };
         let mut root: Config = toml::from_str(&toml_data)?;
@@ -545,6 +545,11 @@ where
 
         for include in &root.includes {
             let include_path = base.join(&include.path);
+            if !include_path.exists() {
+                return Err(ConfigFileError::IncludedFileNotFound(
+                    include_path.to_string_lossy().to_string(),
+                ));
+            }
             let include_root = load_config_recursive(&include_path, loaded_files)?;
 
             // TODO: clean this up
@@ -1121,7 +1126,7 @@ mod tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .starts_with("No such file or directory"));
+            .starts_with("no such file or directory"));
         Ok(())
     }
 

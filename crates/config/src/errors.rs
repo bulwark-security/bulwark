@@ -3,10 +3,12 @@
 pub enum ConfigFileError {
     #[error(transparent)]
     IO(#[from] std::io::Error),
-    #[error("file not found: '{0}'")]
+    #[error("no such file or directory: '{0}'")]
     NotFound(std::path::PathBuf),
-    // TODO: when an include path within a config file doesn't exist
-    // TODO: when a plugin .wasm path within a config file doesn't exist
+    #[error("included file not found: '{0}'")]
+    IncludedFileNotFound(String),
+    #[error("plugin .wasm file not found: '{0}'")]
+    PluginWasmNotFound(String),
     #[error(transparent)]
     Deserialization(#[from] toml::de::Error),
     #[error(transparent)]
