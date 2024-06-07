@@ -1124,14 +1124,9 @@ mod tests {
 
         let result = load_config("tests/missing_include.toml");
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .starts_with("no such file or directory"));
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("missing_include.toml"));
+        let err = result.unwrap_err();
+        assert!(err.to_string().starts_with("no such file or directory"));
+        assert!(err.to_string().contains("missing_include.toml"));
         Ok(())
     }
 
