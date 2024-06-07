@@ -1125,7 +1125,7 @@ mod tests {
         let result = load_config("tests/missing_include.toml");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().starts_with("no such file or directory"));
+        assert!(err.to_string().starts_with("config file not found"));
         assert!(err.to_string().contains("missing_include.toml"));
         Ok(())
     }
