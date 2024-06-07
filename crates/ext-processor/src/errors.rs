@@ -24,6 +24,17 @@ pub enum HandlerError {
     RouteMatch(#[from] matchit::MatchError),
 }
 
+/// Returned when trying to complete a phase.
+#[derive(thiserror::Error, Debug)]
+pub enum PhaseError {
+    #[error(transparent)]
+    ProcessingMessage(#[from] ProcessingMessageError),
+    #[error(transparent)]
+    Request(#[from] RequestError),
+    #[error(transparent)]
+    Response(#[from] ResponseError),
+}
+
 /// Returned when trying to assemble a [`Request`](bulwark_sdk::Request) struct and Envoy sends missing
 /// or invalid information or an [HTTP error](http::Error) occurs.
 #[derive(thiserror::Error, Debug)]
@@ -44,8 +55,8 @@ pub enum RequestError {
     MissingAuthority,
     #[error("missing http path pseudo-header")]
     MissingPath,
-    #[error("no headers received from envoy")]
-    MissingHeaders,
+    #[error("prematurely disconnected")]
+    Disconnected,
 }
 
 /// Returned when trying to assemble a [`Response`](bulwark_sdk::Response) struct and Envoy sends missing
@@ -60,8 +71,8 @@ pub enum ResponseError {
     Send(#[from] futures::channel::mpsc::SendError),
     #[error("missing http status pseudo-header")]
     MissingStatus,
-    #[error("missing envoy headers")]
-    MissingHeaders,
+    #[error("prematurely disconnected")]
+    Disconnected,
 }
 
 /// Returned when serializing tags or [`Decision`](bulwark_sdk::Decision) values into [SFV](sfv).
