@@ -528,7 +528,7 @@ where
             Ok(data) => data,
             Err(err) => match err.kind() {
                 std::io::ErrorKind::NotFound => {
-                    return Err(ConfigFileError::NotFound(format!(
+                    return Err(ConfigFileError::ConfigNotFound(format!(
                         "no such file or directory: {}",
                         config_path.as_ref().to_string_lossy()
                     )));
@@ -547,7 +547,7 @@ where
         for include in &root.includes {
             let include_path = base.join(&include.path);
             if !include_path.exists() {
-                return Err(ConfigFileError::IncludedFileNotFound(
+                return Err(ConfigFileError::IncludedConfigNotFound(
                     include_path.to_string_lossy().to_string(),
                 ));
             }
@@ -1128,6 +1128,10 @@ mod tests {
             .unwrap_err()
             .to_string()
             .starts_with("no such file or directory"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("missing_include.toml"));
         Ok(())
     }
 
