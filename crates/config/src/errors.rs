@@ -3,11 +3,11 @@
 pub enum ConfigFileError {
     #[error(transparent)]
     IO(#[from] std::io::Error),
-    #[error("config file not found: {0}")]
+    #[error("config file not found: '{0}'")]
     ConfigNotFound(String),
-    #[error("included config file not found: {0}")]
+    #[error("included config file not found: '{0}'")]
     IncludedConfigNotFound(String),
-    #[error("plugin file not found: {0}")]
+    #[error("plugin file not found: '{0}'")]
     PluginWasmNotFound(String),
     #[error(transparent)]
     Deserialization(#[from] toml::de::Error),

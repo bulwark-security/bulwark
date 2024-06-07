@@ -528,10 +528,9 @@ where
             Ok(data) => data,
             Err(err) => match err.kind() {
                 std::io::ErrorKind::NotFound => {
-                    return Err(ConfigFileError::ConfigNotFound(format!(
-                        "no such file or directory: {}",
-                        config_path.as_ref().to_string_lossy()
-                    )));
+                    return Err(ConfigFileError::ConfigNotFound(
+                        config_path.as_ref().to_string_lossy().into_owned(),
+                    ));
                 }
                 _ => Err(ConfigFileError::IO(err)),
             }?,
