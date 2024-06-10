@@ -1108,7 +1108,7 @@ mod tests {
     fn test_load_config_resolution_missing() -> Result<(), Box<dyn std::error::Error>> {
         build_plugins()?;
 
-        let result = load_config("tests/missing.toml");
+        let result = load_config("tests/missing_reference.toml");
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),
@@ -1124,8 +1124,10 @@ mod tests {
         let result = load_config("tests/missing_include.toml");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().starts_with("config file not found"));
-        assert!(err.to_string().contains("missing_include.toml"));
+        assert!(err
+            .to_string()
+            .starts_with("included config file not found"));
+        assert!(err.to_string().contains("tests/does_not_exist.toml"));
         Ok(())
     }
 
