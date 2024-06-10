@@ -1118,6 +1118,16 @@ mod tests {
     }
 
     #[test]
+    fn test_load_config_missing() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/does_not_exist.toml");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().starts_with("config file not found"));
+        assert!(err.to_string().contains("tests/does_not_exist.toml"));
+        Ok(())
+    }
+
+    #[test]
     fn test_load_config_missing_include() -> Result<(), Box<dyn std::error::Error>> {
         build_plugins()?;
 
@@ -1128,6 +1138,12 @@ mod tests {
             .to_string()
             .starts_with("included config file not found"));
         assert!(err.to_string().contains("tests/does_not_exist.toml"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_missing_plugin() -> Result<(), Box<dyn std::error::Error>> {
+        //TODO
         Ok(())
     }
 

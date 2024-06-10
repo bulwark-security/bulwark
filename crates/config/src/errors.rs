@@ -7,7 +7,7 @@ pub enum ConfigFileError {
     ConfigNotFound(String),
     #[error("included config file not found: '{0}'")]
     IncludedConfigNotFound(String),
-    #[error("plugin file not found: '{0}'")]
+    #[error("included plugin file not found: '{0}'")]
     PluginNotFound(String),
     #[error(transparent)]
     Deserialization(#[from] toml::de::Error),
