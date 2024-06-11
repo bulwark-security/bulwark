@@ -1162,12 +1162,10 @@ mod tests {
         let result = load_config("tests/missing_plugin.toml");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        println!("{}", err);
         assert!(err
             .to_string()
             .starts_with("included plugin file not found"));
         assert!(err.to_string().contains("does_not_exist.wasm"));
-        println!("{}", err);
         Ok(())
     }
 
