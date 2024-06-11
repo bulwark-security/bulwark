@@ -589,8 +589,22 @@ where
                         .path
                         .as_ref()
                         .map(|path| {
-                            resolve_path(config_path, Path::new(path.as_str()))
-                                .map(|path| path.to_string_lossy().to_string())
+                            let resolved_path = resolve_path(config_path, Path::new(path.as_str()))
+                                .map_err(|err| match err {
+                                    ConfigFileError::IO(io_err)
+                                        if io_err.kind() == std::io::ErrorKind::NotFound =>
+                                    {
+                                        ConfigFileError::PluginNotFound(path.clone())
+                                    }
+                                    _ => err,
+                                })?;
+                            if resolved_path.exists() {
+                                Ok(resolved_path.to_string_lossy().to_string())
+                            } else {
+                                Err(ConfigFileError::PluginNotFound(
+                                    resolved_path.to_string_lossy().to_string(),
+                                ))
+                            }
                         })
                         .transpose()?,
                     uri: plugin
@@ -1143,7 +1157,17 @@ mod tests {
 
     #[test]
     fn test_load_config_missing_plugin() -> Result<(), Box<dyn std::error::Error>> {
-        //TODO
+        build_plugins()?;
+
+        let result = load_config("tests/missing_plugin.toml");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        println!("{}", err);
+        assert!(err
+            .to_string()
+            .starts_with("included plugin file not found"));
+        assert!(err.to_string().contains("does_not_exist.wasm"));
+        println!("{}", err);
         Ok(())
     }
 
