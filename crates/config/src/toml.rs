@@ -524,7 +524,17 @@ where
         } else {
             loaded_files.insert(path_string);
         }
-        let toml_data = fs::read_to_string(config_path)?;
+        let toml_data = match fs::read_to_string(config_path) {
+            Ok(data) => data,
+            Err(err) => match err.kind() {
+                std::io::ErrorKind::NotFound => {
+                    return Err(ConfigFileError::ConfigNotFound(
+                        config_path.as_ref().to_string_lossy().into_owned(),
+                    ));
+                }
+                _ => Err(ConfigFileError::IO(err)),
+            }?,
+        };
         let mut root: Config = toml::from_str(&toml_data)?;
         let base = config_path
             .as_ref()
@@ -535,6 +545,11 @@ where
 
         for include in &root.includes {
             let include_path = base.join(&include.path);
+            if !include_path.exists() {
+                return Err(ConfigFileError::IncludedConfigNotFound(
+                    include_path.to_string_lossy().to_string(),
+                ));
+            }
             let include_root = load_config_recursive(&include_path, loaded_files)?;
 
             // TODO: clean this up
@@ -574,8 +589,22 @@ where
                         .path
                         .as_ref()
                         .map(|path| {
-                            resolve_path(config_path, Path::new(path.as_str()))
-                                .map(|path| path.to_string_lossy().to_string())
+                            let resolved_path = resolve_path(config_path, Path::new(path.as_str()))
+                                .map_err(|err| match err {
+                                    ConfigFileError::IO(io_err)
+                                        if io_err.kind() == std::io::ErrorKind::NotFound =>
+                                    {
+                                        ConfigFileError::PluginNotFound(path.clone())
+                                    }
+                                    _ => err,
+                                })?;
+                            if resolved_path.exists() {
+                                Ok(resolved_path.to_string_lossy().to_string())
+                            } else {
+                                Err(ConfigFileError::PluginNotFound(
+                                    resolved_path.to_string_lossy().to_string(),
+                                ))
+                            }
                         })
                         .transpose()?,
                     uri: plugin
@@ -1093,7 +1122,7 @@ mod tests {
     fn test_load_config_resolution_missing() -> Result<(), Box<dyn std::error::Error>> {
         build_plugins()?;
 
-        let result = load_config("tests/missing.toml");
+        let result = load_config("tests/missing_reference.toml");
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),
@@ -1103,15 +1132,40 @@ mod tests {
     }
 
     #[test]
+    fn test_load_config_missing() -> Result<(), Box<dyn std::error::Error>> {
+        let result = load_config("tests/does_not_exist.toml");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().starts_with("config file not found"));
+        assert!(err.to_string().contains("tests/does_not_exist.toml"));
+        Ok(())
+    }
+
+    #[test]
     fn test_load_config_missing_include() -> Result<(), Box<dyn std::error::Error>> {
         build_plugins()?;
 
         let result = load_config("tests/missing_include.toml");
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
+        let err = result.unwrap_err();
+        assert!(err
             .to_string()
-            .starts_with("No such file or directory"));
+            .starts_with("included config file not found"));
+        assert!(err.to_string().contains("tests/does_not_exist.toml"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_config_missing_plugin() -> Result<(), Box<dyn std::error::Error>> {
+        build_plugins()?;
+
+        let result = load_config("tests/missing_plugin.toml");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err
+            .to_string()
+            .starts_with("included plugin file not found"));
+        assert!(err.to_string().contains("does_not_exist.wasm"));
         Ok(())
     }
 

@@ -1,0 +1,9 @@
+[[resource]]
+routes = ["/"]
+plugins = ["does_not_exist"]
+timeout = 25
+
+[[plugin]]
+ref = "does_not_exist"
+path = "does_not_exist.wasm"
+config = {}
