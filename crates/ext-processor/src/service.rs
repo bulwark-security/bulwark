@@ -1,7 +1,14 @@
 //! The service module contains the main Envoy external processor service implementation.
 
-use crate::{PluginGroupInstantiationError, ProcessingMessageError, RequestError, ResponseError};
+use crate::{
+    PhaseError, PluginGroupInstantiationError, ProcessingMessageError, RequestError, ResponseError,
+};
 use bulwark_config::Config;
+use bulwark_host::{
+    ForwardedIP, HandlerOutput, Plugin, PluginCtx, PluginExecutionError, PluginInstance,
+    PluginLoadError, RedisCtx, ScriptRegistry,
+};
+use bulwark_sdk::Decision;
 use bulwark_sdk::Verdict;
 
 use crate::protobuf::envoy::{
@@ -14,11 +21,6 @@ use crate::protobuf::envoy::{
         ProcessingRequest, ProcessingResponse,
     },
 };
-use bulwark_host::{
-    ForwardedIP, HandlerOutput, Plugin, PluginCtx, PluginExecutionError, PluginInstance,
-    PluginLoadError, RedisCtx, ScriptRegistry,
-};
-use bulwark_sdk::Decision;
 use forwarded_header_value::ForwardedHeaderValue;
 use futures::lock::Mutex;
 use futures::{channel::mpsc::UnboundedSender, SinkExt, Stream};
@@ -201,7 +203,9 @@ impl ExternalProcessor for BulwarkProcessor {
                         ctx.execute_request_enrichment_phase().await;
                         ctx.execute_request_decision_phase().await;
 
-                        ctx.complete_request_phase().await;
+                        if let Err(err) = ctx.complete_request_phase().await {
+                            error!(message = "error during processing", error =?err);
+                        }
                     } else {
                         warn!(message = "no resource matched request",);
                     }
@@ -540,7 +544,7 @@ impl ProcessorContext {
 
             return Ok(request.body(request_chunk)?);
         }
-        Err(RequestError::MissingHeaders)
+        Err(RequestError::Disconnected)
     }
 
     async fn prepare_response(&mut self) -> Result<bulwark_sdk::Response, ResponseError> {
@@ -585,7 +589,7 @@ impl ProcessorContext {
             }
             return Ok(response.body(response_chunk)?);
         }
-        Err(ResponseError::MissingHeaders)
+        Err(ResponseError::Disconnected)
     }
 
     async fn execute_init_phase(&self) {
@@ -947,7 +951,7 @@ impl ProcessorContext {
         self.capture_stdio().await;
     }
 
-    async fn complete_request_phase(&mut self) {
+    async fn complete_request_phase(&mut self) -> Result<(), PhaseError> {
         let decision = self.combined_output.decision;
         let outcome = decision
             .outcome(
@@ -988,38 +992,28 @@ impl ProcessorContext {
             | bulwark_sdk::Outcome::Accepted
             // suspected requests are monitored but not rejected
             | bulwark_sdk::Outcome::Suspected => {
-                let result = Self::send_allow_request_message(self.sender.clone(), end_of_stream).await;
-                // TODO: must perform proper error handling on sender results, sending can fail
-                if let Err(err) = result {
-                    error!(message = format!("send error: {}", err));
-                }
+                Self::send_allow_request_message(self.sender.clone(), end_of_stream).await?;
             },
             bulwark_sdk::Outcome::Restricted => {
                 restricted = true;
                 if !self.thresholds.observe_only {
                     info!(message = "process response", status = 403);
-                    match Self::send_block_request_message(self.sender.clone()).await {
-                        Ok(response) => {
-                            // Normally we initiate feedback after the response phase, but if we're blocking the request
-                            // in the request phase, we're also skipping the response phase and we need to do it here
-                            // instead.
-                            let verdict = Verdict {
-                                decision,
-                                outcome,
-                                tags: self.combined_output.tags.iter().cloned().collect(),
-                            };
-                            self.response = Some(Arc::new(response));
-                            self.verdict = Some(verdict);
-                            self.execute_decision_feedback().await;
-                        },
-                        Err(err) => {
-                            // TODO: must perform proper error handling on sender results, sending can fail
-                            error!(message = format!("send error: {}", err));
-                        },
-                    }
+                    let response = Self::send_block_request_message(self.sender.clone()).await?;
+
+                    // Normally we initiate feedback after the response phase, but if we're blocking the request
+                    // in the request phase, we're also skipping the response phase and we need to do it here
+                    // instead.
+                    let verdict = Verdict {
+                        decision,
+                        outcome,
+                        tags: self.combined_output.tags.iter().cloned().collect(),
+                    };
+                    self.response = Some(Arc::new(response));
+                    self.verdict = Some(verdict);
+                    self.execute_decision_feedback().await;
 
                     // Short-circuit if restricted, we can skip the response phase
-                    return;
+                    return Ok(());
                 } else {
                     // In observe-only mode, we still perform decision feedback, but there won't be a response.
                     let verdict = Verdict {
@@ -1042,31 +1036,22 @@ impl ProcessorContext {
                     self.execute_decision_feedback().await;
                 }
 
-                let result = Self::send_allow_request_message(self.sender.clone(), end_of_stream).await;
-                // TODO: must perform proper error handling on sender results, sending can fail
-                if let Err(err) = result {
-                    error!(message = format!("send error: {}", err));
-                }
+                Self::send_allow_request_message(self.sender.clone(), end_of_stream).await?;
             },
         }
 
         // There's only a response phase if we haven't blocked.
         // Observe-only mode should also behave the same way as normal mode here.
         if !restricted {
-            match self.prepare_response().await {
-                Ok(response) => {
-                    self.response = Some(Arc::new(response));
-                    self.execute_response_phase().await;
-                    self.complete_response_phase().await;
-                }
-                Err(err) => {
-                    error!(message = format!("response error: {}", err));
-                }
-            }
+            let response = self.prepare_response().await?;
+            self.response = Some(Arc::new(response));
+            self.execute_response_phase().await;
+            self.complete_response_phase().await?;
         }
+        Ok(())
     }
 
-    async fn complete_response_phase(&mut self) {
+    async fn complete_response_phase(&mut self) -> Result<(), PhaseError> {
         let decision = self.combined_output.decision;
         let outcome = decision
             .outcome(
@@ -1111,28 +1096,16 @@ impl ProcessorContext {
             // suspected requests are monitored but not rejected
             | bulwark_sdk::Outcome::Suspected => {
                 info!(message = "process response", status = u16::from(response.status()));
-                let result = Self::send_allow_response_message(self.sender.clone(), end_of_stream).await;
-                // TODO: must perform proper error handling on sender results, sending can fail
-                if let Err(err) = result {
-                    error!(message = format!("send error: {}", err));
-                }
+                Self::send_allow_response_message(self.sender.clone(), end_of_stream).await?;
             },
             bulwark_sdk::Outcome::Restricted => {
                 if !self.thresholds.observe_only {
                     info!(message = "process response", status = 403);
-                    let result = Self::send_block_response_message(self.sender.clone()).await;
-                    // TODO: must perform proper error handling on sender results, sending can fail
-                    if let Err(err) = result {
-                        error!(message = format!("send error: {}", err));
-                    }
+                    Self::send_block_response_message(self.sender.clone()).await?;
                 } else {
                     info!(message = "process response", status = u16::from(response.status()));
                     // Don't receive a body when we would have otherwise blocked if we weren't in monitor-only mode
-                    let result = Self::send_allow_response_message(self.sender.clone(), end_of_stream).await;
-                    // TODO: must perform proper error handling on sender results, sending can fail
-                    if let Err(err) = result {
-                        error!(message = format!("send error: {}", err));
-                    }
+                    Self::send_allow_response_message(self.sender.clone(), end_of_stream).await?;
                 }
             }
         }
@@ -1144,6 +1117,7 @@ impl ProcessorContext {
         };
         self.verdict = Some(verdict);
         self.execute_decision_feedback().await;
+        Ok(())
     }
 
     #[instrument(name = "plugin output", skip(self))]
