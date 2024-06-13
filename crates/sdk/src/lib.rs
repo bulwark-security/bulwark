@@ -18,6 +18,7 @@ pub mod wit {
 mod errors;
 mod from;
 mod host_api;
+pub mod http;
 pub mod redis;
 
 pub use bulwark_decision::*;

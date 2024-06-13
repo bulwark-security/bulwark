@@ -6,7 +6,7 @@ pub struct AlicePlugin;
 #[bulwark_plugin]
 impl HttpHandlers for AlicePlugin {
     fn handle_request_enrichment(
-        _request: Request,
+        _request: http::Request,
         labels: HashMap<String, String>,
     ) -> Result<HashMap<String, String>, Error> {
         let mut new_labels = HashMap::new();
@@ -19,7 +19,7 @@ impl HttpHandlers for AlicePlugin {
     }
 
     fn handle_request_decision(
-        request: Request,
+        request: http::Request,
         _labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, Error> {
         let mut output = HandlerOutput::default();
@@ -33,8 +33,8 @@ impl HttpHandlers for AlicePlugin {
     }
 
     fn handle_response_decision(
-        request: Request,
-        response: Response,
+        request: http::Request,
+        response: http::Response,
         labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, Error> {
         let mut output = HandlerOutput::default();

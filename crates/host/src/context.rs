@@ -973,7 +973,7 @@ fn verify_http_domains(
     allowed_http_domains: &[String],
     authority: &str,
 ) -> Result<(), bulwark_sdk::Error> {
-    let parsed_uri = Url::parse(format!("//{}/", authority).as_str())
+    let parsed_uri = Url::parse(format!("dummy://{}/", authority).as_str())
         .map_err(|e| bulwark_sdk::error!("invalid request authority <{}>: {}", authority, e))?;
     let requested_domain = parsed_uri.domain().ok_or_else(|| {
         bulwark_sdk::error!("request authority must be a valid dns name <{}>", authority)

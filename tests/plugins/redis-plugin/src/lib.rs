@@ -24,7 +24,7 @@ impl HttpHandlers for RedisPlugin {
     }
 
     fn handle_request_decision(
-        _request: Request,
+        _request: http::Request,
         _labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, Error> {
         let mut output = HandlerOutput::default();

@@ -6,7 +6,7 @@ pub struct BobPlugin;
 #[bulwark_plugin]
 impl HttpHandlers for BobPlugin {
     fn handle_request_decision(
-        request: Request,
+        request: http::Request,
         _labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, Error> {
         let mut output = HandlerOutput::default();
@@ -23,8 +23,8 @@ impl HttpHandlers for BobPlugin {
     }
 
     fn handle_response_decision(
-        _request: Request,
-        _response: Response,
+        _request: http::Request,
+        _response: http::Response,
         _labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, Error> {
         let mut output = HandlerOutput::default();
@@ -33,8 +33,8 @@ impl HttpHandlers for BobPlugin {
     }
 
     fn handle_decision_feedback(
-        _request: Request,
-        _response: Response,
+        _request: http::Request,
+        _response: http::Response,
         _labels: HashMap<String, String>,
         _verdict: Verdict,
     ) -> Result<(), Error> {

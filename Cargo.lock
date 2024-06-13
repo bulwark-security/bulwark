@@ -479,11 +479,13 @@ name = "bulwark-sdk"
 version = "0.5.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bulwark-decision",
  "bulwark-sdk-macros",
  "bytes",
  "cfg-if",
  "forwarded-header-value",
+ "futures",
  "http 1.1.0",
  "serde_json",
  "thiserror",

@@ -7,7 +7,7 @@ pub struct EvilBit;
 impl HttpHandlers for EvilBit {
     /// Check to see if the request has confessed malicious intent by setting an `Evil` header.
     fn handle_request_decision(
-        request: Request,
+        request: http::Request,
         _labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, Error> {
         let mut output = HandlerOutput::default();

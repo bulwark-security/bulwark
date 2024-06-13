@@ -35,7 +35,7 @@ pub enum PhaseError {
     Response(#[from] ResponseError),
 }
 
-/// Returned when trying to assemble a [`Request`](bulwark_sdk::Request) struct and Envoy sends missing
+/// Returned when trying to assemble a [`Request`](bulwark_sdk::http::Request) struct and Envoy sends missing
 /// or invalid information or an [HTTP error](http::Error) occurs.
 #[derive(thiserror::Error, Debug)]
 pub enum RequestError {
@@ -59,7 +59,7 @@ pub enum RequestError {
     Disconnected,
 }
 
-/// Returned when trying to assemble a [`Response`](bulwark_sdk::Response) struct and Envoy sends missing
+/// Returned when trying to assemble a [`Response`](bulwark_sdk::http::Response) struct and Envoy sends missing
 /// or invalid information or an [HTTP error](http::Error) occurs.
 #[derive(thiserror::Error, Debug)]
 pub enum ResponseError {
