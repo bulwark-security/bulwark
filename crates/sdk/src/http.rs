@@ -15,7 +15,6 @@ pub type Request = http::Request<crate::Bytes>;
 /// access to the first chunk of a response body.
 pub type Response = http::Response<crate::Bytes>;
 
-use crate::errors::HttpSendError;
 use crate::wit::wasi::http::outgoing_handler;
 #[doc(inline)]
 pub use crate::wit::wasi::http::types::{
@@ -32,6 +31,29 @@ use std::sync::{Arc, Mutex};
 use std::task::{Poll, Wake, Waker};
 
 const READ_SIZE: u64 = 16 * 1024;
+
+/// Returned when there is an error sending an outgoing HTTP request.
+#[derive(thiserror::Error, Debug)]
+pub enum SendError {
+    /// A generic I/O error
+    #[error("i/o error: {0}")]
+    GenericIo(String),
+    /// A stream I/O error
+    #[error(transparent)]
+    StreamIo(#[from] crate::wit::wasi::io::streams::StreamError),
+    /// An HTTP error originating from the WASI HTTP bindings
+    #[error(transparent)]
+    WasiHttp(#[from] crate::wit::wasi::http::types::ErrorCode),
+    /// An HTTP error originating from the HTTP client
+    #[error(transparent)]
+    ClientHttp(#[from] http::Error),
+    /// A request conversion error
+    #[error("could not convert request")]
+    RequestConversion,
+    /// A response conversion error
+    #[error("could not convert response")]
+    ResponseConversion,
+}
 
 /// A trait for converting a type into an `OutgoingRequest`
 trait TryIntoOutgoingRequest {
@@ -129,7 +151,7 @@ impl TryFromIncomingResponse for IncomingResponse {
 
 #[async_trait]
 impl TryFromIncomingResponse for Response {
-    type Error = HttpSendError;
+    type Error = SendError;
 
     async fn try_from_incoming_response(response: IncomingResponse) -> Result<Self, Self::Error> {
         let mut new_resp = http::response::Builder::new()
@@ -142,7 +164,7 @@ impl TryFromIncomingResponse for Response {
             response
                 .into_body()
                 .await
-                .map_err(|e| HttpSendError::GenericIo(e.to_debug_string()))?,
+                .map_err(|e| SendError::GenericIo(e.to_debug_string()))?,
         );
         Ok(new_resp.body(body)?)
     }
@@ -205,7 +227,7 @@ impl OutgoingRequest {
 }
 
 /// Send an outgoing request
-pub fn send(request: Request) -> Result<Response, HttpSendError> {
+pub fn send(request: Request) -> Result<Response, SendError> {
     run(send_async(request))
 }
 
@@ -270,7 +292,7 @@ fn run<T>(future: impl Future<Output = T>) -> T {
 }
 
 /// Send an outgoing request
-async fn send_async<I, O>(request: I) -> Result<O, HttpSendError>
+async fn send_async<I, O>(request: I) -> Result<O, SendError>
 where
     I: TryIntoOutgoingRequest,
     I::Error: Into<Box<dyn std::error::Error + Send + Sync>> + 'static,
@@ -278,7 +300,7 @@ where
     O::Error: Into<Box<dyn std::error::Error + Send + Sync>> + 'static,
 {
     let (request, body_buffer) =
-        I::try_into_outgoing_request(request).map_err(|_| HttpSendError::RequestConversion)?;
+        I::try_into_outgoing_request(request).map_err(|_| SendError::RequestConversion)?;
     let response = if let Some(body_buffer) = body_buffer {
         // It is part of the contract of the trait that implementors of `TryIntoOutgoingRequest`
         // do not call `OutgoingRequest::write`` if they return a buffered body.
@@ -287,18 +309,18 @@ where
         body_sink
             .send(body_buffer)
             .await
-            .map_err(HttpSendError::StreamIo)?;
+            .map_err(SendError::StreamIo)?;
         drop(body_sink);
-        response.await.map_err(HttpSendError::WasiHttp)?
+        response.await.map_err(SendError::WasiHttp)?
     } else {
         outgoing_request_send(request)
             .await
-            .map_err(HttpSendError::WasiHttp)?
+            .map_err(SendError::WasiHttp)?
     };
 
     TryFromIncomingResponse::try_from_incoming_response(response)
         .await
-        .map_err(|_| HttpSendError::ResponseConversion)
+        .map_err(|_| SendError::ResponseConversion)
 }
 
 fn outgoing_body(body: OutgoingBody) -> impl futures::Sink<Vec<u8>, Error = StreamError> {

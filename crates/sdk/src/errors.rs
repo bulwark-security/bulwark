@@ -65,26 +65,3 @@ impl From<ParseCounterError> for RemoteStateError {
         }
     }
 }
-
-/// Returned when there is an error sending an outgoing HTTP request.
-#[derive(thiserror::Error, Debug)]
-pub enum HttpSendError {
-    /// A generic I/O error
-    #[error("i/o error: {0}")]
-    GenericIo(String),
-    /// A stream I/O error
-    #[error(transparent)]
-    StreamIo(#[from] crate::wit::wasi::io::streams::StreamError),
-    /// An HTTP error originating from the WASI HTTP bindings
-    #[error(transparent)]
-    WasiHttp(#[from] crate::wit::wasi::http::types::ErrorCode),
-    /// An HTTP error originating from the HTTP client
-    #[error(transparent)]
-    ClientHttp(#[from] http::Error),
-    /// A request conversion error
-    #[error("could not convert request")]
-    RequestConversion,
-    /// A response conversion error
-    #[error("could not convert response")]
-    ResponseConversion,
-}
