@@ -1,10 +1,12 @@
-/// Reexports most of the `http` crate.
+/// Reexport from the `http` crate.
 pub use http::{
     uri, Extensions, HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri, Version,
 };
+/// Reexport from the `http` crate.
 pub mod request {
     pub use http::request::{Builder, Parts};
 }
+/// Reexport from the `http` crate.
 pub mod response {
     pub use http::response::{Builder, Parts};
 }
@@ -52,6 +54,46 @@ pub enum SendError {
     ResponseConversion,
 }
 
+/// Send an outgoing request.
+///
+/// Requires `http` permissions to be set in the plugin configuration for any domain or host this function will be
+/// making requests to. In the example below, this would require the `http` permission value to be set to at least
+/// `["www.example.com"]`.
+///
+/// Note that if an HTTP request version is set, it will be ignored because the underlying `wasi-http` API abstracts
+/// HTTP version and transport protocol choices.
+///
+/// # Example
+///
+#[cfg_attr(doctest, doc = " ````no_test")]
+/// ```rust
+/// use bulwark_sdk::*;
+/// use std::collections::HashMap;
+///
+/// pub struct HttpExample;
+///
+/// #[bulwark_plugin]
+/// impl HttpHandlers for HttpExample {
+///     fn handle_request_decision(
+///         _request: http::Request,
+///         _labels: HashMap<String, String>,
+///     ) -> Result<HandlerOutput, Error> {
+///         let _response = http::send(
+///             http::request::Builder::new()
+///                 .method("GET")
+///                 .uri("http://www.example.com/")
+///                 .body(Bytes::new())?,
+///         )?;
+///         // Do something with the response
+///
+///         Ok(HandlerOutput::default())
+///     }
+/// }
+/// ```
+pub fn send(request: Request) -> Result<Response, SendError> {
+    run(send_async(request))
+}
+
 impl OutgoingRequest {
     /// Construct a `Sink` which writes chunks to the body of the specified response.
     ///
@@ -89,11 +131,6 @@ impl IncomingResponse {
         }
         Ok(body)
     }
-}
-
-/// Send an outgoing request
-pub fn send(request: Request) -> Result<Response, SendError> {
-    run(send_async(request))
 }
 
 static WAKERS: Mutex<Vec<(crate::wit::wasi::io::poll::Pollable, Waker)>> = Mutex::new(Vec::new());
