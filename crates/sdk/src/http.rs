@@ -17,12 +17,10 @@ pub type Response = http::Response<crate::Bytes>;
 
 use crate::wit::wasi::http::outgoing_handler;
 #[doc(inline)]
-pub use crate::wit::wasi::http::types::{
-    ErrorCode, Fields, Headers, IncomingBody, IncomingRequest, IncomingResponse, OutgoingBody,
-    OutgoingRequest, OutgoingResponse, Scheme, Trailers,
+use crate::wit::wasi::http::types::{
+    ErrorCode, Headers, IncomingBody, IncomingResponse, OutgoingBody, OutgoingRequest, Scheme,
 };
 use crate::wit::wasi::io::streams::{InputStream, OutputStream, StreamError};
-use async_trait::async_trait;
 use futures::SinkExt;
 use std::cell::RefCell;
 use std::future::Future;
@@ -48,125 +46,21 @@ pub enum SendError {
     #[error(transparent)]
     ClientHttp(#[from] http::Error),
     /// A request conversion error
-    #[error("could not convert request")]
-    RequestConversion,
+    #[error("could not convert request: {0}")]
+    RequestConversion(String),
     /// A response conversion error
     #[error("could not convert response")]
     ResponseConversion,
 }
 
-/// A trait for converting a type into an `OutgoingRequest`
-trait TryIntoOutgoingRequest {
-    /// The error if the conversion fails
-    type Error;
-
-    /// Turn the type into an `OutgoingRequest`
+impl OutgoingRequest {
+    /// Construct a `Sink` which writes chunks to the body of the specified response.
     ///
-    /// If the implementor can be sure that the `OutgoingRequest::write` has not been called they
-    /// can return a buffer as the second element of the returned tuple and `send` will send
-    /// that as the request body.
-    fn try_into_outgoing_request(self) -> Result<(OutgoingRequest, Option<Vec<u8>>), Self::Error>;
-}
-
-impl TryIntoOutgoingRequest for OutgoingRequest {
-    type Error = std::convert::Infallible;
-
-    fn try_into_outgoing_request(self) -> Result<(OutgoingRequest, Option<Vec<u8>>), Self::Error> {
-        Ok((self, None))
-    }
-}
-
-impl TryIntoOutgoingRequest for Request {
-    type Error = anyhow::Error;
-
-    fn try_into_outgoing_request(self) -> Result<(OutgoingRequest, Option<Vec<u8>>), Self::Error> {
-        let (parts, body) = self.into_parts();
-        let (method, uri, headers) = (parts.method, parts.uri, parts.headers);
-        let is_https = if let Some(scheme) = uri.scheme() {
-            scheme == &http::uri::Scheme::HTTPS
-        } else {
-            false
-        };
-        let headers = headers
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.as_bytes().to_vec()))
-            .collect::<Vec<_>>();
-        let request = OutgoingRequest::new(Headers::from_list(&headers)?);
-        request
-            .set_method(match method {
-                http::Method::GET => &crate::wit::wasi::http::types::Method::Get,
-                http::Method::HEAD => &crate::wit::wasi::http::types::Method::Head,
-                http::Method::POST => &crate::wit::wasi::http::types::Method::Post,
-                http::Method::PUT => &crate::wit::wasi::http::types::Method::Put,
-                http::Method::DELETE => &crate::wit::wasi::http::types::Method::Delete,
-                http::Method::PATCH => &crate::wit::wasi::http::types::Method::Patch,
-                http::Method::CONNECT => &crate::wit::wasi::http::types::Method::Connect,
-                http::Method::OPTIONS => &crate::wit::wasi::http::types::Method::Options,
-                http::Method::TRACE => &crate::wit::wasi::http::types::Method::Trace,
-                _ => return Err(anyhow::anyhow!("unsupported method: {:?}", method)),
-            })
-            .map_err(|()| anyhow::anyhow!("error setting method to {}", method))?;
-        request
-            .set_path_with_query(uri.path_and_query().map(|path| path.as_str()))
-            .map_err(|()| anyhow::anyhow!("error setting path to {:?}", uri.path_and_query()))?;
-        request
-            .set_scheme(Some(if is_https {
-                &Scheme::Https
-            } else {
-                &Scheme::Http
-            }))
-            // According to the documentation, `Request::set_scheme` can only fail due to a malformed
-            // `Scheme::Other` payload, but we never pass `Scheme::Other` above, hence the `expect`.
-            .expect("unexpected scheme");
-        let authority = uri
-            .authority()
-            .map(|authority| authority.as_str())
-            // `wasi-http` requires an authority for outgoing requests, so we always supply one:
-            .or(Some(if is_https { ":443" } else { ":80" }));
-        request
-            .set_authority(authority)
-            .map_err(|()| anyhow::anyhow!("error setting authority to {authority:?}"))?;
-        Ok((request, Some(body.to_vec())))
-    }
-}
-
-/// A trait for converting from an `IncomingRequest`
-#[async_trait]
-trait TryFromIncomingResponse {
-    /// The error if conversion fails
-    type Error;
-    /// Turn the `IncomingResponse` into the type
-    async fn try_from_incoming_response(resp: IncomingResponse) -> Result<Self, Self::Error>
-    where
-        Self: Sized;
-}
-
-#[async_trait]
-impl TryFromIncomingResponse for IncomingResponse {
-    type Error = std::convert::Infallible;
-    async fn try_from_incoming_response(resp: IncomingResponse) -> Result<Self, Self::Error> {
-        Ok(resp)
-    }
-}
-
-#[async_trait]
-impl TryFromIncomingResponse for Response {
-    type Error = SendError;
-
-    async fn try_from_incoming_response(response: IncomingResponse) -> Result<Self, Self::Error> {
-        let mut new_resp = http::response::Builder::new()
-            .status(response.status())
-            .status(response.status());
-        for (name, value) in response.headers().entries() {
-            new_resp = new_resp.header(name, value);
-        }
-        let body = bytes::Bytes::from(
-            response
-                .into_body()
-                .await
-                .map_err(|e| SendError::GenericIo(e.to_debug_string()))?,
-        );
-        Ok(new_resp.body(body)?)
+    /// # Panics
+    ///
+    /// Panics if the body was already taken.
+    pub fn take_body(&self) -> impl futures::Sink<Vec<u8>, Error = StreamError> {
+        outgoing_body(self.body().expect("request body was already taken"))
     }
 }
 
@@ -183,7 +77,7 @@ impl IncomingResponse {
     // have started, they might not be able to finish before the connection is closed).  See
     // https://github.com/bytecodealliance/wasmtime/issues/7413 for details.
     fn take_body_stream(
-        &self,
+        self,
     ) -> impl futures::Stream<Item = Result<Vec<u8>, crate::wit::wasi::io::streams::Error>> {
         incoming_body(self.consume().expect("response body was already consumed"))
     }
@@ -201,28 +95,6 @@ impl IncomingResponse {
             body.extend(chunk);
         }
         Ok(body)
-    }
-}
-
-impl OutgoingResponse {
-    /// Construct a `Sink` which writes chunks to the body of the specified response.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the body was already taken.
-    pub fn take_body(&self) -> impl futures::Sink<Vec<u8>, Error = StreamError> {
-        outgoing_body(self.body().expect("response body was already taken"))
-    }
-}
-
-impl OutgoingRequest {
-    /// Construct a `Sink` which writes chunks to the body of the specified response.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the body was already taken.
-    pub fn take_body(&self) -> impl futures::Sink<Vec<u8>, Error = StreamError> {
-        outgoing_body(self.body().expect("request body was already taken"))
     }
 }
 
@@ -292,15 +164,71 @@ fn run<T>(future: impl Future<Output = T>) -> T {
 }
 
 /// Send an outgoing request
-async fn send_async<I, O>(request: I) -> Result<O, SendError>
-where
-    I: TryIntoOutgoingRequest,
-    I::Error: Into<Box<dyn std::error::Error + Send + Sync>> + 'static,
-    O: TryFromIncomingResponse,
-    O::Error: Into<Box<dyn std::error::Error + Send + Sync>> + 'static,
-{
-    let (request, body_buffer) =
-        I::try_into_outgoing_request(request).map_err(|_| SendError::RequestConversion)?;
+async fn send_async(request: Request) -> Result<Response, SendError> {
+    // Convert the request into an `OutgoingRequest`.
+    let (parts, body) = request.into_parts();
+    let (method, uri, headers) = (parts.method, parts.uri, parts.headers);
+    let is_https = if let Some(scheme) = uri.scheme() {
+        scheme == &http::uri::Scheme::HTTPS
+    } else {
+        false
+    };
+    let headers = headers
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.as_bytes().to_vec()))
+        .collect::<Vec<_>>();
+    let out_req = OutgoingRequest::new(
+        Headers::from_list(&headers)
+            .map_err(|e| SendError::RequestConversion(format!("header error: {}", e)))?,
+    );
+    out_req
+        .set_method(match method {
+            http::Method::GET => &crate::wit::wasi::http::types::Method::Get,
+            http::Method::HEAD => &crate::wit::wasi::http::types::Method::Head,
+            http::Method::POST => &crate::wit::wasi::http::types::Method::Post,
+            http::Method::PUT => &crate::wit::wasi::http::types::Method::Put,
+            http::Method::DELETE => &crate::wit::wasi::http::types::Method::Delete,
+            http::Method::PATCH => &crate::wit::wasi::http::types::Method::Patch,
+            http::Method::CONNECT => &crate::wit::wasi::http::types::Method::Connect,
+            http::Method::OPTIONS => &crate::wit::wasi::http::types::Method::Options,
+            http::Method::TRACE => &crate::wit::wasi::http::types::Method::Trace,
+            _ => {
+                return Err(
+                    crate::wit::wasi::http::types::ErrorCode::HttpRequestMethodInvalid.into(),
+                )
+            }
+        })
+        .map_err(|()| {
+            SendError::RequestConversion(format!("could not set method to {}", method))
+        })?;
+    out_req
+        .set_path_with_query(uri.path_and_query().map(|path| path.as_str()))
+        .map_err(|()| {
+            SendError::RequestConversion(format!(
+                "error setting path to {:?}",
+                uri.path_and_query()
+            ))
+        })?;
+    out_req
+        .set_scheme(Some(if is_https {
+            &Scheme::Https
+        } else {
+            &Scheme::Http
+        }))
+        // According to the documentation, `Request::set_scheme` can only fail due to a malformed
+        // `Scheme::Other` payload, but we never pass `Scheme::Other` above, hence the `expect`.
+        .expect("unexpected scheme");
+    let authority = uri
+        .authority()
+        .map(|authority| authority.as_str())
+        // `wasi-http` requires an authority for outgoing requests, so we always supply one:
+        .or(Some(if is_https { ":443" } else { ":80" }));
+    out_req.set_authority(authority).map_err(|()| {
+        SendError::RequestConversion(format!("error setting authority to {authority:?}"))
+    })?;
+
+    let (request, body_buffer) = (out_req, Some(body.to_vec()));
+
     let response = if let Some(body_buffer) = body_buffer {
         // It is part of the contract of the trait that implementors of `TryIntoOutgoingRequest`
         // do not call `OutgoingRequest::write`` if they return a buffered body.
@@ -318,9 +246,24 @@ where
             .map_err(SendError::WasiHttp)?
     };
 
-    TryFromIncomingResponse::try_from_incoming_response(response)
-        .await
-        .map_err(|_| SendError::ResponseConversion)
+    // Convert the `IncomingResponse` into a `Response`.
+    let mut new_resp = http::response::Builder::new()
+        .status(response.status())
+        .status(response.status());
+    for (name, value) in response.headers().entries() {
+        new_resp = new_resp.header(name, value);
+    }
+    let body = bytes::Bytes::from(
+        response
+            .into_body()
+            .await
+            .map_err(|e| SendError::GenericIo(e.to_debug_string()))?,
+    );
+    Ok(new_resp.body(body)?)
+
+    // TryFromIncomingResponse::try_from_incoming_response(response)
+    //     .await
+    //     .map_err(|_| SendError::ResponseConversion)
 }
 
 fn outgoing_body(body: OutgoingBody) -> impl futures::Sink<Vec<u8>, Error = StreamError> {
