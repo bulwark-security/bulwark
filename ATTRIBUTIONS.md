@@ -1,4 +1,4 @@
-# Open Source License Attribution
+# Open-Source License Attribution
 
 This application uses Open Source components and modified exerpts from other projects.
 The complete dependency list can be found in our `Cargo.lock` file. Code that has been
