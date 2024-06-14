@@ -236,28 +236,9 @@ impl Decision {
     ///
     /// * `min` - The minimum [`unknown`](Decision::unknown) value.
     pub fn clamp_min_unknown(&self, min: f64) -> Self {
-        let mut accept: f64 = self.accept;
-        let mut restrict: f64 = self.restrict;
-        let mut unknown: f64 = self.unknown;
-
-        if accept < 0.0 {
-            accept = 0.0
-        } else if accept > 1.0 {
-            accept = 1.0
-        }
-        if restrict < 0.0 {
-            restrict = 0.0
-        } else if restrict > 1.0 {
-            restrict = 1.0
-        }
-        if unknown < 0.0 {
-            unknown = 0.0
-        } else if unknown > 1.0 {
-            unknown = 1.0
-        }
-        if unknown < min {
-            unknown = min
-        }
+        let accept: f64 = self.accept.clamp(0.0, 1.0);
+        let restrict: f64 = self.restrict.clamp(0.0, 1.0);
+        let unknown: f64 = self.unknown.clamp(min.max(0.0), 1.0);
 
         Self {
             accept,
@@ -670,6 +651,20 @@ mod tests {
         accept = 1.0,
         restrict = 1.0,
         unknown = 1.0
+    );
+
+    test_decision!(
+        clamp_min_unknown,
+        Decision {
+            accept: 2.0,
+            restrict: 2.0,
+            unknown: -1.0,
+        }
+        .clamp_min_unknown(0.3),
+        false,
+        accept = 1.0,
+        restrict = 1.0,
+        unknown = 0.3
     );
 
     test_decision!(
