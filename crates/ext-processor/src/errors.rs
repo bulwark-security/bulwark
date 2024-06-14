@@ -83,8 +83,8 @@ pub enum SfvError {
 }
 
 /// Returned when performing an action that sends a
-/// [`ProcessingRequest`](envoy_control_plane::envoy::service::ext_proc::v3::ProcessingRequest) or a
-/// [`ProcessingResponse`](envoy_control_plane::envoy::service::ext_proc::v3::ProcessingResponse).
+/// [`ProcessingRequest`](crate::protobuf::envoy::service::ext_proc::v3::ProcessingRequest) or a
+/// [`ProcessingResponse`](crate::protobuf::envoy::service::ext_proc::v3::ProcessingResponse).
 #[derive(thiserror::Error, Debug)]
 pub enum ProcessingMessageError {
     #[error(transparent)]

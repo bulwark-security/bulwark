@@ -8,15 +8,14 @@ pub mod request {
 pub mod response {
     pub use http::response::{Builder, Parts};
 }
-/// An HTTP request combines a head consisting of a [`Method`](http::Method), [`Uri`](http::Uri), and headers with [`Bytes`], which provides
+/// An HTTP request combines a head consisting of a [`Method`], [`Uri`], and headers with [`Bytes`](crate::Bytes), which provides
 /// access to the first chunk of a request body.
 pub type Request = http::Request<crate::Bytes>;
-/// An HTTP response combines a head consisting of a [`StatusCode`](http::StatusCode) and headers with [`Bytes`], which provides
+/// An HTTP response combines a head consisting of a [`StatusCode`] and headers with [`Bytes`](crate::Bytes), which provides
 /// access to the first chunk of a response body.
 pub type Response = http::Response<crate::Bytes>;
 
 use crate::wit::wasi::http::outgoing_handler;
-#[doc(inline)]
 use crate::wit::wasi::http::types::{
     ErrorCode, Headers, IncomingBody, IncomingResponse, OutgoingBody, OutgoingRequest, Scheme,
 };
@@ -70,12 +69,6 @@ impl IncomingResponse {
     /// # Panics
     ///
     /// Panics if the body was already consumed.
-    // TODO: This should ideally take ownership of `self` and be called `into_body_stream` (i.e. symmetric with
-    // `IncomingRequest::into_body_stream`).  However, as of this writing, `wasmtime-wasi-http` is implemented in
-    // such a way that dropping an `IncomingResponse` will cause the request to be cancelled, meaning the caller
-    // won't necessarily have a chance to send the request body if they haven't started doing so yet (or, if they
-    // have started, they might not be able to finish before the connection is closed).  See
-    // https://github.com/bytecodealliance/wasmtime/issues/7413 for details.
     fn take_body_stream(
         self,
     ) -> impl futures::Stream<Item = Result<Vec<u8>, crate::wit::wasi::io::streams::Error>> {
