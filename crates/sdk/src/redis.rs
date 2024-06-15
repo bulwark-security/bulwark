@@ -1,3 +1,60 @@
+//! Redis module for managing remote state.
+
+/// Returned when there is an issue with the remote state requested by the plugin.
+#[derive(thiserror::Error, Debug)]
+pub enum RedisError {
+    #[error("access to state key '{key}' denied")]
+    Permission { key: String },
+    #[error("error accessing remote state: {message}")]
+    Remote { message: String },
+    #[error("invalid argument: {message}")]
+    InvalidArgument { message: String },
+    #[error("unexpected type received")]
+    TypeError,
+    #[error("{message}")]
+    InvalidUnicode { message: String },
+    #[error("could not parse integer value: {message}")]
+    InvalidInteger { message: String },
+    #[error("unexpected redis error: {message}")]
+    Other { message: String },
+}
+
+impl From<crate::wit::bulwark::plugin::redis::Error> for RedisError {
+    fn from(error: crate::wit::bulwark::plugin::redis::Error) -> Self {
+        match error {
+            crate::wit::bulwark::plugin::redis::Error::Permission(key) => {
+                RedisError::Permission { key }
+            }
+            crate::wit::bulwark::plugin::redis::Error::Remote(message) => {
+                RedisError::Remote { message }
+            }
+            crate::wit::bulwark::plugin::redis::Error::InvalidArgument(message) => {
+                RedisError::InvalidArgument { message }
+            }
+            crate::wit::bulwark::plugin::redis::Error::TypeError => RedisError::TypeError,
+            crate::wit::bulwark::plugin::redis::Error::Other(message) => {
+                RedisError::Other { message }
+            }
+        }
+    }
+}
+
+impl From<std::string::FromUtf8Error> for RedisError {
+    fn from(error: std::string::FromUtf8Error) -> Self {
+        RedisError::InvalidUnicode {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<crate::ParseCounterError> for RedisError {
+    fn from(error: crate::ParseCounterError) -> Self {
+        RedisError::InvalidInteger {
+            message: error.to_string(),
+        }
+    }
+}
+
 // NOTE: fields are documented via Markdown instead of normal rustdoc because the underlying type is from the macro.
 /// A `Breaker` contains the values needed to implement a circuit-breaker pattern within a plugin.
 ///
@@ -26,7 +83,7 @@ pub type Rate = crate::wit::bulwark::plugin::redis::Rate;
 /// # Arguments
 ///
 /// * `key` - The key name corresponding to the state value.
-pub fn get<K: AsRef<str>>(key: K) -> Result<Option<Vec<u8>>, crate::RemoteStateError> {
+pub fn get<K: AsRef<str>>(key: K) -> Result<Option<Vec<u8>>, RedisError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::get(key)?)
 }
@@ -39,7 +96,7 @@ pub fn get<K: AsRef<str>>(key: K) -> Result<Option<Vec<u8>>, crate::RemoteStateE
 /// # Arguments
 ///
 /// * `key` - The key name corresponding to the state value.
-pub fn get_string<K: AsRef<str>>(key: K) -> Result<Option<String>, crate::RemoteStateError> {
+pub fn get_string<K: AsRef<str>>(key: K) -> Result<Option<String>, RedisError> {
     let key: &str = key.as_ref();
     let bytes = crate::wit::bulwark::plugin::redis::get(key)?;
     if let Some(bytes) = bytes {
@@ -59,7 +116,7 @@ pub fn get_string<K: AsRef<str>>(key: K) -> Result<Option<String>, crate::Remote
 /// # Arguments
 ///
 /// * `key` - The key name corresponding to the state value.
-pub fn get_i64<K: AsRef<str>>(key: K) -> Result<Option<i64>, crate::RemoteStateError> {
+pub fn get_i64<K: AsRef<str>>(key: K) -> Result<Option<i64>, RedisError> {
     let key: &str = key.as_ref();
     let bytes = crate::wit::bulwark::plugin::redis::get(key)?;
     if let Some(bytes) = bytes {
@@ -78,7 +135,7 @@ pub fn get_i64<K: AsRef<str>>(key: K) -> Result<Option<i64>, crate::RemoteStateE
 ///
 /// * `key` - The key name corresponding to the state value.
 /// * `value` - The value to record. Values are byte strings, but may be interpreted differently by Redis depending on context.
-pub fn set<K: AsRef<str>, V: AsRef<[u8]>>(key: K, value: V) -> Result<(), crate::RemoteStateError> {
+pub fn set<K: AsRef<str>, V: AsRef<[u8]>>(key: K, value: V) -> Result<(), RedisError> {
     let key: &str = key.as_ref();
     let value: &[u8] = value.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::set(key, value)?)
@@ -93,10 +150,7 @@ pub fn set<K: AsRef<str>, V: AsRef<[u8]>>(key: K, value: V) -> Result<(), crate:
 ///
 /// * `key` - The key name corresponding to the state value.
 /// * `value` - The value to record. Values are byte strings, but may be interpreted differently by Redis depending on context.
-pub fn set_string<K: AsRef<str>, V: AsRef<str>>(
-    key: K,
-    value: V,
-) -> Result<(), crate::RemoteStateError> {
+pub fn set_string<K: AsRef<str>, V: AsRef<str>>(key: K, value: V) -> Result<(), RedisError> {
     let key: &str = key.as_ref();
     let value: &str = value.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::set(
@@ -114,7 +168,7 @@ pub fn set_string<K: AsRef<str>, V: AsRef<str>>(
 ///
 /// * `key` - The key name corresponding to the state value.
 /// * `value` - The value to record. Values are byte strings, but may be interpreted differently by Redis depending on context.
-pub fn set_i64<K: AsRef<str>>(key: K, value: i64) -> Result<(), crate::RemoteStateError> {
+pub fn set_i64<K: AsRef<str>>(key: K, value: i64) -> Result<(), RedisError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::set(
         key,
@@ -130,9 +184,7 @@ pub fn set_i64<K: AsRef<str>>(key: K, value: i64) -> Result<(), crate::RemoteSta
 /// # Arguments
 ///
 /// * `keys` - The list of key names corresponding to state values.
-pub fn del<I: IntoIterator<Item = T>, T: Into<String>>(
-    keys: I,
-) -> Result<u32, crate::RemoteStateError> {
+pub fn del<I: IntoIterator<Item = T>, T: Into<String>>(keys: I) -> Result<u32, RedisError> {
     let keys: Vec<String> = keys.into_iter().map(|s| s.into()).collect();
     Ok(crate::wit::bulwark::plugin::redis::del(keys.as_slice())?)
 }
@@ -147,7 +199,7 @@ pub fn del<I: IntoIterator<Item = T>, T: Into<String>>(
 /// # Arguments
 ///
 /// * `key` - The key name corresponding to the state counter.
-pub fn incr<K: AsRef<str>>(key: K) -> Result<i64, crate::RemoteStateError> {
+pub fn incr<K: AsRef<str>>(key: K) -> Result<i64, RedisError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::incr(key)?)
 }
@@ -163,7 +215,7 @@ pub fn incr<K: AsRef<str>>(key: K) -> Result<i64, crate::RemoteStateError> {
 ///
 /// * `key` - The key name corresponding to the state counter.
 /// * `delta` - The amount to increase the counter by.
-pub fn incr_by<K: AsRef<str>>(key: K, delta: i64) -> Result<i64, crate::RemoteStateError> {
+pub fn incr_by<K: AsRef<str>>(key: K, delta: i64) -> Result<i64, RedisError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::incr_by(key, delta)?)
 }
@@ -180,7 +232,7 @@ pub fn incr_by<K: AsRef<str>>(key: K, delta: i64) -> Result<i64, crate::RemoteSt
 pub fn sadd<K: AsRef<str>, I: IntoIterator<Item = T>, T: Into<String>>(
     key: K,
     members: I,
-) -> Result<u32, crate::RemoteStateError> {
+) -> Result<u32, RedisError> {
     let key: &str = key.as_ref();
     let members: Vec<String> = members.into_iter().map(|s| s.into()).collect();
     Ok(crate::wit::bulwark::plugin::redis::sadd(
@@ -194,7 +246,7 @@ pub fn sadd<K: AsRef<str>, I: IntoIterator<Item = T>, T: Into<String>>(
 /// # Arguments
 ///
 /// * `key` - The key name corresponding to the set.
-pub fn smembers<K: AsRef<str>>(key: K) -> Result<Vec<String>, crate::RemoteStateError> {
+pub fn smembers<K: AsRef<str>>(key: K) -> Result<Vec<String>, RedisError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::smembers(key)?)
 }
@@ -211,7 +263,7 @@ pub fn smembers<K: AsRef<str>>(key: K) -> Result<Vec<String>, crate::RemoteState
 pub fn srem<K: AsRef<str>, I: IntoIterator<Item = T>, T: Into<String>>(
     key: K,
     members: I,
-) -> Result<u32, crate::RemoteStateError> {
+) -> Result<u32, RedisError> {
     let key: &str = key.as_ref();
     let members: Vec<String> = members.into_iter().map(|s| s.into()).collect();
     Ok(crate::wit::bulwark::plugin::redis::srem(
@@ -229,7 +281,7 @@ pub fn srem<K: AsRef<str>, I: IntoIterator<Item = T>, T: Into<String>>(
 ///
 /// * `key` - The key name corresponding to the state value.
 /// * `ttl` - The time-to-live for the value in seconds.
-pub fn expire<K: AsRef<str>>(key: K, ttl: u64) -> Result<(), crate::RemoteStateError> {
+pub fn expire<K: AsRef<str>>(key: K, ttl: u64) -> Result<(), RedisError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::expire(key, ttl)?)
 }
@@ -243,7 +295,7 @@ pub fn expire<K: AsRef<str>>(key: K, ttl: u64) -> Result<(), crate::RemoteStateE
 ///
 /// * `key` - The key name corresponding to the state value.
 /// * `unix_time` - The unix timestamp in seconds.
-pub fn expire_at<K: AsRef<str>>(key: K, unix_time: u64) -> Result<(), crate::RemoteStateError> {
+pub fn expire_at<K: AsRef<str>>(key: K, unix_time: u64) -> Result<(), RedisError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::expire_at(
         key, unix_time,
@@ -299,11 +351,7 @@ pub fn expire_at<K: AsRef<str>>(key: K, unix_time: u64) -> Result<(), crate::Rem
 ///
 /// See [`check_rate_limit`] for an example covering both request and response handlers.
 #[inline]
-pub fn incr_rate_limit<K: AsRef<str>>(
-    key: K,
-    delta: i64,
-    window: i64,
-) -> Result<Rate, crate::RemoteStateError> {
+pub fn incr_rate_limit<K: AsRef<str>>(key: K, delta: i64, window: i64) -> Result<Rate, RedisError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::incr_rate_limit(
         key, delta, window,
@@ -365,7 +413,7 @@ pub fn incr_rate_limit<K: AsRef<str>>(
 /// ```
 ///
 /// See [`incr_rate_limit`] for a simpler example covering only the request handler.
-pub fn check_rate_limit<K: AsRef<str>>(key: K) -> Result<Option<Rate>, crate::RemoteStateError> {
+pub fn check_rate_limit<K: AsRef<str>>(key: K) -> Result<Option<Rate>, RedisError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::check_rate_limit(key)?)
 }
@@ -425,7 +473,7 @@ pub fn incr_breaker<K: AsRef<str>>(
     delta: i64,
     success: bool,
     window: i64,
-) -> Result<Breaker, crate::RemoteStateError> {
+) -> Result<Breaker, RedisError> {
     let key: &str = key.as_ref();
     let (success_delta, failure_delta) = match success {
         true => (delta, 0),
@@ -497,7 +545,7 @@ pub fn incr_breaker<K: AsRef<str>>(
 ///
 /// See [`incr_breaker`] for a simpler example covering only the request handler.
 #[inline]
-pub fn check_breaker<K: AsRef<str>>(key: K) -> Result<Option<Breaker>, crate::RemoteStateError> {
+pub fn check_breaker<K: AsRef<str>>(key: K) -> Result<Option<Breaker>, RedisError> {
     let key: &str = key.as_ref();
     Ok(crate::wit::bulwark::plugin::redis::check_breaker(key)?)
 }
