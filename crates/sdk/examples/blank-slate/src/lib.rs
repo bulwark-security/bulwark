@@ -6,7 +6,7 @@ pub struct BlankSlate;
 #[bulwark_plugin]
 impl HttpHandlers for BlankSlate {
     fn handle_request_enrichment(
-        _request: Request,
+        _request: http::Request,
         _labels: HashMap<String, String>,
     ) -> Result<HashMap<String, String>, Error> {
         // Cross-plugin communication logic goes here, or leave as a no-op.
@@ -14,7 +14,7 @@ impl HttpHandlers for BlankSlate {
     }
 
     fn handle_request_decision(
-        _request: Request,
+        _request: http::Request,
         _labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, Error> {
         let mut output = HandlerOutput::default();
@@ -25,8 +25,8 @@ impl HttpHandlers for BlankSlate {
     }
 
     fn handle_response_decision(
-        _request: Request,
-        _response: Response,
+        _request: http::Request,
+        _response: http::Response,
         _labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, Error> {
         let mut output = HandlerOutput::default();
@@ -36,8 +36,8 @@ impl HttpHandlers for BlankSlate {
     }
 
     fn handle_decision_feedback(
-        _request: Request,
-        _response: Response,
+        _request: http::Request,
+        _response: http::Response,
         _labels: HashMap<String, String>,
         _verdict: Verdict,
     ) -> Result<(), Error> {

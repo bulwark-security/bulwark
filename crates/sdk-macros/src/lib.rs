@@ -41,7 +41,7 @@ const WIT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wit");
 /// #[bulwark_plugin]
 /// impl HttpHandlers for ExamplePlugin {
 ///     fn handle_request_decision(
-///         req: Request,
+///         req: http::Request,
 ///         labels: HashMap<String, String>,
 ///     ) -> Result<HandlerOutput, Error> {
 ///         println!("hello world");
@@ -143,7 +143,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                     quote! {
                         #[handler]
                         fn handle_request_enrichment(
-                            _: ::bulwark_sdk::Request,
+                            _: ::bulwark_sdk::http::Request,
                             _: ::std::collections::HashMap<String, String>
                         ) -> Result<::std::collections::HashMap<String, String>, ::bulwark_sdk::Error> {
                             Ok(::std::collections::HashMap::new())
@@ -154,7 +154,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                     quote! {
                         #[handler]
                         fn handle_request_decision(
-                            _: ::bulwark_sdk::Request,
+                            _: ::bulwark_sdk::http::Request,
                             _: ::std::collections::HashMap<String, String>
                         ) -> Result<::bulwark_sdk::HandlerOutput, ::bulwark_sdk::Error> {
                             Ok(::bulwark_sdk::HandlerOutput {
@@ -169,8 +169,8 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                     quote! {
                         #[handler]
                         fn handle_response_decision(
-                            _: ::bulwark_sdk::Request,
-                            _: ::bulwark_sdk::Response,
+                            _: ::bulwark_sdk::http::Request,
+                            _: ::bulwark_sdk::http::Response,
                             _: ::std::collections::HashMap<String, String>
                         ) -> Result<::bulwark_sdk::HandlerOutput, ::bulwark_sdk::Error> {
                             Ok(::bulwark_sdk::HandlerOutput {
@@ -185,8 +185,8 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                     quote! {
                         #[handler]
                         fn handle_decision_feedback(
-                            _: ::bulwark_sdk::Request,
-                            _: ::bulwark_sdk::Response,
+                            _: ::bulwark_sdk::http::Request,
+                            _: ::bulwark_sdk::http::Response,
                             _: ::std::collections::HashMap<String, String>,
                             _: ::bulwark_sdk::Verdict,
                         ) -> Result<(), ::bulwark_sdk::Error> {
@@ -277,7 +277,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
-        impl TryFrom<crate::handlers::wasi::http::types::IncomingRequest> for ::bulwark_sdk::Request {
+        impl TryFrom<crate::handlers::wasi::http::types::IncomingRequest> for ::bulwark_sdk::http::Request {
             type Error = crate::handlers::exports::bulwark::plugin::http_handlers::Error;
 
             fn try_from(request: crate::handlers::wasi::http::types::IncomingRequest) -> Result<Self, Self::Error> {
@@ -362,7 +362,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
-        impl TryFrom<crate::handlers::wasi::http::types::IncomingResponse> for ::bulwark_sdk::Response {
+        impl TryFrom<crate::handlers::wasi::http::types::IncomingResponse> for ::bulwark_sdk::http::Response {
             type Error = crate::handlers::exports::bulwark::plugin::http_handlers::Error;
 
             fn try_from(response: crate::handlers::wasi::http::types::IncomingResponse) -> Result<Self, Self::Error> {

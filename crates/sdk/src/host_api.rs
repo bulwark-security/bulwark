@@ -10,19 +10,8 @@ pub use serde_json::from_value;
 pub use serde_json::json as value;
 pub use serde_json::{Map, Value};
 
-/// Reexports the `http` crate.
-pub use http;
 /// A type alias. See [`bytes::Bytes`](https://docs.rs/bytes/latest/bytes/struct.Bytes.html) for details.
 pub type Bytes = bytes::Bytes;
-/// An HTTP request combines a head consisting of a [`Method`](http::Method), [`Uri`](http::Uri), and headers with [`Bytes`], which provides
-/// access to the first chunk of a request body.
-pub type Request = http::Request<Bytes>;
-/// An HTTP response combines a head consisting of a [`StatusCode`](http::StatusCode) and headers with [`Bytes`], which provides
-/// access to the first chunk of a response body.
-pub type Response = http::Response<Bytes>;
-
-// TODO: perhaps something more like http::Request<Box<dyn AsyncRead + Sync + Send + Unpin>>?
-// TODO: or hyper::Request<HyperIncomingBody> to match WasiHttpView's new_incoming_request?
 
 /// A `HandlerOutput` represents a decision and associated output for a single handler within a single detection.
 #[derive(Clone, Default)]
@@ -74,7 +63,7 @@ pub fn config_keys() -> Vec<String> {
 /// #[bulwark_plugin]
 /// impl HttpHandlers for BannedRanges {
 ///     fn handle_request_decision(
-///         req: Request,
+///         req: http::Request,
 ///         _labels: HashMap<String, String>,
 ///     ) -> Result<HandlerOutput, Error> {
 ///         let mut output = HandlerOutput::default();
@@ -115,7 +104,7 @@ pub fn config_var(key: &str) -> Option<Value> {
 /// #[bulwark_plugin]
 /// impl HttpHandlers for RateLimiter {
 ///     fn handle_request_decision(
-///         req: Request,
+///         req: http::Request,
 ///         _labels: HashMap<String, String>,
 ///     ) -> Result<HandlerOutput, Error> {
 ///         let mut output = HandlerOutput::default();
@@ -132,7 +121,7 @@ pub fn config_var(key: &str) -> Option<Value> {
 ///     }
 /// }
 /// ```
-pub fn client_ip(req: &Request) -> Option<IpAddr> {
+pub fn client_ip(req: &crate::http::Request) -> Option<IpAddr> {
     let proxy_hops = crate::wit::bulwark::plugin::config::proxy_hops();
 
     if let Some(forwarded) = req.headers().get("forwarded") {

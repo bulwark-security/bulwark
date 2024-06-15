@@ -357,7 +357,7 @@ impl BulwarkProcessor {
 
     async fn dispatch_request_enrichment(
         plugin_instance: Arc<Mutex<PluginInstance>>,
-        request: Arc<bulwark_sdk::Request>,
+        request: Arc<bulwark_sdk::http::Request>,
         labels: HashMap<String, String>,
     ) -> Result<HashMap<String, String>, PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
@@ -381,7 +381,7 @@ impl BulwarkProcessor {
 
     async fn dispatch_request_decision(
         plugin_instance: Arc<Mutex<PluginInstance>>,
-        request: Arc<bulwark_sdk::Request>,
+        request: Arc<bulwark_sdk::http::Request>,
         labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
@@ -405,8 +405,8 @@ impl BulwarkProcessor {
 
     async fn dispatch_response_decision(
         plugin_instance: Arc<Mutex<PluginInstance>>,
-        request: Arc<bulwark_sdk::Request>,
-        response: Arc<bulwark_sdk::Response>,
+        request: Arc<bulwark_sdk::http::Request>,
+        response: Arc<bulwark_sdk::http::Response>,
         labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, PluginExecutionError> {
         let mut plugin_instance = plugin_instance.lock().await;
@@ -430,8 +430,8 @@ impl BulwarkProcessor {
 
     async fn dispatch_decision_feedback(
         plugin_instance: Arc<Mutex<PluginInstance>>,
-        request: Arc<bulwark_sdk::Request>,
-        response: Arc<bulwark_sdk::Response>,
+        request: Arc<bulwark_sdk::http::Request>,
+        response: Arc<bulwark_sdk::http::Response>,
         labels: HashMap<String, String>,
         verdict: bulwark_sdk::Verdict,
     ) -> Result<(), PluginExecutionError> {
@@ -462,8 +462,8 @@ struct ProcessorContext {
     plugin_semaphore: Arc<tokio::sync::Semaphore>,
     plugin_instances: Vec<Arc<Mutex<PluginInstance>>>,
     router_labels: HashMap<String, String>,
-    request: Arc<bulwark_sdk::Request>,
-    response: Option<Arc<bulwark_sdk::Response>>,
+    request: Arc<bulwark_sdk::http::Request>,
+    response: Option<Arc<bulwark_sdk::http::Response>>,
     verdict: Option<Verdict>,
     combined_output: HandlerOutput,
     plugin_outputs: HashMap<String, HandlerOutput>,
@@ -476,7 +476,7 @@ impl ProcessorContext {
         sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
         stream: Arc<Mutex<Streaming<ProcessingRequest>>>,
         proxy_hops: usize,
-    ) -> Result<bulwark_sdk::Request, RequestError> {
+    ) -> Result<bulwark_sdk::http::Request, RequestError> {
         if let Some(header_msg) = Self::get_request_header_message(stream.clone()).await? {
             // If there is no body, we have to skip these to avoid Envoy errors.
             let body = if !header_msg.end_of_stream {
@@ -547,7 +547,7 @@ impl ProcessorContext {
         Err(RequestError::Disconnected)
     }
 
-    async fn prepare_response(&mut self) -> Result<bulwark_sdk::Response, ResponseError> {
+    async fn prepare_response(&mut self) -> Result<bulwark_sdk::http::Response, ResponseError> {
         if let Some(header_msg) = Self::get_response_headers_message(self.stream.clone()).await? {
             // If there is no body, we have to skip these to avoid Envoy errors.
             let body = if !header_msg.end_of_stream {
@@ -1154,7 +1154,7 @@ impl ProcessorContext {
     fn generate_block_response(
         code: i32,
         body: &str,
-    ) -> Result<bulwark_sdk::Response, http::Error> {
+    ) -> Result<bulwark_sdk::http::Response, http::Error> {
         http::response::Builder::new()
             .status(code as u16)
             .body(bytes::Bytes::from(body.to_string()))
@@ -1189,7 +1189,7 @@ impl ProcessorContext {
 
     async fn send_block_request_message(
         sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
-    ) -> Result<bulwark_sdk::Response, ProcessingMessageError> {
+    ) -> Result<bulwark_sdk::http::Response, ProcessingMessageError> {
         let mut sender = sender.lock().await;
 
         trace!("send_block_request_message (ProcessingResponse)");
@@ -1242,7 +1242,7 @@ impl ProcessorContext {
 
     async fn send_block_response_message(
         sender: Arc<Mutex<UnboundedSender<Result<ProcessingResponse, tonic::Status>>>>,
-    ) -> Result<bulwark_sdk::Response, ProcessingMessageError> {
+    ) -> Result<bulwark_sdk::http::Response, ProcessingMessageError> {
         let mut sender = sender.lock().await;
 
         trace!("send_block_response_message (ProcessingResponse)");
@@ -1250,7 +1250,7 @@ impl ProcessorContext {
         let code: i32 = 403;
         // TODO: better default response + customizability
         let body = "Access Denied\n";
-        let response: bulwark_sdk::Response = http::response::Builder::new()
+        let response: bulwark_sdk::http::Response = http::response::Builder::new()
             .status(code as u16)
             .body(bytes::Bytes::from(body))?;
         let processing_reply = ProcessingResponse {

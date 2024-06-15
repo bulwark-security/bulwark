@@ -434,7 +434,7 @@ impl PluginInstance {
     /// Executes the guest's `on_request` function.
     pub async fn handle_request_enrichment(
         &mut self,
-        request: Arc<bulwark_sdk::Request>,
+        request: Arc<bulwark_sdk::http::Request>,
         labels: HashMap<String, String>,
     ) -> Result<HashMap<String, String>, PluginExecutionError> {
         let incoming_request: http::Request<HyperIncomingBody> = (*request).clone().map(|body| {
@@ -480,7 +480,7 @@ impl PluginInstance {
     /// Executes the guest's `on_request_decision` function.
     pub async fn handle_request_decision(
         &mut self,
-        request: Arc<bulwark_sdk::Request>,
+        request: Arc<bulwark_sdk::http::Request>,
         labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, PluginExecutionError> {
         let incoming_request: http::Request<HyperIncomingBody> = (*request).clone().map(|body| {
@@ -524,8 +524,8 @@ impl PluginInstance {
     /// Executes the guest's `on_response_decision` function.
     pub async fn handle_response_decision(
         &mut self,
-        request: Arc<bulwark_sdk::Request>,
-        response: Arc<bulwark_sdk::Response>,
+        request: Arc<bulwark_sdk::http::Request>,
+        response: Arc<bulwark_sdk::http::Response>,
         labels: HashMap<String, String>,
     ) -> Result<HandlerOutput, PluginExecutionError> {
         let incoming_request: http::Request<HyperIncomingBody> = (*request).clone().map(|body| {
@@ -590,8 +590,8 @@ impl PluginInstance {
     /// Executes the guest's `on_decision_feedback` function.
     pub async fn handle_decision_feedback(
         &mut self,
-        request: Arc<bulwark_sdk::Request>,
-        response: Arc<bulwark_sdk::Response>,
+        request: Arc<bulwark_sdk::http::Request>,
+        response: Arc<bulwark_sdk::http::Response>,
         labels: HashMap<String, String>,
         verdict: bulwark_sdk::Verdict,
     ) -> Result<(), PluginExecutionError> {
