@@ -325,7 +325,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                 let mut end_of_stream = true;
                 let headers = request.headers().entries();
                 for (name, value) in headers {
-                    if name.to_ascii_lowercase().trim() == "content-length" {
+                    if name.eq_ignore_ascii_case("content-length") {
                         if let Ok(value) = std::str::from_utf8(&value) {
                             if let Ok(value) = value.parse::<u64>() {
                                 if value > 0 {
@@ -334,7 +334,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                             }
                         }
                     }
-                    if name.to_ascii_lowercase().trim() == "transfer-encoding" {
+                    if name.eq_ignore_ascii_case("transfer-encoding") {
                         end_of_stream = false;
                     }
                     builder = builder.header(name, value);
@@ -374,7 +374,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                 let mut end_of_stream = true;
                 let headers = response.headers().entries();
                 for (name, value) in headers {
-                    if name.to_ascii_lowercase().trim() == "content-length" {
+                    if name.eq_ignore_ascii_case("content-length") {
                         if let Ok(value) = std::str::from_utf8(&value) {
                             if let Ok(value) = value.parse::<u64>() {
                                 if value > 0 {
@@ -383,7 +383,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                             }
                         }
                     }
-                    if name.to_ascii_lowercase().trim() == "transfer-encoding" {
+                    if name.eq_ignore_ascii_case("transfer-encoding") {
                         end_of_stream = false;
                     }
                     builder = builder.header(name, value);
