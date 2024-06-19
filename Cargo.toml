@@ -109,6 +109,7 @@ wit-component = "0.208.1"
 # Other shared external dependencies
 anyhow = "=1.0.72"
 approx = "0.5"
+async-trait = "0.1.74"
 axum = { version = "0.7.5", features = ["http2"] }
 bytes = "1.5"
 chrono = { version = "0.4.26", features = ["serde"] }
