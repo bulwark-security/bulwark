@@ -251,6 +251,7 @@ fn test_multi_phase_exec_post_request() -> Result<(), Box<dyn std::error::Error>
         bulwark_sdk::Verdict {
             decision: resp_combined_decision,
             outcome,
+            count: 2,
             tags: combined_tags.clone(),
         },
     ))?;
@@ -458,6 +459,7 @@ fn test_multi_phase_exec_get_request() -> Result<(), Box<dyn std::error::Error>>
         bulwark_sdk::Verdict {
             decision: resp_combined_decision,
             outcome,
+            count: 2,
             tags: combined_tags.clone(),
         },
     ))?;
@@ -694,6 +696,7 @@ fn test_multi_phase_exec_route_labels() -> Result<(), Box<dyn std::error::Error>
         bulwark_sdk::Verdict {
             decision: resp_combined_decision,
             outcome,
+            count: 2,
             tags: combined_tags.clone(),
         },
     ))?;

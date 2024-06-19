@@ -31,6 +31,8 @@ pub struct Verdict {
     pub decision: Decision,
     /// The `outcome` value represents a comparison of the numerical decision against a set of thresholds.
     pub outcome: Outcome,
+    /// The `count` value represents the number of plugins that contributed to the decision.
+    pub count: u32,
     /// The `tags` value represents the merged tags used to annotate the request.
     pub tags: Vec<String>,
 }

@@ -123,6 +123,7 @@ impl From<Verdict> for crate::bindings::bulwark::plugin::types::Verdict {
         crate::bindings::bulwark::plugin::types::Verdict {
             outcome: verdict.outcome.into(),
             decision: verdict.decision.into(),
+            count: verdict.count,
             tags: verdict.tags.clone(),
         }
     }
