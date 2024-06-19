@@ -1,7 +1,7 @@
 use crate::{ContextInstantiationError, Plugin, PluginStdio};
 
+use async_trait::async_trait;
 use chrono::Utc;
-use core::{future::Future, marker::Send, pin::Pin};
 use redis::AsyncCommands;
 use std::{collections::HashMap, sync::Arc};
 use url::Url;
@@ -263,707 +263,510 @@ impl WasiHttpView for PluginCtx {
 
 impl crate::bindings::bulwark::plugin::types::Host for PluginCtx {}
 
+#[async_trait]
 impl crate::bindings::bulwark::plugin::config::Host for PluginCtx {
     /// Returns all config key names.
-    fn config_keys<'ctx, 'async_trait>(
-        &'ctx mut self,
-    ) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + 'async_trait>>
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move { self.guest_config.keys().cloned().collect() })
+    async fn config_keys(&mut self) -> Vec<String> {
+        self.guest_config.keys().cloned().collect()
     }
 
     /// Returns the named config value.
-    fn config_var<'ctx, 'async_trait>(
-        &'ctx mut self,
+    async fn config_var(
+        &mut self,
         key: String,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Option<crate::bindings::bulwark::plugin::config::Value>>
-                + Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-            let result = self
-                .guest_config
-                .get(key.as_str())
-                .map_or(Ok(None), |value| {
-                    // Invert, we need Result<Option<V>, E> rather than Option<Result<V, E>>.
-                    // This is also why the map_or default above is Ok(None).
-                    value.clone().try_into().map(Some)
-                });
-            result.expect("config should already be validated")
-        })
+    ) -> Option<crate::bindings::bulwark::plugin::config::Value> {
+        let result = self
+            .guest_config
+            .get(key.as_str())
+            .map_or(Ok(None), |value| {
+                // Invert, we need Result<Option<V>, E> rather than Option<Result<V, E>>.
+                // This is also why the map_or default above is Ok(None).
+                value.clone().try_into().map(Some)
+            });
+        result.expect("config should already be validated")
     }
 
     /// Returns the number of proxy hops expected exterior to Bulwark.
-    fn proxy_hops<'ctx, 'async_trait>(
-        &'ctx mut self,
-    ) -> Pin<Box<dyn Future<Output = u8> + Send + 'async_trait>>
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move { self.host_config.service.proxy_hops })
+    async fn proxy_hops(&mut self) -> u8 {
+        self.host_config.service.proxy_hops
     }
 }
 
+#[async_trait]
 impl crate::bindings::bulwark::plugin::redis::Host for PluginCtx {
     /// Retrieves the value associated with the given key.
-    fn get<'ctx, 'async_trait>(
-        &'ctx mut self,
+    async fn get(
+        &mut self,
         key: String,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        Option<Vec<u8>>,
-                        crate::bindings::bulwark::plugin::redis::Error,
-                    >,
-                > + Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-            verify_redis_prefixes(&self.permissions.state, &key)?;
+    ) -> Result<Option<Vec<u8>>, crate::bindings::bulwark::plugin::redis::Error> {
+        verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            if let Some(pool) = self.redis_ctx.pool.clone() {
-                let mut conn = pool.get().await.map_err(|err| {
-                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                })?;
-                let value: Option<Vec<u8>> = conn.get(key).await.map_err(|err| {
-                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                })?;
-                Ok(value)
-            } else {
-                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                    "no remote state configured".to_string(),
-                ))
-            }
-        })
+        if let Some(pool) = self.redis_ctx.pool.clone() {
+            let mut conn = pool.get().await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?;
+            let value: Option<Vec<u8>> = conn.get(key).await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?;
+            Ok(value)
+        } else {
+            Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                "no remote state configured".to_string(),
+            ))
+        }
     }
 
     /// Sets the given key to the given value.
     ///
     /// Overwrites any previously existing value.
-    fn set<'ctx, 'async_trait>(
-        &'ctx mut self,
+    async fn set(
+        &mut self,
         key: String,
         value: Vec<u8>,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<(), crate::bindings::bulwark::plugin::redis::Error>>
-                + Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-            verify_redis_prefixes(&self.permissions.state, &key)?;
+    ) -> Result<(), crate::bindings::bulwark::plugin::redis::Error> {
+        verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            if let Some(pool) = self.redis_ctx.pool.clone() {
-                let mut conn = pool.get().await.map_err(|err| {
+        if let Some(pool) = self.redis_ctx.pool.clone() {
+            let mut conn = pool.get().await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?;
+            conn.set::<String, Vec<u8>, redis::Value>(key, value)
+                .await
+                .map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
-                conn.set::<String, Vec<u8>, redis::Value>(key, value)
-                    .await
-                    .map_err(|err| {
-                        crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                    })?;
-                Ok(())
-            } else {
-                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                    "no remote state configured".to_string(),
-                ))
-            }
-        })
+            Ok(())
+        } else {
+            Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                "no remote state configured".to_string(),
+            ))
+        }
     }
 
     /// Removes the given keys.
     ///
     /// Non-existant keys are ignored. Returns the number of keys that were removed.
-    fn del<'ctx, 'async_trait>(
-        &'ctx mut self,
+    async fn del(
+        &mut self,
         keys: Vec<String>,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<u32, crate::bindings::bulwark::plugin::redis::Error>>
-                + Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-            for key in keys.iter() {
-                verify_redis_prefixes(&self.permissions.state, key)?;
-            }
+    ) -> Result<u32, crate::bindings::bulwark::plugin::redis::Error> {
+        for key in keys.iter() {
+            verify_redis_prefixes(&self.permissions.state, key)?;
+        }
 
-            if let Some(pool) = self.redis_ctx.pool.clone() {
-                let mut conn = pool.get().await.map_err(|err| {
-                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                })?;
-                Ok(conn.del(keys).await.map_err(|err| {
-                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                })?)
-            } else {
-                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                    "no remote state configured".to_string(),
-                ))
-            }
-        })
+        if let Some(pool) = self.redis_ctx.pool.clone() {
+            let mut conn = pool.get().await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?;
+            Ok(conn.del(keys).await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?)
+        } else {
+            Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                "no remote state configured".to_string(),
+            ))
+        }
     }
 
     /// Increments the value associated with the given key by one.
     ///
     /// If the key does not exist, it is set to zero before being incremented.
     /// If the key already has a value that cannot be incremented, a `error::type-error` is returned.
-    fn incr<'ctx, 'async_trait>(
-        &'ctx mut self,
+    async fn incr(
+        &mut self,
         key: String,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<i64, crate::bindings::bulwark::plugin::redis::Error>>
-                + Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        self.incr_by(key, 1)
+    ) -> Result<i64, crate::bindings::bulwark::plugin::redis::Error> {
+        self.incr_by(key, 1).await
     }
 
     /// Increments the value associated with the given key by the given delta.
     ///
     /// If the key does not exist, it is set to zero before being incremented.
     /// If the key already has a value that cannot be incremented, a `error::type-error` is returned.
-    fn incr_by<'ctx, 'async_trait>(
-        &'ctx mut self,
+    async fn incr_by(
+        &mut self,
         key: String,
         delta: i64,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = std::result::Result<
-                        i64,
-                        crate::bindings::bulwark::plugin::redis::Error,
-                    >,
-                > + Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-            verify_redis_prefixes(&self.permissions.state, &key)?;
+    ) -> Result<i64, crate::bindings::bulwark::plugin::redis::Error> {
+        verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            if let Some(pool) = self.redis_ctx.pool.clone() {
-                let mut conn = pool.get().await.map_err(|err| {
-                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                })?;
-                Ok(conn.incr(key, delta).await.map_err(|err| {
-                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                })?)
-            } else {
-                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                    "no remote state configured".to_string(),
-                ))
-            }
-        })
+        if let Some(pool) = self.redis_ctx.pool.clone() {
+            let mut conn = pool.get().await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?;
+            Ok(conn.incr(key, delta).await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?)
+        } else {
+            Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                "no remote state configured".to_string(),
+            ))
+        }
     }
 
     /// Adds the given values to the named set.
     ///
     /// Returns the number of elements that were added to the set,
     /// not including all the elements already present in the set.
-    fn sadd<'ctx, 'async_trait>(
-        &'ctx mut self,
+    async fn sadd(
+        &mut self,
         key: String,
         values: Vec<String>,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<u32, crate::bindings::bulwark::plugin::redis::Error>>
-                + Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-            verify_redis_prefixes(&self.permissions.state, &key)?;
+    ) -> Result<u32, crate::bindings::bulwark::plugin::redis::Error> {
+        verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            if let Some(pool) = self.redis_ctx.pool.clone() {
-                let mut conn = pool.get().await.map_err(|err| {
-                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                })?;
-                Ok(conn.sadd(key, values).await.map_err(|err| {
-                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                })?)
-            } else {
-                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                    "no remote state configured".to_string(),
-                ))
-            }
-        })
+        if let Some(pool) = self.redis_ctx.pool.clone() {
+            let mut conn = pool.get().await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?;
+            Ok(conn.sadd(key, values).await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?)
+        } else {
+            Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                "no remote state configured".to_string(),
+            ))
+        }
     }
 
     /// Returns the contents of the given set.
-    fn smembers<'ctx, 'async_trait>(
-        &'ctx mut self,
+    async fn smembers(
+        &mut self,
         key: String,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<Vec<String>, crate::bindings::bulwark::plugin::redis::Error>>
-                + ::core::marker::Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-            verify_redis_prefixes(&self.permissions.state, &key)?;
+    ) -> Result<Vec<String>, crate::bindings::bulwark::plugin::redis::Error> {
+        verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            if let Some(pool) = self.redis_ctx.pool.clone() {
-                let mut conn = pool.get().await.map_err(|err| {
-                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                })?;
-                Ok(conn.smembers(key).await.map_err(|err| {
-                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                })?)
-            } else {
-                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                    "no remote state configured".to_string(),
-                ))
-            }
-        })
+        if let Some(pool) = self.redis_ctx.pool.clone() {
+            let mut conn = pool.get().await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?;
+            Ok(conn.smembers(key).await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?)
+        } else {
+            Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                "no remote state configured".to_string(),
+            ))
+        }
     }
 
     /// Removes the given values from the named set.
     ///
     /// Returns the number of members that were removed from the set,
     /// not including non existing members.
-    fn srem<'ctx, 'async_trait>(
-        &'ctx mut self,
+    async fn srem(
+        &mut self,
         key: String,
         values: Vec<String>,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<u32, crate::bindings::bulwark::plugin::redis::Error>>
-                + Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-            verify_redis_prefixes(&self.permissions.state, &key)?;
+    ) -> Result<u32, crate::bindings::bulwark::plugin::redis::Error> {
+        verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            if let Some(pool) = self.redis_ctx.pool.clone() {
-                let mut conn = pool.get().await.map_err(|err| {
-                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                })?;
-                Ok(conn.srem(key, values).await.map_err(|err| {
-                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                })?)
-            } else {
-                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                    "no remote state configured".to_string(),
-                ))
-            }
-        })
+        if let Some(pool) = self.redis_ctx.pool.clone() {
+            let mut conn = pool.get().await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?;
+            Ok(conn.srem(key, values).await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?)
+        } else {
+            Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                "no remote state configured".to_string(),
+            ))
+        }
     }
 
     /// Sets the time to live for the given key.
-    fn expire<'ctx, 'async_trait>(
-        &'ctx mut self,
+    async fn expire(
+        &mut self,
         key: String,
         ttl: u64,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<(), crate::bindings::bulwark::plugin::redis::Error>>
-                + Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-            verify_redis_prefixes(&self.permissions.state, &key)?;
+    ) -> Result<(), crate::bindings::bulwark::plugin::redis::Error> {
+        verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            if let Some(pool) = self.redis_ctx.pool.clone() {
-                let mut conn = pool.get().await.map_err(|err| {
+        if let Some(pool) = self.redis_ctx.pool.clone() {
+            let mut conn = pool.get().await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?;
+            Ok(conn
+                .expire(
+                    key,
+                    ttl.try_into()
+                        .map_err(|_| crate::bindings::bulwark::plugin::redis::Error::TypeError)?,
+                )
+                .await
+                .map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                })?;
-                Ok(conn
-                    .expire(
-                        key,
-                        ttl.try_into().map_err(|_| {
-                            crate::bindings::bulwark::plugin::redis::Error::TypeError
-                        })?,
-                    )
-                    .await
-                    .map_err(|err| {
-                        crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                    })?)
-            } else {
-                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                    "no remote state configured".to_string(),
-                ))
-            }
-        })
+                })?)
+        } else {
+            Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                "no remote state configured".to_string(),
+            ))
+        }
     }
 
     /// Sets the expiration for the given key to the given unix time.
-    fn expire_at<'ctx, 'async_trait>(
-        &'ctx mut self,
+    async fn expire_at(
+        &mut self,
         key: String,
         unix_time: u64,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<(), crate::bindings::bulwark::plugin::redis::Error>>
-                + Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-            verify_redis_prefixes(&self.permissions.state, &key)?;
+    ) -> Result<(), crate::bindings::bulwark::plugin::redis::Error> {
+        verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            if let Some(pool) = self.redis_ctx.pool.clone() {
-                let mut conn = pool.get().await.map_err(|err| {
+        if let Some(pool) = self.redis_ctx.pool.clone() {
+            let mut conn = pool.get().await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?;
+            Ok(conn
+                .expire_at(
+                    key,
+                    unix_time
+                        .try_into()
+                        .map_err(|_| crate::bindings::bulwark::plugin::redis::Error::TypeError)?,
+                )
+                .await
+                .map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                })?;
-                Ok(conn
-                    .expire_at(
-                        key,
-                        unix_time.try_into().map_err(|_| {
-                            crate::bindings::bulwark::plugin::redis::Error::TypeError
-                        })?,
-                    )
-                    .await
-                    .map_err(|err| {
-                        crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                    })?)
-            } else {
-                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                    "no remote state configured".to_string(),
-                ))
-            }
-        })
+                })?)
+        } else {
+            Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                "no remote state configured".to_string(),
+            ))
+        }
     }
 
     /// Increments a rate limit, returning the number of attempts so far and the expiration time.
-    fn incr_rate_limit<'ctx, 'async_trait>(
-        &'ctx mut self,
+    async fn incr_rate_limit(
+        &mut self,
         key: String,
         delta: i64,
         window: i64,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        crate::bindings::bulwark::plugin::redis::Rate,
-                        crate::bindings::bulwark::plugin::redis::Error,
-                    >,
-                > + Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-            verify_redis_prefixes(&self.permissions.state, &key)?;
+    ) -> Result<
+        crate::bindings::bulwark::plugin::redis::Rate,
+        crate::bindings::bulwark::plugin::redis::Error,
+    > {
+        verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            if delta < 0 {
-                return Err(
-                    crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
-                        "delta must be positive".to_string(),
-                    ),
-                );
-            }
-            if window < 0 {
-                return Err(
-                    crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
-                        "window must be positive".to_string(),
-                    ),
-                );
-            }
+        if delta < 0 {
+            return Err(
+                crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
+                    "delta must be positive".to_string(),
+                ),
+            );
+        }
+        if window < 0 {
+            return Err(
+                crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
+                    "window must be positive".to_string(),
+                ),
+            );
+        }
 
-            if let Some(pool) = self.redis_ctx.pool.clone() {
-                let mut conn = pool.get().await.map_err(|err| {
+        if let Some(pool) = self.redis_ctx.pool.clone() {
+            let mut conn = pool.get().await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?;
+
+            let dt = Utc::now();
+            let timestamp: i64 = dt.timestamp();
+            let script = self.redis_ctx.registry.increment_rate_limit.clone();
+            // Invoke the script and map to our rate type
+            let (attempts, expiration) = script
+                .key(key)
+                .arg(delta)
+                .arg(window)
+                .arg(timestamp)
+                .invoke_async::<redis::aio::MultiplexedConnection, (i64, i64)>(&mut conn)
+                .await
+                .map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
+            Ok(crate::bindings::bulwark::plugin::redis::Rate {
+                attempts,
+                expiration,
+            })
+        } else {
+            Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                "no remote state configured".to_string(),
+            ))
+        }
+    }
 
-                let dt = Utc::now();
-                let timestamp: i64 = dt.timestamp();
-                let script = self.redis_ctx.registry.increment_rate_limit.clone();
-                // Invoke the script and map to our rate type
-                let (attempts, expiration) = script
-                    .key(key)
-                    .arg(delta)
-                    .arg(window)
-                    .arg(timestamp)
-                    .invoke_async::<redis::aio::MultiplexedConnection, (i64, i64)>(&mut conn)
-                    .await
-                    .map_err(|err| {
-                        crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                    })?;
-                Ok(crate::bindings::bulwark::plugin::redis::Rate {
+    /// Checks a rate limit, returning the number of attempts so far and the expiration time.
+    async fn check_rate_limit(
+        &mut self,
+        key: String,
+    ) -> Result<
+        Option<crate::bindings::bulwark::plugin::redis::Rate>,
+        crate::bindings::bulwark::plugin::redis::Error,
+    > {
+        verify_redis_prefixes(&self.permissions.state, &key)?;
+
+        if let Some(pool) = self.redis_ctx.pool.clone() {
+            let mut conn = pool.get().await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?;
+
+            let dt = Utc::now();
+            let timestamp: i64 = dt.timestamp();
+            let script = self.redis_ctx.registry.check_rate_limit.clone();
+            // Invoke the script and map to our rate type
+            let (attempts, expiration) = script
+                .key(key)
+                .arg(timestamp)
+                .invoke_async::<redis::aio::MultiplexedConnection, (i64, i64)>(&mut conn)
+                .await
+                .map_err(|err| {
+                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+                })?;
+            Ok(if attempts > 0 {
+                Some(crate::bindings::bulwark::plugin::redis::Rate {
                     attempts,
                     expiration,
                 })
             } else {
-                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                    "no remote state configured".to_string(),
-                ))
-            }
-        })
-    }
-
-    /// Checks a rate limit, returning the number of attempts so far and the expiration time.
-    fn check_rate_limit<'ctx, 'async_trait>(
-        &'ctx mut self,
-        key: String,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        Option<crate::bindings::bulwark::plugin::redis::Rate>,
-                        crate::bindings::bulwark::plugin::redis::Error,
-                    >,
-                > + Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-            verify_redis_prefixes(&self.permissions.state, &key)?;
-
-            if let Some(pool) = self.redis_ctx.pool.clone() {
-                let mut conn = pool.get().await.map_err(|err| {
-                    crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                })?;
-
-                let dt = Utc::now();
-                let timestamp: i64 = dt.timestamp();
-                let script = self.redis_ctx.registry.check_rate_limit.clone();
-                // Invoke the script and map to our rate type
-                let (attempts, expiration) = script
-                    .key(key)
-                    .arg(timestamp)
-                    .invoke_async::<redis::aio::MultiplexedConnection, (i64, i64)>(&mut conn)
-                    .await
-                    .map_err(|err| {
-                        crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                    })?;
-                Ok(if attempts > 0 {
-                    Some(crate::bindings::bulwark::plugin::redis::Rate {
-                        attempts,
-                        expiration,
-                    })
-                } else {
-                    None
-                })
-            } else {
-                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                    "no remote state configured".to_string(),
-                ))
-            }
-        })
+                None
+            })
+        } else {
+            Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                "no remote state configured".to_string(),
+            ))
+        }
     }
 
     /// Increments a circuit breaker, returning the generation count, success count, failure count,
     /// consecutive success count, consecutive failure count, and expiration time.
-    fn incr_breaker<'ctx, 'async_trait>(
-        &'ctx mut self,
+    async fn incr_breaker(
+        &mut self,
         key: String,
         success_delta: i64,
         failure_delta: i64,
         window: i64,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        crate::bindings::bulwark::plugin::redis::Breaker,
-                        crate::bindings::bulwark::plugin::redis::Error,
-                    >,
-                > + Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-            verify_redis_prefixes(&self.permissions.state, &key)?;
+    ) -> Result<
+        crate::bindings::bulwark::plugin::redis::Breaker,
+        crate::bindings::bulwark::plugin::redis::Error,
+    > {
+        verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            if success_delta < 0 {
-                return Err(
-                    crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
-                        "success_delta must be positive".to_string(),
-                    ),
-                );
-            }
-            if failure_delta < 0 {
-                return Err(
-                    crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
-                        "failure_delta must be positive".to_string(),
-                    ),
-                );
-            }
-            if window < 0 {
-                return Err(
-                    crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
-                        "window must be positive".to_string(),
-                    ),
-                );
-            }
+        if success_delta < 0 {
+            return Err(
+                crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
+                    "success_delta must be positive".to_string(),
+                ),
+            );
+        }
+        if failure_delta < 0 {
+            return Err(
+                crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
+                    "failure_delta must be positive".to_string(),
+                ),
+            );
+        }
+        if window < 0 {
+            return Err(
+                crate::bindings::bulwark::plugin::redis::Error::InvalidArgument(
+                    "window must be positive".to_string(),
+                ),
+            );
+        }
 
-            if let Some(pool) = self.redis_ctx.pool.clone() {
-                let mut conn = pool.get().await.map_err(|err| {
+        if let Some(pool) = self.redis_ctx.pool.clone() {
+            let mut conn = pool.get().await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?;
+
+            let dt = Utc::now();
+            let timestamp: i64 = dt.timestamp();
+            let script = self.redis_ctx.registry.increment_breaker.clone();
+            // Invoke the script and map to our breaker type
+            let (
+                generation,
+                successes,
+                failures,
+                consecutive_successes,
+                consecutive_failures,
+                expiration,
+            ) = script
+                .key(key)
+                .arg(success_delta)
+                .arg(failure_delta)
+                .arg(window)
+                .arg(timestamp)
+                .invoke_async::<redis::aio::MultiplexedConnection, (i64, i64, i64, i64, i64, i64)>(
+                    &mut conn,
+                )
+                .await
+                .map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
-
-                let dt = Utc::now();
-                let timestamp: i64 = dt.timestamp();
-                let script = self.redis_ctx.registry.increment_breaker.clone();
-                // Invoke the script and map to our breaker type
-                let (
-                    generation,
-                    successes,
-                    failures,
-                    consecutive_successes,
-                    consecutive_failures,
-                    expiration,
-                ) = script
-                    .key(key)
-                    .arg(success_delta)
-                    .arg(failure_delta)
-                    .arg(window)
-                    .arg(timestamp)
-                    .invoke_async::<redis::aio::MultiplexedConnection, (i64, i64, i64, i64, i64, i64)>(&mut conn)
-                    .await
-                    .map_err(|err| {
-                        crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                    })?;
-                Ok(crate::bindings::bulwark::plugin::redis::Breaker {
-                    generation,
-                    successes,
-                    failures,
-                    consecutive_successes,
-                    consecutive_failures,
-                    expiration,
-                })
-            } else {
-                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                    "no remote state configured".to_string(),
-                ))
-            }
-        })
+            Ok(crate::bindings::bulwark::plugin::redis::Breaker {
+                generation,
+                successes,
+                failures,
+                consecutive_successes,
+                consecutive_failures,
+                expiration,
+            })
+        } else {
+            Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                "no remote state configured".to_string(),
+            ))
+        }
     }
 
     /// Checks a circuit breaker, returning the generation count, success count, failure count,
     /// consecutive success count, consecutive failure count, and expiration time.
-    fn check_breaker<'ctx, 'async_trait>(
-        &'ctx mut self,
+    async fn check_breaker(
+        &mut self,
         key: String,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        Option<crate::bindings::bulwark::plugin::redis::Breaker>,
-                        crate::bindings::bulwark::plugin::redis::Error,
-                    >,
-                > + Send
-                + 'async_trait,
-        >,
-    >
-    where
-        'ctx: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-            verify_redis_prefixes(&self.permissions.state, &key)?;
+    ) -> Result<
+        Option<crate::bindings::bulwark::plugin::redis::Breaker>,
+        crate::bindings::bulwark::plugin::redis::Error,
+    > {
+        verify_redis_prefixes(&self.permissions.state, &key)?;
 
-            if let Some(pool) = self.redis_ctx.pool.clone() {
-                let mut conn = pool.get().await.map_err(|err| {
+        if let Some(pool) = self.redis_ctx.pool.clone() {
+            let mut conn = pool.get().await.map_err(|err| {
+                crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
+            })?;
+
+            let dt = Utc::now();
+            let timestamp: i64 = dt.timestamp();
+            let script = self.redis_ctx.registry.check_breaker.clone();
+            // Invoke the script and map to our breaker type
+            let (
+                generation,
+                successes,
+                failures,
+                consecutive_successes,
+                consecutive_failures,
+                expiration,
+            ) = script
+                .key(key)
+                .arg(timestamp)
+                .invoke_async::<redis::aio::MultiplexedConnection, (i64, i64, i64, i64, i64, i64)>(
+                    &mut conn,
+                )
+                .await
+                .map_err(|err| {
                     crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
                 })?;
-
-                let dt = Utc::now();
-                let timestamp: i64 = dt.timestamp();
-                let script = self.redis_ctx.registry.check_breaker.clone();
-                // Invoke the script and map to our breaker type
-                let (
+            Ok(if generation > 0 {
+                Some(crate::bindings::bulwark::plugin::redis::Breaker {
                     generation,
                     successes,
                     failures,
                     consecutive_successes,
                     consecutive_failures,
                     expiration,
-                ) = script
-                    .key(key)
-                    .arg(timestamp)
-                    .invoke_async::<redis::aio::MultiplexedConnection, (i64, i64, i64, i64, i64, i64)>(&mut conn)
-                    .await
-                    .map_err(|err| {
-                        crate::bindings::bulwark::plugin::redis::Error::Remote(err.to_string())
-                    })?;
-                Ok(if generation > 0 {
-                    Some(crate::bindings::bulwark::plugin::redis::Breaker {
-                        generation,
-                        successes,
-                        failures,
-                        consecutive_successes,
-                        consecutive_failures,
-                        expiration,
-                    })
-                } else {
-                    None
                 })
             } else {
-                Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
-                    "no remote state configured".to_string(),
-                ))
-            }
-        })
+                None
+            })
+        } else {
+            Err(crate::bindings::bulwark::plugin::redis::Error::Remote(
+                "no remote state configured".to_string(),
+            ))
+        }
     }
 }
 

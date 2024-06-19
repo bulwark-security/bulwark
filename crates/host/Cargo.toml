@@ -24,6 +24,7 @@ wasmtime-wasi = { workspace = true }
 wasmtime-wasi-http = { workspace = true }
 
 anyhow = { workspace = true }
+async-trait = { workspace = true }
 bytes = { workspace = true }
 chrono = { workspace = true }
 deadpool-redis = { workspace = true }
@@ -40,7 +41,6 @@ thiserror = { workspace = true }
 url = { workspace = true }
 validator = { workspace = true }
 
-async-trait = "0.1.68"
 http-body-util = "0.1.0"
 secrecy = "0.8.0"
 
