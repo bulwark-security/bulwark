@@ -272,6 +272,7 @@ pub fn bulwark_plugin(_: TokenStream, input: TokenStream) -> TokenStream {
                 Self {
                     decision: verdict.decision.into(),
                     outcome: verdict.outcome.into(),
+                    count: verdict.count,
                     tags: verdict.tags.clone(),
                 }
             }

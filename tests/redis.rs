@@ -136,6 +136,7 @@ async fn test_redis_plugin() -> Result<(), Box<dyn std::error::Error>> {
             bulwark_sdk::Verdict {
                 decision: handler_output.decision,
                 outcome: bulwark_sdk::Outcome::Accepted,
+                count: 1,
                 tags: tags.iter().cloned().collect(),
             },
         )

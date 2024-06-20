@@ -361,29 +361,45 @@ impl PluginInstance {
         let mut linker: Linker<PluginCtx> = Linker::new(&plugin.engine);
         let mut store = Store::new(&plugin.engine, plugin_ctx);
 
-        wasmtime_wasi::add_to_linker_async(&mut linker)?;
+        wasmtime_wasi::add_to_linker_async(&mut linker).context(format!(
+            "failed to link wasi interface for '{}'",
+            plugin.reference
+        ))?;
         wasmtime_wasi_http::bindings::wasi::http::types::add_to_linker_get_host(
             &mut linker,
             host_getter,
         )
-        .context("failed to link `wasi:http/types` interface")?;
+        .context(format!(
+            "failed to link `wasi:http/types` interface for '{}'",
+            plugin.reference
+        ))?;
         wasmtime_wasi_http::bindings::wasi::http::outgoing_handler::add_to_linker_get_host(
             &mut linker,
             host_getter,
         )
-        .context("failed to link `wasi:http/outgoing-handler` interface")?;
-        bindings::bulwark::plugin::config::add_to_linker(&mut linker, |t| t)
-            .context("failed to link `bulwark:plugin/config` interface")?;
-        bindings::bulwark::plugin::redis::add_to_linker(&mut linker, |t| t)
-            .context("failed to link `bulwark:plugin/redis` interface")?;
-        bindings::bulwark::plugin::types::add_to_linker(&mut linker, |t| t)
-            .context("failed to link `bulwark:plugin/types` interface")?;
+        .context(format!(
+            "failed to link `wasi:http/outgoing-handler` interface for '{}'",
+            plugin.reference
+        ))?;
+        bindings::bulwark::plugin::config::add_to_linker(&mut linker, |t| t).context(format!(
+            "failed to link `bulwark:plugin/config` interface for '{}'",
+            plugin.reference
+        ))?;
+        bindings::bulwark::plugin::redis::add_to_linker(&mut linker, |t| t).context(format!(
+            "failed to link `bulwark:plugin/redis` interface for '{}'",
+            plugin.reference
+        ))?;
+        bindings::bulwark::plugin::types::add_to_linker(&mut linker, |t| t).context(format!(
+            "failed to link `bulwark:plugin/types` interface for '{}'",
+            plugin.reference
+        ))?;
 
         // We discard the instance for this because we only use the generated interface to make calls
 
         let (http_detection, _) =
             bindings::HttpDetection::instantiate_async(&mut store, &plugin.component, &linker)
-                .await?;
+                .await
+                .context(format!("failed to instantiate '{}'", plugin.reference))?;
 
         Ok(PluginInstance {
             plugin,

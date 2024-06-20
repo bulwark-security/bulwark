@@ -90,6 +90,7 @@ fn test_blank_slate_exec() -> Result<(), Box<dyn std::error::Error>> {
         bulwark_sdk::Verdict {
             decision: handler_output.decision,
             outcome: bulwark_sdk::Outcome::Accepted,
+            count: 1,
             tags: tags.iter().cloned().collect(),
         },
     ))?;
@@ -185,6 +186,7 @@ fn test_evil_bit_benign_exec() -> Result<(), Box<dyn std::error::Error>> {
         bulwark_sdk::Verdict {
             decision: handler_output.decision,
             outcome: bulwark_sdk::Outcome::Accepted,
+            count: 1,
             tags: tags.iter().cloned().collect(),
         },
     ))?;
@@ -198,14 +200,14 @@ fn test_evil_bit_evil_exec() -> Result<(), Box<dyn std::error::Error>> {
 
     bulwark_build::build_plugin(
         base.join("../crates/sdk/examples/evil-bit"),
-        base.join("dist/plugins/evil-bit.wasm"),
+        base.join("dist/plugins/bulwark_evil_bit.wasm"),
         &[],
         true,
     )?;
-    assert!(base.join("dist/plugins/evil-bit.wasm").exists());
+    assert!(base.join("dist/plugins/bulwark_evil_bit.wasm").exists());
 
     let plugin = Arc::new(Plugin::from_file(
-        base.join("dist/plugins/evil-bit.wasm"),
+        base.join("dist/plugins/bulwark_evil_bit.wasm"),
         // None of this config will get read during this test.
         &bulwark_config::Config {
             service: bulwark_config::Service::default(),
@@ -271,6 +273,7 @@ fn test_evil_bit_evil_exec() -> Result<(), Box<dyn std::error::Error>> {
         bulwark_sdk::Verdict {
             decision: handler_output.decision,
             outcome: bulwark_sdk::Outcome::Restricted,
+            count: 1,
             tags: tags.iter().cloned().collect(),
         },
     ))?;

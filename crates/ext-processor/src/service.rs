@@ -1006,6 +1006,7 @@ impl ProcessorContext {
                     let verdict = Verdict {
                         decision,
                         outcome,
+                        count: self.plugin_outputs.len() as u32,
                         tags: self.combined_output.tags.iter().cloned().collect(),
                     };
                     self.response = Some(Arc::new(response));
@@ -1019,6 +1020,7 @@ impl ProcessorContext {
                     let verdict = Verdict {
                         decision,
                         outcome,
+                        count: self.plugin_outputs.len() as u32,
                         tags: self.combined_output.tags.iter().cloned().collect(),
                     };
                     self.verdict = Some(verdict);
@@ -1113,6 +1115,7 @@ impl ProcessorContext {
         let verdict = bulwark_sdk::Verdict {
             decision,
             outcome,
+            count: self.plugin_outputs.len() as u32,
             tags: self.combined_output.tags.iter().cloned().collect(),
         };
         self.verdict = Some(verdict);

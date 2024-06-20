@@ -25,6 +25,7 @@ impl From<Verdict> for crate::wit::bulwark::plugin::types::Verdict {
         crate::wit::bulwark::plugin::types::Verdict {
             outcome: verdict.outcome.into(),
             decision: verdict.decision.into(),
+            count: verdict.count,
             tags: verdict.tags.clone(),
         }
     }
