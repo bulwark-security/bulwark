@@ -7,3 +7,5 @@
 /crates/core/Cargo.lock
 /crates/wask-sdk/Cargo.lock
 /crates/sdk/examples/Cargo.lock
+/.cargo
+/vendor
