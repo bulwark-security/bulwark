@@ -1,0 +1,32 @@
+# The purpose of this workflow is to publish the bulwark workspace of crates
+# whenever a bulwark release tag is created. This is a simplified version of
+# the wasmtime release workflow.
+
+name: "Publish to Crates.io"
+
+on:
+  push:
+    tags:
+    - '[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  publish:
+    if: github.repository == 'bulwark-security/bulwark'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@21dc36fb71dd22e3317045c0c31a3f4249868b17
+      with:
+        toolchain: stable
+        components: clippy
+        target: wasm32-wasi
+
+    - name: Publish Crates
+      run: |
+        rustc scripts/publish.rs -o /tmp/publish
+        /tmp/publish publish
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
