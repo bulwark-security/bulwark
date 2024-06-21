@@ -14,7 +14,7 @@ use wasmtime::component::{Component, Linker};
 use wasmtime::{AsContextMut, Config, Engine, Store};
 use wasmtime_wasi::{pipe::MemoryOutputPipe, HostOutputStream, StdoutStream};
 use wasmtime_wasi_http::body::HyperIncomingBody;
-use wasmtime_wasi_http::WasiHttpView;
+use wasmtime_wasi_http::{WasiHttpImpl, WasiHttpView};
 
 mod latest {
     pub mod http {
@@ -351,9 +351,13 @@ impl PluginInstance {
         plugin: Arc<Plugin>,
         plugin_ctx: PluginCtx,
     ) -> Result<PluginInstance, PluginInstantiationError> {
-        fn host_getter(ctx: &mut PluginCtx) -> &mut PluginCtx {
-            ctx
+        fn type_annotate_http<F>(f: F) -> F
+        where
+            F: Fn(&mut PluginCtx) -> WasiHttpImpl<&mut PluginCtx>,
+        {
+            f
         }
+        let closure = type_annotate_http::<_>(|t| WasiHttpImpl(t));
 
         // Clone the stdio so we can read the captured stdout and stderr buffers after execution has completed.
         let stdio = plugin_ctx.stdio.clone();
@@ -367,7 +371,7 @@ impl PluginInstance {
         ))?;
         wasmtime_wasi_http::bindings::wasi::http::types::add_to_linker_get_host(
             &mut linker,
-            host_getter,
+            closure,
         )
         .context(format!(
             "failed to link `wasi:http/types` interface for '{}'",
@@ -375,7 +379,7 @@ impl PluginInstance {
         ))?;
         wasmtime_wasi_http::bindings::wasi::http::outgoing_handler::add_to_linker_get_host(
             &mut linker,
-            host_getter,
+            closure,
         )
         .context(format!(
             "failed to link `wasi:http/outgoing-handler` interface for '{}'",
