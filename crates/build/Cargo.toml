@@ -16,6 +16,8 @@ maintenance = { status = "experimental" }
 [dependencies]
 wit-component = { workspace = true }
 
+owo-colors = { workspace = true }
 thiserror = { workspace = true }
+toml = { workspace = true }
 
 cargo_metadata = "0.18.1"

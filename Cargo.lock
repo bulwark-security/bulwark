@@ -327,7 +327,9 @@ name = "bulwark-build"
 version = "0.5.0"
 dependencies = [
  "cargo_metadata",
+ "owo-colors",
  "thiserror",
+ "toml",
  "wit-component 0.211.1",
 ]
 

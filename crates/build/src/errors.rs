@@ -12,6 +12,10 @@ pub enum BuildError {
     CargoMetadata(#[from] cargo_metadata::Error),
     #[error("missing plugin metadata")]
     MissingMetadata,
+    #[error("invalid plugin metadata: {0}")]
+    InvalidMetadata(String),
+    #[error("missing plugin cdylib declaration")]
+    MissingCdylib,
     #[error("missing required wasm32-wasi target")]
     MissingTarget,
     #[error("error adapting wasm: {0}")]
