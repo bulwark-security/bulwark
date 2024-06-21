@@ -1,4 +1,6 @@
 [service]
+# Use a non-default port to avoid collisions with dev servers
+port = 3089
 admin = false
 proxy_hops = 1
 

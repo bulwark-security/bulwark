@@ -279,14 +279,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             while let Some(r) = service_tasks.join_next().await {
                 match r {
                     Ok(Ok(_)) => {}
-                    Ok(Err(e)) => error!(
-                        message = "service could not start",
-                        error_message = ?e,
-                    ),
-                    Err(e) => error!(
-                        message = "join error on service initialization",
-                        error_message = ?e,
-                    ),
+                    Ok(Err(e)) => {
+                        error!(
+                            message = "service could not start",
+                            error_message = ?e,
+                        );
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        error!(
+                            message = "join error on service initialization",
+                            error_message = ?e,
+                        );
+                        std::process::exit(1);
+                    }
                 }
             }
         }

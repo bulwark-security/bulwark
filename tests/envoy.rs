@@ -51,7 +51,7 @@ async fn test_envoy_evil_bit() -> Result<(), Box<dyn std::error::Error>> {
         // send a throw-away request to make sure everything's launched correctly
         let client = reqwest::Client::new();
         let response = client
-            .post("http://127.0.0.1:8080")
+            .post("http://127.0.0.1:4080")
             .header("Content-Type", "text/html")
             .send()
             .await?;
@@ -61,7 +61,7 @@ async fn test_envoy_evil_bit() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // send a friendly request to our envoy service
-    let response = reqwest::get("http://127.0.0.1:8080").await?;
+    let response = reqwest::get("http://127.0.0.1:4080").await?;
     assert!(response.status().is_success());
     let body = response.text().await?;
     assert!(body.contains("hello-world"));
@@ -69,7 +69,7 @@ async fn test_envoy_evil_bit() -> Result<(), Box<dyn std::error::Error>> {
     // send an evil request to our envoy service
     let client = reqwest::Client::new();
     let response = client
-        .get("http://127.0.0.1:8080")
+        .get("http://127.0.0.1:4080")
         .header("Evil", "true")
         .send()
         .await?;
@@ -128,7 +128,7 @@ async fn test_envoy_multi_phase_exec() -> Result<(), Box<dyn std::error::Error>>
         // send a throw-away request to make sure everything's launched correctly
         let client = reqwest::Client::new();
         let response = client
-            .post("http://127.0.0.1:8080")
+            .post("http://127.0.0.1:4080")
             .header("Content-Type", "text/html")
             .send()
             .await?;
@@ -140,7 +140,7 @@ async fn test_envoy_multi_phase_exec() -> Result<(), Box<dyn std::error::Error>>
     // send a POST request to our envoy service
     let client = reqwest::Client::new();
     let response = client
-        .post("http://127.0.0.1:8080")
+        .post("http://127.0.0.1:4080")
         .header("Content-Type", "text/html")
         .send()
         .await?;
@@ -151,7 +151,7 @@ async fn test_envoy_multi_phase_exec() -> Result<(), Box<dyn std::error::Error>>
     // send a GET request to our envoy service
     let client = reqwest::Client::new();
     let response = client
-        .get("http://127.0.0.1:8080")
+        .get("http://127.0.0.1:4080")
         .header("Content-Type", "text/html")
         .send()
         .await?;
