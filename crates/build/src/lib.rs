@@ -3,13 +3,13 @@ mod errors;
 pub use crate::errors::*;
 
 use cargo_metadata::MetadataCommand;
+use owo_colors::OwoColorize;
 use std::collections::HashMap;
 use std::io::prelude::*;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use toml::map::Map;
 use toml::Value;
-
 /// Returns the name of the plugin as read from the Cargo metadata.
 fn plugin_name(path: impl AsRef<Path>) -> Result<String, BuildError> {
     let path = path.as_ref();
@@ -86,6 +86,7 @@ pub fn validate_plugin(path: impl AsRef<Path>) -> Result<(), BuildError> {
     let default_map = Map::new();
     let default_table = Value::Table(Map::new());
     let default_array = Vec::new();
+
     let crate_type = root
         .as_table()
         .unwrap_or(&default_map)
@@ -97,6 +98,74 @@ pub fn validate_plugin(path: impl AsRef<Path>) -> Result<(), BuildError> {
         .unwrap_or(&default_array);
     if !crate_type.contains(&toml::Value::String("cdylib".to_string())) {
         return Err(BuildError::MissingCdylib);
+    }
+
+    let release_profile = root
+        .as_table()
+        .unwrap_or(&default_map)
+        .get("profile")
+        .unwrap_or(&default_table)
+        .get("release")
+        .unwrap_or(&default_table);
+
+    let lto = release_profile
+        .get("lto")
+        .unwrap_or(&default_table)
+        .as_bool()
+        .unwrap_or_default();
+    if !lto {
+        eprintln!(
+            "{}: plugin should be compiled with `lto` enabled",
+            "warning".yellow()
+        );
+    }
+
+    let opt_level = release_profile
+        .get("opt-level")
+        .unwrap_or(&default_table)
+        .as_integer()
+        .unwrap_or_default();
+    if opt_level < 3 {
+        eprintln!(
+            "{}: plugin should be compiled with `opt-level` set to 3",
+            "warning".yellow()
+        );
+    }
+
+    let codegen_units = release_profile
+        .get("codegen-units")
+        .unwrap_or(&default_table)
+        .as_integer()
+        .unwrap_or_default();
+    if codegen_units > 1 {
+        eprintln!(
+            "{}: plugin should be compiled with `codegen-units` set to 1",
+            "warning".yellow()
+        );
+    }
+
+    let panic_setting = release_profile
+        .get("panic")
+        .unwrap_or(&default_table)
+        .as_str()
+        .unwrap_or_default();
+    if panic_setting != "abort" {
+        eprintln!(
+            "{}: plugin should be compiled with `panic` set to \"abort\"",
+            "warning".yellow()
+        );
+    }
+
+    let strip = release_profile
+        .get("strip")
+        .unwrap_or(&default_table)
+        .as_str()
+        .unwrap_or_default();
+    if strip != "debuginfo" {
+        eprintln!(
+            "{}: plugin should be compiled with `strip` set to \"debuginfo\"",
+            "warning".yellow()
+        );
     }
 
     Ok(())
