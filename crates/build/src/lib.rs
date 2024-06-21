@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::io::prelude::*;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use toml::map::Map;
+use toml::Value;
 
 /// Returns the name of the plugin as read from the Cargo metadata.
 fn plugin_name(path: impl AsRef<Path>) -> Result<String, BuildError> {
@@ -71,6 +73,35 @@ fn install_wasm32_wasi_target() -> Result<(), BuildError> {
     Ok(())
 }
 
+/// Validates a plugin.
+///
+/// Ensures that all `Cargo.toml` files contain valid configuration for a plugin.
+pub fn validate_plugin(path: impl AsRef<Path>) -> Result<(), BuildError> {
+    let path = path.as_ref().join("Cargo.toml");
+
+    let toml_data = std::fs::read_to_string(path)?;
+    let root: toml::Value =
+        toml::from_str(&toml_data).map_err(|e| BuildError::InvalidMetadata(e.to_string()))?;
+
+    let default_map = Map::new();
+    let default_table = Value::Table(Map::new());
+    let default_array = Vec::new();
+    let crate_type = root
+        .as_table()
+        .unwrap_or(&default_map)
+        .get("lib")
+        .unwrap_or(&default_table)
+        .get("crate-type")
+        .unwrap_or(&default_table)
+        .as_array()
+        .unwrap_or(&default_array);
+    if !crate_type.contains(&toml::Value::String("cdylib".to_string())) {
+        return Err(BuildError::MissingCdylib);
+    }
+
+    Ok(())
+}
+
 /// Builds a plugin.
 ///
 /// Compiles the plugin with the `wasm32-wasi` target, and prompts to install it if it is missing.
@@ -117,7 +148,8 @@ pub fn build_plugin(
     additional_args: &[String],
     install_missing: bool,
 ) -> Result<(), BuildError> {
-    // TODO: install wasm32-wasi target if missing
+    validate_plugin(path.as_ref())?;
+
     let adapter_bytes = include_bytes!("../adapter/wasi_snapshot_preview1.reactor.wasm");
     let path = path.as_ref();
     let output = output.as_ref();

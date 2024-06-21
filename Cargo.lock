@@ -328,6 +328,7 @@ version = "0.5.0"
 dependencies = [
  "cargo_metadata",
  "thiserror",
+ "toml",
  "wit-component 0.211.1",
 ]
 
