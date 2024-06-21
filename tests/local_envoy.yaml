@@ -87,4 +87,4 @@ static_resources:
                     # bulwark will be started on the host by the test suite
                     socket_address:
                       address: gateway.docker.internal
-                      port_value: 8089
+                      port_value: 3089
