@@ -1,26 +1,103 @@
-use {
-    forwarded_header_value::ForwardedHeaderValue,
-    std::{collections::HashMap, net::IpAddr, str},
-};
+use forwarded_header_value::ForwardedHeaderValue;
+use serde::de::DeserializeOwned;
+use std::{collections::HashMap, net::IpAddr, str};
 
 // For some reason, doc-tests in this module trigger a linker error, so they're set to no_run
 
 pub use crate::{Decision, Outcome};
-pub use serde_json::from_value;
-pub use serde_json::json as value;
+
+/// Construct a `Value` from a literal.
+///
+/// Useful for comparisons with functions that return a [`Value`].
+///
+/// # Example
+///
+/// ```no_run
+/// use bulwark_sdk::*;
+///
+/// if let Some(strict) = config_var("strict") {
+///     if strict == value!(true) {
+///         // strict enforcement here
+///     }
+/// }
+/// ```
+///
+/// See also [`from_value`].
+#[macro_export(local_inner_macros)]
+macro_rules! value {
+    // Allow us to customize documentation without the normally auto-applied concatenation.
+    ($($value:tt)+) => {
+        serde_json::json!($($value)+)
+    };
+}
+
+/// Interpret a [`Value`] as an instance of type T.
+///
+/// # Example
+///
+#[cfg_attr(doctest, doc = " ````no_test")] // highlight, but don't run the test (rust/issues/63193)
+/// ```rust
+/// use bulwark_sdk::*;
+/// use std::collections::HashMap;
+/// use serde::Deserialize;
+///
+/// #[derive(Deserialize, Debug)]
+/// struct HostConfig {
+///     strict: bool,
+///     suffix: String,
+/// }
+///
+/// pub struct ExamplePlugin;
+///
+/// #[bulwark_plugin]
+/// impl HttpHandlers for ExamplePlugin {
+///     fn handle_request_decision(
+///         _request: http::Request,
+///         _labels: HashMap<String, String>,
+///     ) -> Result<HandlerOutput, Error> {
+///         let config: HostConfig = from_value(config_var("host"))?;
+///         // Use config here.
+///         Ok(HandlerOutput::default())
+///     }
+/// }
+/// ```
+///
+/// See also [`value!`].
+#[inline]
+pub fn from_value<T>(value: Value) -> Result<T, crate::Error>
+where
+    T: DeserializeOwned,
+{
+    serde_json::from_value(value).map_err(crate::Error::from)
+}
+
 pub use serde_json::{Map, Value};
 
 /// A type alias. See [`bytes::Bytes`](https://docs.rs/bytes/latest/bytes/struct.Bytes.html) for details.
 pub type Bytes = bytes::Bytes;
 
-/// A `HandlerOutput` represents a decision and associated output for a single handler within a single detection.
+/// A `HandlerOutput` represents a decision and associated output for a handler function within a detection.
+///
+/// This struct contains a [`Decision`] value that determines whether the request should be accepted or
+/// restricted. A [full explanation of decisions](https://bulwark.security/docs/explanation/decisions/) can be
+/// found in the main Bulwark documentation.
 #[derive(Clone, Default)]
 pub struct HandlerOutput {
-    /// The `labels` field contains key/value pairs used to enrich the request with additional information.
-    pub labels: HashMap<String, String>,
-    /// The `decision` value represents the combined numerical decision from multiple detections.
+    /// The `decision` value represents the numerical decision from a detection.
+    ///
+    /// It will typically be combined with similar decision values from other detections into a
+    /// new combined decision value.
     pub decision: Decision,
+    /// The `labels` field contains key/value pairs used to enrich the request with additional information.
+    ///
+    /// Labels are key-value pairs that are also associated with the request, but other plugins are the primary
+    /// audience for labels. Bulwark uses a [label schema](https://bulwark.security/docs/reference/label-schema/)
+    /// to reduce the need for plugin authors to do out-of-band coordination of terminology in order to interoperate.
+    pub labels: HashMap<String, String>,
     /// The `tags` value represents the new tags to annotate the request with.
+    ///
+    /// Tags are arbitrary string values and are typically used to categorize requests and provide contextual
+    /// information about why a plugin made the decision that it did. Humans are the primary audience for tags.
     pub tags: Vec<String>,
 }
 
@@ -52,7 +129,7 @@ pub fn config_keys() -> Vec<String> {
 ///
 /// # Example
 ///
-#[cfg_attr(doctest, doc = " ````no_test")]
+#[cfg_attr(doctest, doc = " ````no_test")] // highlight, but don't run the test (rust/issues/63193)
 /// ```rust
 /// use bulwark_sdk::*;
 /// use ipnet::Ipv4Net;
@@ -70,7 +147,7 @@ pub fn config_keys() -> Vec<String> {
 ///     ) -> Result<HandlerOutput, Error> {
 ///         let mut output = HandlerOutput::default();
 ///         if let Some(IpAddr::V4(ip)) = client_ip(&req) {
-///             let ip_range: IpRange<Ipv4Net> = serde_json::from_value::<Vec<String>>(
+///             let ip_range: IpRange<Ipv4Net> = from_value::<Vec<String>>(
 ///                 config_var("banned_ranges").ok_or(error!("banned_ranges not set"))?,
 ///             )?
 ///             .iter()
@@ -96,7 +173,7 @@ pub fn config_var(key: &str) -> Option<Value> {
 ///
 /// # Example
 ///
-#[cfg_attr(doctest, doc = " ````no_test")]
+#[cfg_attr(doctest, doc = " ````no_test")] // highlight, but don't run the test (rust/issues/63193)
 /// ```rust
 /// use bulwark_sdk::*;
 /// use std::collections::HashMap;
