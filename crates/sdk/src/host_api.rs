@@ -43,7 +43,7 @@ pub use serde_json::json as value_internal;
 /// use std::collections::HashMap;
 /// use serde::Deserialize;
 ///
-/// // Expects a config like:
+/// // Expects a plugin config like:
 /// // `config = { host = { strict = true, suffix = "example.com" } }`
 /// #[derive(Deserialize, Debug)]
 /// struct HostConfig {
