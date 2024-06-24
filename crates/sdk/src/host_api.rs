@@ -27,11 +27,11 @@ pub use crate::{Decision, Outcome};
 macro_rules! value {
     // Allow us to customize documentation without the normally auto-applied concatenation.
     ($($value:tt)+) => {
-        json!($($value)+)
+        value_internal!($($value)+)
     };
 }
 #[doc(hidden)]
-pub use serde_json::json;
+pub use serde_json::json as value_internal;
 
 /// Interpret a [`Value`] as an instance of type T.
 ///
