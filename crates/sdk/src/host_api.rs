@@ -27,9 +27,11 @@ pub use crate::{Decision, Outcome};
 macro_rules! value {
     // Allow us to customize documentation without the normally auto-applied concatenation.
     ($($value:tt)+) => {
-        serde_json::json!($($value)+)
+        json!($($value)+)
     };
 }
+#[doc(hidden)]
+pub use serde_json::json;
 
 /// Interpret a [`Value`] as an instance of type T.
 ///
@@ -41,6 +43,8 @@ macro_rules! value {
 /// use std::collections::HashMap;
 /// use serde::Deserialize;
 ///
+/// // Expects a config like:
+/// // `config = { host = { strict = true, suffix = "example.com" } }`
 /// #[derive(Deserialize, Debug)]
 /// struct HostConfig {
 ///     strict: bool,
@@ -55,7 +59,8 @@ macro_rules! value {
 ///         _request: http::Request,
 ///         _labels: HashMap<String, String>,
 ///     ) -> Result<HandlerOutput, Error> {
-///         let config: HostConfig = from_value(config_var("host"))?;
+///         let config: HostConfig =
+///             from_value(config_var("host").ok_or(error!("host config missing"))?)?;
 ///         // Use config here.
 ///         Ok(HandlerOutput::default())
 ///     }
