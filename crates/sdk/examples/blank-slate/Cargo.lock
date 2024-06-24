@@ -79,6 +79,7 @@ dependencies = [
  "forwarded-header-value",
  "futures",
  "http",
+ "serde",
  "serde_json",
  "thiserror",
  "validator",

@@ -1,4 +1,4 @@
-/// Generic error
+/// A generic detection plugin error.
 pub type Error = ::anyhow::Error;
 pub use ::anyhow::anyhow as error;
 

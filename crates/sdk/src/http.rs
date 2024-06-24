@@ -1,3 +1,5 @@
+//! The `http` module provides HTTP type definitions and sends outgoing HTTP requests.
+
 /// Reexport from the `http` crate.
 pub use http::{
     uri, Extensions, HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri, Version,
@@ -65,7 +67,7 @@ pub enum SendError {
 ///
 /// # Example
 ///
-#[cfg_attr(doctest, doc = " ````no_test")]
+#[cfg_attr(doctest, doc = " ````no_test")] // highlight, but don't run the test (rust/issues/63193)
 /// ```rust
 /// use bulwark_sdk::*;
 /// use std::collections::HashMap;

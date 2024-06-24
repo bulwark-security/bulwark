@@ -1,4 +1,4 @@
-//! Redis module for managing remote state.
+//! The `redis` module manages remote state, including rate-limiting and circuit-breaking.
 
 /// Returned when there is an issue with the remote state requested by the plugin.
 #[derive(thiserror::Error, Debug)]
@@ -320,7 +320,7 @@ pub fn expire_at<K: AsRef<str>>(key: K, unix_time: u64) -> Result<(), RedisError
 ///
 /// # Example
 ///
-#[cfg_attr(doctest, doc = " ````no_test")]
+#[cfg_attr(doctest, doc = " ````no_test")] // highlight, but don't run the test (rust/issues/63193)
 /// ```rust
 /// use bulwark_sdk::*;
 /// use std::collections::HashMap;
@@ -369,7 +369,7 @@ pub fn incr_rate_limit<K: AsRef<str>>(key: K, delta: i64, window: i64) -> Result
 ///
 /// # Example
 ///
-#[cfg_attr(doctest, doc = " ````no_test")]
+#[cfg_attr(doctest, doc = " ````no_test")] // highlight, but don't run the test (rust/issues/63193)
 /// ```rust
 /// use bulwark_sdk::*;
 /// use std::collections::HashMap;
@@ -437,7 +437,7 @@ pub fn check_rate_limit<K: AsRef<str>>(key: K) -> Result<Option<Rate>, RedisErro
 ///
 /// # Example
 ///
-#[cfg_attr(doctest, doc = " ````no_test")]
+#[cfg_attr(doctest, doc = " ````no_test")] // highlight, but don't run the test (rust/issues/63193)
 /// ```rust
 /// use bulwark_sdk::*;
 /// use std::collections::HashMap;
@@ -499,7 +499,7 @@ pub fn incr_breaker<K: AsRef<str>>(
 ///
 /// # Example
 ///
-#[cfg_attr(doctest, doc = " ````no_test")]
+#[cfg_attr(doctest, doc = " ````no_test")] // highlight, but don't run the test (rust/issues/63193)
 /// ```rust
 /// use bulwark_sdk::*;
 /// use std::collections::HashMap;
