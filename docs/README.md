@@ -3,13 +3,13 @@
 ---
 
 [![Crates.io Version](https://img.shields.io/crates/v/bulwark-cli)][cli-crate]
-[![msrv 1.75.0](https://img.shields.io/badge/msrv-1.75.0-dea584.svg?logo=rust)][rust-ver]
+[![msrv 1.76.0](https://img.shields.io/badge/msrv-1.76.0-dea584.svg?logo=rust)][rust-ver]
 [![Crates.io Total Downloads](https://img.shields.io/crates/d/bulwark-cli)][cli-crate]
 [![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/bulwark-security/bulwark/rust.yml)][gha]
 [![docs.rs](https://img.shields.io/docsrs/bulwark-sdk)][rustdoc]
 
 [cli-crate]: https://crates.io/crates/bulwark-cli
-[rust-ver]: https://github.com/rust-lang/rust/releases/tag/1.75.0
+[rust-ver]: https://github.com/rust-lang/rust/releases/tag/1.76.0
 [gha]: https://github.com/bulwark-security/bulwark/actions/workflows/rust.yml
 [rustdoc]: https://docs.rs/bulwark-sdk
 
@@ -88,7 +88,7 @@ for the typical deployment setup just described. The Envoy server would be launc
 envoy -c envoy.yaml
 ```
 
-Bulwark's own [configuration file](https://docs.bulwark.security/ops/configuration) is a TOML file that defines
+Bulwark's own [configuration file](https://bulwark.security/docs/reference/configuration/) is a TOML file that defines
 which detection plugins should be used to process a request, as well as details like the listening port and the address
 for the Redis server. The listening port in Bulwark's configuration must match the port number given for the
 corresponding external processing filter section in Envoy's configuration. Bulwark is launched with the following
@@ -126,7 +126,10 @@ by you, as defined in the Apache 2.0 license, shall be licensed as above, withou
 
 ## 🛟 Getting Help
 
-To start, check if the answer to your question can be found in any of the [guides](https://docs.bulwark.security/guides)
-or [API documentation](https://docs.bulwark.security/api). If you aren't able to find an answer there, check
-the Bulwark project's [discussion forum](https://github.com/bulwark-security/bulwark/discussions). We are happy to help
-answer your questions and provide guidance through our community forum.
+To start, check if the answer to your question can be found in any of the
+[guides](https://bulwark.security/docs/guides/getting-started/) or
+[API documentation](https://docs.rs/bulwark-sdk/latest/bulwark_sdk/).
+If you aren't able to find an answer there, check the Bulwark project's
+[discussion forum](https://github.com/bulwark-security/bulwark/discussions).
+We are happy to help answer your questions and provide guidance through our
+community forum.
