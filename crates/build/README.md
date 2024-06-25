@@ -39,8 +39,7 @@ To compile a Bulwark plugin with the CLI (after installing the CLI with `cargo i
 bulwark-cli build -p rules/example-plugin -o dist/plugins/
 ```
 
-In some cases, you may want to compile a plugin without the CLI. For example, if you want to compile a plugin inside of
-a test case.
+In some cases, you may want to compile a plugin without the CLI, such as within a test case.
 
 ```rust
 bulwark_build::build_plugin(
