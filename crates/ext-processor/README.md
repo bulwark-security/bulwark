@@ -21,7 +21,7 @@ The `bulwark-ext-processor` crate is responsible for exposing a service that imp
 [Envoy external processing API](https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/http/ext_proc/v3/ext_proc.proto).
 It connects Envoy to Bulwark's WebAssembly host environment.
 
-This crate does not have a useful function outside of its use as a dependency of `bulwark-cli`.
+This crate is primarily a dependency of `bulwark-cli`.
 
 ## 🏰 What is Bulwark?
 

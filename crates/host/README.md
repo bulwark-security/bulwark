@@ -20,7 +20,7 @@ Automated security decision-making under uncertainty.
 Bulwark's WebAssembly (WASM) host environment loads and compiles plugins, tracks a request context for each
 incoming request and plugin, and provides implementations of the host functions needed by Bulwark plugin guests.
 
-This crate does not have a useful function outside of its use as a dependency of `bulwark-cli`.
+This crate is primarily a dependency of `bulwark-cli`.
 
 ## 🏰 What is Bulwark?
 

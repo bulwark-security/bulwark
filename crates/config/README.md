@@ -20,7 +20,7 @@ Automated security decision-making under uncertainty.
 The configuration crate is responsible for parsing Bulwark's configuration files and representing setting values
 throughout the application.
 
-This crate does not yet have a useful function outside of its use as a dependency of `bulwark-cli`.
+This crate is primarily a dependency of `bulwark-cli`.
 
 ## 🏰 What is Bulwark?
 
