@@ -172,13 +172,19 @@ impl ExternalProcessor for BulwarkProcessor {
                     });
 
                     if let Some(route_target) = route_target {
-                        // TODO: figure out how best to bubble the error out of the task and up to the parent
-                        // TODO: figure out if tonic-error or some other option is the best way to convert to a tonic Status error
-                        // TODO: we probably want to be initializing only when necessary now rather than on every request
-                        let plugin_instances = bulwark_processor
+                        let plugin_instances = match bulwark_processor
                             .instantiate_plugins(&route_target.plugins)
                             .await
-                            .unwrap();
+                        {
+                            Ok(plugin_instances) => plugin_instances,
+                            Err(err) => {
+                                error!(
+                                    message = "error instantiating plugins",
+                                    error_message = ?err,
+                                );
+                                return;
+                            }
+                        };
                         if let Some(millis) = route_target.timeout {
                             timeout_duration = Duration::from_millis(millis);
                         }
@@ -215,9 +221,6 @@ impl ExternalProcessor for BulwarkProcessor {
             .instrument(child_span.or_current()),
         );
         return Ok(tonic::Response::new(Box::pin(receiver)));
-
-        // // By default, just close the stream.
-        // Ok(tonic::Response::new(Box::pin(futures::stream::empty())))
     }
 }
 
