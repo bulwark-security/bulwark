@@ -784,7 +784,7 @@ fn verify_http_domains(
     if !allowed_http_domains.contains(&requested_domain.to_string()) {
         return Err(bulwark_sdk::error!(
             "missing http permissions <{}>",
-            authority
+            requested_domain,
         ));
     }
     Ok(())

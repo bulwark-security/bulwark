@@ -1,0 +1,29 @@
+[package]
+name = "smoke-test"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0 WITH LLVM-exception"
+homepage = "https://bulwark.security/"
+repository = "https://github.com/bulwark-security/bulwark"
+keywords = ["bulwark", "security", "fraud", "webassembly", "wasm"]
+categories = ["wasm"]
+publish = false
+
+[badges]
+maintenance = { status = "experimental" }
+
+[dependencies]
+bulwark-sdk = { path = "../../../crates/sdk" }
+serde = { version = "1.0.149", features = ["std", "serde_derive", "derive"] }
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+lto = true
+opt-level = 3
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"

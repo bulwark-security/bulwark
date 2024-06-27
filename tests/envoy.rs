@@ -60,6 +60,9 @@ async fn test_envoy_evil_bit() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // just a moment longer for reliability
+    tokio::time::sleep(SERVER_LAUNCH_DELAY).await;
+
     // send a friendly request to our envoy service
     let response = reqwest::get("http://127.0.0.1:4080").await?;
     assert!(response.status().is_success());
@@ -137,6 +140,9 @@ async fn test_envoy_multi_phase_exec() -> Result<(), Box<dyn std::error::Error>>
         }
     }
 
+    // just a moment longer for reliability
+    tokio::time::sleep(SERVER_LAUNCH_DELAY).await;
+
     // send a POST request to our envoy service
     let client = reqwest::Client::new();
     let response = client
@@ -155,6 +161,68 @@ async fn test_envoy_multi_phase_exec() -> Result<(), Box<dyn std::error::Error>>
         .header("Content-Type", "text/html")
         .send()
         .await?;
+    assert!(response.status().is_success());
+    let body = response.text().await?;
+    assert!(body.contains("hello-world"));
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_envoy_smoke() -> Result<(), Box<dyn std::error::Error>> {
+    let base = Path::new(file!()).parent().unwrap_or(Path::new("."));
+
+    bulwark_build::build_plugin(
+        base.join("plugins/smoke-test"),
+        base.join("dist/plugins/smoke_test.wasm"),
+        &[],
+        true,
+    )?;
+    assert!(base.join("dist/plugins/smoke_test.wasm").exists());
+
+    let mut tasks: JoinSet<std::result::Result<(), anyhow::Error>> = JoinSet::new();
+
+    let config_root = bulwark_config::toml::load_config(&base.join("smoke_test.toml"))?;
+    let port = config_root.service.port;
+    let bulwark_processor = BulwarkProcessor::new(config_root).await?;
+    let ext_processor = ExternalProcessorServer::new(bulwark_processor);
+
+    {
+        tasks.spawn(async move {
+            Server::builder()
+                .add_service(ext_processor)
+                .serve(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port))
+                .await
+                .map_err(anyhow::Error::from)
+        });
+    }
+
+    // Avoid test flakiness by making sure everything has started up before making assertions.
+    let mut tries = 0;
+    loop {
+        tries += 1;
+
+        // wait for the server to finish starting before sending requests
+        tokio::time::sleep(SERVER_LAUNCH_DELAY).await;
+
+        // send a throw-away request to make sure everything's launched correctly
+        let client = reqwest::Client::new();
+        let response = client
+            .post("http://127.0.0.1:4080")
+            .header("Content-Type", "text/html")
+            .send()
+            .await?;
+        if !response.status().is_server_error() || tries > 20 {
+            break;
+        }
+    }
+
+    // just a moment longer for reliability
+    tokio::time::sleep(SERVER_LAUNCH_DELAY).await;
+
+    // send request to our envoy service
+    let response = reqwest::get("http://127.0.0.1:4080").await?;
     assert!(response.status().is_success());
     let body = response.text().await?;
     assert!(body.contains("hello-world"));
