@@ -54,10 +54,10 @@ jobs:
 
     - name: Update Homebrew
       run: |
-        /usr/bin/brew update --preinstall
+        brew update --preinstall
 
     - name: Install protobuf compiler
-      run: /usr/bin/sudo /usr/bin/brew install protobuf
+      run: sudo brew install protobuf
 
     - name: Build release target
       uses: clechasseur/rs-cargo@5cd564345ef5b1136392a1dc943b33a3a888b873 # v2.0.2
@@ -89,10 +89,10 @@ jobs:
 
     - name: Update Homebrew
       run: |
-        /usr/bin/brew update --preinstall
+        brew update --preinstall
 
     - name: Install protobuf compiler
-      run: /usr/bin/sudo /usr/bin/brew install protobuf
+      run: sudo brew install protobuf
 
     - name: Build release target
       uses: clechasseur/rs-cargo@5cd564345ef5b1136392a1dc943b33a3a888b873 # v2.0.2
