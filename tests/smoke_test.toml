@@ -1,0 +1,29 @@
+[service]
+# Use a non-default port to avoid collisions with dev servers
+port = 3089
+admin = false
+proxy_hops = 1
+
+[state]
+redis_uri = "redis://127.0.0.1:6379"
+
+[thresholds]
+observe_only = false
+
+[[plugin]]
+ref = "smoke_test"
+path = "dist/plugins/smoke_test.wasm"
+config = { smoke = true, complex = { color = "blue", size = 13 } }
+permissions = { state = [
+    "smoke",
+    "bulwark",
+], http = [
+    "gateway.docker.internal",
+    "localhost",
+    "127.0.0.1",
+] }
+
+[[resource]]
+routes = ["/"]
+plugins = ["smoke_test"]
+timeout = 100

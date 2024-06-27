@@ -78,7 +78,7 @@ members = [
     "crates/sdk-macros",
     "crates/decision",
 ]
-exclude = ["crates/sdk/examples"]
+exclude = ["crates/sdk/examples", "tests/plugins"]
 
 [workspace.package]
 version = "0.5.0"
