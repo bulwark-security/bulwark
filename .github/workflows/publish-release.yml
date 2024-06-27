@@ -31,7 +31,7 @@ jobs:
         args: --release
 
     - name: Upload binary as release artifact
-      uses: Shopify/upload-to-release@v1.0.1
+      uses: Shopify/upload-to-release@c77c9b3e5d288adaef98a7007bf92340ec6ce03b # v2.0.0
       with:
         name: bulwark-cli.x86_64-unknown-linux-gnu
         path: target/release/bulwark-cli
@@ -62,7 +62,7 @@ jobs:
         args: --release --target=x86_64-apple-darwin
 
     - name: Upload binary as release artifact
-      uses: Shopify/upload-to-release@v1.0.1
+      uses: Shopify/upload-to-release@c77c9b3e5d288adaef98a7007bf92340ec6ce03b # v2.0.0
       with:
         name: bulwark-cli.x86_64-apple-darwin
         path: target/release/bulwark-cli
@@ -93,7 +93,7 @@ jobs:
         args: --release --target=aarch64-apple-darwin
 
     - name: Upload binary as release artifact
-      uses: Shopify/upload-to-release@v1.0.1
+      uses: Shopify/upload-to-release@c77c9b3e5d288adaef98a7007bf92340ec6ce03b # v2.0.0
       with:
         name: bulwark-cli.aarch64-apple-darwin
         path: target/release/bulwark-cli
