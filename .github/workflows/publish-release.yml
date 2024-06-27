@@ -9,6 +9,8 @@ on:
 jobs:
   publish-linux-binary:
     if: github.repository == 'bulwark-security/bulwark'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
@@ -30,16 +32,32 @@ jobs:
         command: build
         args: --release
 
-    - name: Upload binary as release artifact
-      uses: Shopify/upload-to-release@c77c9b3e5d288adaef98a7007bf92340ec6ce03b # v2.0.0
+    - name: Upload binary as an artifact
+      uses: actions/upload-artifact@v4
       with:
         name: bulwark-cli.x86_64-unknown-linux-gnu
         path: target/release/bulwark-cli
-        repo-token: ${{ github.token }}
-        content-type: application/octet-stream
+
+    - name: Upload binary as release artifact
+      uses: actions/github-script@v6
+      env:
+        RELEASE_ID: ${{ github.event.release.id }}
+      with:
+        github-token: "${{ secrets.GITHUB_TOKEN }}"
+        script: |
+          const fs = require('fs').promises;
+          await github.rest.repos.uploadReleaseAsset({
+            name: 'bulwark-cli.x86_64-unknown-linux-gnu',
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            release_id: ${{ env.RELEASE_ID }},
+            data: await fs.readFile('./target/release/bulwark-cli')  # The file to upload.
+          });
 
   publish-macos-x86-64-binary:
     if: github.repository == 'bulwark-security/bulwark'
+    permissions:
+      contents: write
     runs-on: macos-latest
     steps:
     - name: Checkout repository
@@ -65,16 +83,32 @@ jobs:
         command: build
         args: --release --target=x86_64-apple-darwin
 
-    - name: Upload binary as release artifact
-      uses: Shopify/upload-to-release@c77c9b3e5d288adaef98a7007bf92340ec6ce03b # v2.0.0
+    - name: Upload binary as an artifact
+      uses: actions/upload-artifact@v4
       with:
         name: bulwark-cli.x86_64-apple-darwin
         path: target/release/bulwark-cli
-        repo-token: ${{ github.token }}
-        content-type: application/octet-stream
+
+    - name: Upload binary as release artifact
+      uses: actions/github-script@v6
+      env:
+        RELEASE_ID: ${{ github.event.release.id }}
+      with:
+        github-token: "${{ secrets.GITHUB_TOKEN }}"
+        script: |
+          const fs = require('fs').promises;
+          await github.rest.repos.uploadReleaseAsset({
+            name: 'bulwark-cli.x86_64-apple-darwin',
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            release_id: ${{ env.RELEASE_ID }},
+            data: await fs.readFile('./target/release/bulwark-cli')  # The file to upload.
+          });
 
   publish-macos-aarch64-binary:
     if: github.repository == 'bulwark-security/bulwark'
+    permissions:
+      contents: write
     runs-on: macos-latest
     steps:
     - name: Checkout repository
@@ -100,10 +134,24 @@ jobs:
         command: build
         args: --release --target=aarch64-apple-darwin
 
-    - name: Upload binary as release artifact
-      uses: Shopify/upload-to-release@c77c9b3e5d288adaef98a7007bf92340ec6ce03b # v2.0.0
+    - name: Upload binary as an artifact
+      uses: actions/upload-artifact@v4
       with:
         name: bulwark-cli.aarch64-apple-darwin
         path: target/release/bulwark-cli
-        repo-token: ${{ github.token }}
-        content-type: application/octet-stream
+
+    - name: Upload binary as release artifact
+      uses: actions/github-script@v6
+      env:
+        RELEASE_ID: ${{ github.event.release.id }}
+      with:
+        github-token: "${{ secrets.GITHUB_TOKEN }}"
+        script: |
+          const fs = require('fs').promises;
+          await github.rest.repos.uploadReleaseAsset({
+            name: 'bulwark-cli.aarch64-apple-darwin',
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            release_id: ${{ env.RELEASE_ID }},
+            data: await fs.readFile('./target/release/bulwark-cli')  # The file to upload.
+          });
