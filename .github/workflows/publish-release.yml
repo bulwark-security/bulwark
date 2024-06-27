@@ -52,8 +52,12 @@ jobs:
         components: clippy
         target: wasm32-wasi
 
+    - name: Update Homebrew
+      run: |
+        brew update --preinstall
+
     - name: Install protobuf compiler
-      run: /usr/bin/sudo /usr/bin/apt install -y protobuf-compiler
+      run: /usr/bin/sudo /usr/local/bin/brew install protobuf
 
     - name: Build release target
       uses: clechasseur/rs-cargo@5cd564345ef5b1136392a1dc943b33a3a888b873 # v2.0.2
@@ -83,8 +87,12 @@ jobs:
         components: clippy
         target: wasm32-wasi
 
+    - name: Update Homebrew
+      run: |
+        brew update --preinstall
+
     - name: Install protobuf compiler
-      run: /usr/bin/sudo /usr/bin/apt install -y protobuf-compiler
+      run: /usr/bin/sudo /usr/local/bin/brew install protobuf
 
     - name: Build release target
       uses: clechasseur/rs-cargo@5cd564345ef5b1136392a1dc943b33a3a888b873 # v2.0.2
