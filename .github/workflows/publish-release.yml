@@ -4,7 +4,7 @@ name: "Upload Binaries to GitHub Release"
 
 on:
   release:
-    types: [created, published]
+    types: [published]
 
 jobs:
   publish-linux-binary:
