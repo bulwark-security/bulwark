@@ -380,7 +380,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-build"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "cargo_metadata",
  "owo-colors",
@@ -391,7 +391,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-cli"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "approx",
@@ -436,7 +436,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-config"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "bulwark-build",
  "bulwark-decision",
@@ -459,7 +459,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-decision"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "approx",
  "cfg-if",
@@ -471,7 +471,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-ext-processor"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "bulwark-config",
  "bulwark-host",
@@ -498,7 +498,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-host"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -534,7 +534,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-sdk"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "bulwark-decision",
@@ -553,7 +553,7 @@ dependencies = [
 
 [[package]]
 name = "bulwark-sdk-macros"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "proc-macro2",
  "quote",
