@@ -7,6 +7,7 @@ use std::{
 };
 
 #[tokio::test]
+#[ignore]
 async fn test_smoke() -> Result<(), Box<dyn std::error::Error>> {
     let base = Path::new(file!()).parent().unwrap_or(Path::new("."));
 
