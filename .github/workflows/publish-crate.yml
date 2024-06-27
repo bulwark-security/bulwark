@@ -24,6 +24,12 @@ jobs:
         components: clippy
         target: wasm32-wasi
 
+    - name: Ensure generated files are available
+      uses: clechasseur/rs-cargo@5cd564345ef5b1136392a1dc943b33a3a888b873 # v2.0.2
+      with:
+        command: test
+        args: -p bulwark-config -p bulwark-sdk
+
     - name: Publish Crates
       run: |
         rustc scripts/publish.rs -o /tmp/publish
