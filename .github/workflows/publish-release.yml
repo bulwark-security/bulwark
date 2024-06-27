@@ -1,0 +1,101 @@
+# The purpose of this workflow is to upload the bulwark binaries to a release.
+
+name: "Upload Binaries to GitHub Release"
+
+on:
+  release:
+    types: [created, published]
+
+jobs:
+  publish-linux-binary:
+    if: github.repository == 'bulwark-security/bulwark'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@21dc36fb71dd22e3317045c0c31a3f4249868b17
+      with:
+        toolchain: stable
+        components: clippy
+        target: wasm32-wasi
+
+    - name: Install protobuf compiler
+      run: /usr/bin/sudo /usr/bin/apt install -y protobuf-compiler
+
+    - name: Build release target
+      uses: clechasseur/rs-cargo@5cd564345ef5b1136392a1dc943b33a3a888b873 # v2.0.2
+      with:
+        command: build
+        args: --release
+
+    - name: Upload binary as release artifact
+      uses: Shopify/upload-to-release@c77c9b3e5d288adaef98a7007bf92340ec6ce03b # v2.0.0
+      with:
+        name: bulwark-cli.x86_64-unknown-linux-gnu
+        path: target/release/bulwark-cli
+        repo-token: ${{ github.token }}
+        content-type: application/octet-stream
+
+  publish-macos-x86-64-binary:
+    if: github.repository == 'bulwark-security/bulwark'
+    runs-on: macos-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@21dc36fb71dd22e3317045c0c31a3f4249868b17
+      with:
+        toolchain: stable
+        components: clippy
+        target: wasm32-wasi
+
+    - name: Install protobuf compiler
+      run: /usr/bin/sudo /usr/bin/apt install -y protobuf-compiler
+
+    - name: Build release target
+      uses: clechasseur/rs-cargo@5cd564345ef5b1136392a1dc943b33a3a888b873 # v2.0.2
+      with:
+        command: build
+        args: --release --target=x86_64-apple-darwin
+
+    - name: Upload binary as release artifact
+      uses: Shopify/upload-to-release@c77c9b3e5d288adaef98a7007bf92340ec6ce03b # v2.0.0
+      with:
+        name: bulwark-cli.x86_64-apple-darwin
+        path: target/release/bulwark-cli
+        repo-token: ${{ github.token }}
+        content-type: application/octet-stream
+
+  publish-macos-aarch64-binary:
+    if: github.repository == 'bulwark-security/bulwark'
+    runs-on: macos-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@21dc36fb71dd22e3317045c0c31a3f4249868b17
+      with:
+        toolchain: stable
+        components: clippy
+        target: wasm32-wasi
+
+    - name: Install protobuf compiler
+      run: /usr/bin/sudo /usr/bin/apt install -y protobuf-compiler
+
+    - name: Build release target
+      uses: clechasseur/rs-cargo@5cd564345ef5b1136392a1dc943b33a3a888b873 # v2.0.2
+      with:
+        command: build
+        args: --release --target=aarch64-apple-darwin
+
+    - name: Upload binary as release artifact
+      uses: Shopify/upload-to-release@c77c9b3e5d288adaef98a7007bf92340ec6ce03b # v2.0.0
+      with:
+        name: bulwark-cli.aarch64-apple-darwin
+        path: target/release/bulwark-cli
+        repo-token: ${{ github.token }}
+        content-type: application/octet-stream
