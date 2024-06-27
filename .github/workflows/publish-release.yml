@@ -19,7 +19,7 @@ jobs:
       with:
         toolchain: stable
         components: clippy
-        target: wasm32-wasi
+        targets: wasm32-wasi
 
     - name: Install protobuf compiler
       run: /usr/bin/sudo /usr/bin/apt install -y protobuf-compiler
@@ -50,7 +50,7 @@ jobs:
       with:
         toolchain: stable
         components: clippy
-        target: wasm32-wasi
+        targets: wasm32-wasi,x86_64-apple-darwin
 
     - name: Update Homebrew
       run: |
@@ -85,7 +85,7 @@ jobs:
       with:
         toolchain: stable
         components: clippy
-        target: wasm32-wasi
+        targets: wasm32-wasi
 
     - name: Update Homebrew
       run: |
