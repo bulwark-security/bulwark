@@ -50,8 +50,8 @@ jobs:
             name: 'bulwark-cli.x86_64-unknown-linux-gnu',
             owner: context.repo.owner,
             repo: context.repo.repo,
-            release_id: ${{ env.RELEASE_ID }},
-            data: await fs.readFile('./target/release/bulwark-cli')  # The file to upload.
+            release_id: process.env.RELEASE_ID,
+            data: await fs.readFile('./target/release/bulwark-cli')
           });
 
   publish-macos-x86-64-binary:
@@ -101,8 +101,8 @@ jobs:
             name: 'bulwark-cli.x86_64-apple-darwin',
             owner: context.repo.owner,
             repo: context.repo.repo,
-            release_id: ${{ env.RELEASE_ID }},
-            data: await fs.readFile('./target/release/bulwark-cli')  # The file to upload.
+            release_id: process.env.RELEASE_ID,
+            data: await fs.readFile('./target/release/bulwark-cli')
           });
 
   publish-macos-aarch64-binary:
@@ -152,6 +152,6 @@ jobs:
             name: 'bulwark-cli.aarch64-apple-darwin',
             owner: context.repo.owner,
             repo: context.repo.repo,
-            release_id: ${{ env.RELEASE_ID }},
-            data: await fs.readFile('./target/release/bulwark-cli')  # The file to upload.
+            release_id: process.env.RELEASE_ID,
+            data: await fs.readFile('./target/release/bulwark-cli')
           });
