@@ -27,7 +27,7 @@ tracing = { workspace = true }
 url = { workspace = true }
 validator = { workspace = true }
 
-itertools = "0.13.0"
+itertools = "0.12.1"
 lazy_static = "1.4.0"
 regex = "1.9.1"
 num_cpus = "^1.11.1"
