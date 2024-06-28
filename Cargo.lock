@@ -580,9 +580,9 @@ checksum = "514de17de45fdb8dc022b1a7975556c53c86f9f0aa5f534b98977b171857c2c9"
 
 [[package]]
 name = "cadence"
-version = "0.29.1"
+version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f39286bc075b023101dccdb79456a1334221c768b8faede0c2aff7ed29a9482d"
+checksum = "2f338b979d9ebfff4bb9801ae8f3af0dc3615f7f1ca963f2e4782bcf9acb3753"
 dependencies = [
  "crossbeam-channel",
 ]
@@ -2080,12 +2080,12 @@ dependencies = [
 
 [[package]]
 name = "metrics-exporter-statsd"
-version = "0.6.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e34a620eecf9e4321ebbef8f2f8e7cd22e098f11b65f2d987ce66faaa8918418"
+checksum = "a0905009f54328c743a2046a86c88157621f473a2202cfa922cb716615c4b292"
 dependencies = [
  "cadence",
- "metrics 0.21.1",
+ "metrics 0.23.0",
  "thiserror",
 ]
 
