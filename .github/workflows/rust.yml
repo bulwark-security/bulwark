@@ -135,7 +135,7 @@ jobs:
         run: /usr/bin/docker ps
 
       - name: Run bulwark tests
-        uses: clechasseur/rs-cargo@5cd564345ef5b1136392a1dc943b33a3a888b873 # v2.0.2
+        uses: clechasseur/rs-cargo@b4ba96880c7600d3b7f6fc6d1b72d88417378320 # v2.0.2
         with:
           command: test
           args: -p bulwark-cli -p bulwark-build -p bulwark-config -p bulwark-decision -p bulwark-ext-processor -p bulwark-host -p bulwark-sdk -p bulwark-sdk-macros -- --include-ignored
