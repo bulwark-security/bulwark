@@ -1,0 +1,94 @@
+package:
+  name: bulwark
+  version: 0.6.0
+  epoch: 0
+  description: Automated security decision making under uncertainty
+  copyright:
+    - license: Apache-2.0
+  dependencies:
+    runtime:
+      - rust-1.79
+      - openssl
+
+environment:
+  contents:
+    repositories:
+      # - https://dl-cdn.alpinelinux.org/alpine/edge/main
+      # - https://dl-cdn.alpinelinux.org/alpine/edge/community
+      - https://packages.wolfi.dev/os
+    keyring:
+      - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+    packages:
+      - ca-certificates-bundle
+      - wolfi-base
+      - build-base
+      - rust-1.79
+      - protoc
+      - openssl
+      - openssl-dev
+
+pipeline:
+  - uses: git-checkout
+    with:
+      expected-commit: 5cc27e89a8cf32578a543d515b3d871431406766
+      repository: https://github.com/bulwark-security/bulwark
+      tag: ${{package.version}}
+
+  # - uses: fetch
+  #   with:
+  #     uri: https://static.rust-lang.org/dist/2024-06-13/rust-std-1.79.0-wasm32-wasi.tar.gz
+  #     expected-sha256: 243849daf01a3b3166e4ce4ceb63c09f8c69e9ee97410a3de9feb16a88703d41
+  #     strip-components: 0
+
+  # - name: Install Rust
+  #   # rustup install stable
+  #   runs: |
+  #     set -ex
+  #     rustup toolchain install stable
+
+  # - name: Install WASI target
+  #   runs: |
+  #     set -ex
+  #     rustup target add wasm32-wasi
+
+  # - name: Investigate workspace
+  #   runs: |
+  #     which rustc
+  #     which cargo
+  #     pwd
+  #     ls -al
+  #     rustup target list
+
+  # rustup run stable which cargo
+
+  - name: Install bulwark
+    runs: |
+      ls -al
+      cargo install --path .
+      ls -al target/release/build/bulwark-ext-processor-*/out
+      cp -r .cargo/bin/bulwark-cli ${{targets.destdir}}/usr/bin/
+
+  # - name: Install bulwark
+  #   runs: |
+  #     cargo install bulwark-cli --version ${{package.version}}
+  #     cp -r .cargo/bin/bulwark-cli ${{targets.destdir}}/usr/bin/
+
+  - uses: strip
+
+# subpackages:
+#   - name: wasm32-wasi-target
+#     pipeline:
+#       - uses: fetch
+#         with:
+#           uri: https://static.rust-lang.org/dist/2024-06-13/rust-std-1.79.0-wasm32-wasi.tar.gz
+#           expected-sha256: 243849daf01a3b3166e4ce4ceb63c09f8c69e9ee97410a3de9feb16a88703d41
+#           strip-components: 0
+#     # dependencies:
+#     #   runtime:
+#     #     - rust-1.79
+
+update:
+  enabled: true
+  github:
+    identifier: bulwark-security/bulwark
+    use-tag: true

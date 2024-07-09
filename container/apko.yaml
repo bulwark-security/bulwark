@@ -1,0 +1,30 @@
+contents:
+  keyring:
+    - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+    - ./melange.rsa.pub
+  repositories:
+    - https://packages.wolfi.dev/os
+    - "@local ./packages/"
+  packages:
+    - wolfi-base
+    - ca-certificates-bundle
+    - bulwark@local
+    - build-base
+    - rust
+
+accounts:
+  groups:
+    - groupname: nonroot
+      gid: 65532
+  users:
+    - username: nonroot
+      uid: 65532
+      gid: 65532
+  run-as: 65532
+
+archs:
+  - amd64
+
+# cmd: /usr/bin/bulwark-cli
+entrypoint:
+  command: /bin/sh -l

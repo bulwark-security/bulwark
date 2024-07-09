@@ -2,13 +2,16 @@
 // Use of this source code is governed by the Apache License,
 // Version 2.0, that can be found in the protobuf/LICENSE file.
 
+use core::panic;
 use std::env;
 use std::io::Result;
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
     let descriptor_path = PathBuf::from(env::var("OUT_DIR").unwrap()).join("proto_descriptor.bin");
-
+    println!("# {}", descriptor_path.display());
+    let pwd = std::env::current_dir().unwrap();
+    println!("# {}", pwd.display());
     tonic_build::configure()
         .build_server(true)
         .build_client(false)

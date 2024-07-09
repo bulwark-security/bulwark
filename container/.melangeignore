@@ -1,0 +1,5 @@
+.git/**
+# /crates/ext-processor/protobuf/data-plane-api/**
+# /crates/ext-processor/protobuf/googleapis/**
+# /crates/ext-processor/protobuf/protoc-gen-validate/**
+# /crates/ext-processor/protobuf/xds/**

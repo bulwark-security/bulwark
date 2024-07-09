@@ -9,3 +9,6 @@
 /crates/sdk/examples/Cargo.lock
 /.cargo
 /vendor
+*.rsa
+/melange-cache
+/container/*.tar
