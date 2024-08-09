@@ -248,7 +248,15 @@ impl BulwarkProcessor {
             "combined_decision",
             "outcome" => "restricted",
         );
+        metrics::describe_histogram!(
+            "combined_decision",
+            "Counters for each combined decision outcome."
+        );
         metrics::register_histogram!("combined_decision_score");
+        metrics::describe_histogram!(
+            "combined_decision_score",
+            "A histogram over the combined decision scores for all requests processed."
+        );
 
         let redis_pool: Option<Arc<deadpool_redis::Pool>> =
             if let Some(redis_addr) = config.state.redis_uri.as_ref() {
@@ -879,7 +887,7 @@ impl ProcessorContext {
         );
         metrics::histogram!(
             "combined_decision_score",
-            verdict.decision.pignistic().restrict
+            verdict.decision.pignistic().restrict,
         );
 
         let mut decisions: Vec<Decision> = Vec::with_capacity(self.plugin_instances.len());
@@ -913,12 +921,22 @@ impl ProcessorContext {
                     decision.pignistic().restrict,
                     "ref" => plugin_instance.plugin_reference(),
                 );
+                metrics::describe_histogram!(
+                    "decision_score",
+                    "A histogram over the individual plugin decision scores for all requests processed."
+                );
+
                 // Measure the conflict between each individual decision and the combined decision
                 metrics::histogram!(
                     "decision_conflict",
                     Decision::conflict(&[decision, verdict.decision]),
                     "ref" => plugin_instance.plugin_reference(),
                 );
+                metrics::describe_histogram!(
+                    "decision_conflict",
+                    "A histogram over the individual plugin disagreement values for all requests processed."
+                );
+
                 decisions.push(decision);
             }
             let request = self.request.clone();
@@ -949,6 +967,10 @@ impl ProcessorContext {
 
         // Measure total conflict in the combined decision
         metrics::histogram!("combined_conflict", Decision::conflict(&decisions));
+        metrics::describe_histogram!(
+            "combined_conflict",
+            "A histogram over the combined disagreement values for all requests processed."
+        );
 
         // Capturing stdio is always the last thing that happens and feedback should always be the second-to-last.
         self.capture_stdio().await;
