@@ -11,6 +11,7 @@ pub mod envoy {
             }
         }
         pub mod core {
+            #[allow(clippy::doc_lazy_continuation)]
             #[allow(clippy::large_enum_variant)]
             pub mod v3 {
                 include!(concat!(env!("OUT_DIR"), "/envoy.config.core.v3.rs"));
@@ -21,6 +22,7 @@ pub mod envoy {
         pub mod filters {
             pub mod http {
                 pub mod ext_authz {
+                    #[allow(clippy::doc_lazy_continuation)]
                     #[allow(clippy::large_enum_variant)]
                     pub mod v3 {
                         include!(concat!(
@@ -30,6 +32,7 @@ pub mod envoy {
                     }
                 }
                 pub mod ext_proc {
+                    #[allow(clippy::doc_lazy_continuation)]
                     pub mod v3 {
                         include!(concat!(
                             env!("OUT_DIR"),
@@ -52,6 +55,7 @@ pub mod envoy {
     }
     pub mod service {
         pub mod auth {
+            #[allow(clippy::doc_lazy_continuation)]
             pub mod v3 {
                 include!(concat!(env!("OUT_DIR"), "/envoy.service.auth.v3.rs"));
             }
