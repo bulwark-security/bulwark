@@ -17,3 +17,19 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+  - package-ecosystem: "pip"
+    directory: "/crates/ext-processor/protobuf/protoc-gen-validate"
+    schedule:
+      interval: "monthly"
+    labels: []
+    ignore:
+      - dependency-name: "*"
+
+  - package-ecosystem: "gomod"
+    directory: "/crates/ext-processor/protobuf/protoc-gen-validate"
+    schedule:
+      interval: "monthly"
+    labels: []
+    ignore:
+      - dependency-name: "*"
