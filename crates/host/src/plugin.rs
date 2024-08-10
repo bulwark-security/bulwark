@@ -436,14 +436,16 @@ impl PluginInstance {
             .call_handle_init(self.store.as_context_mut())
             .await;
         match result {
-            Ok(Ok(_)) => metrics::increment_counter!(
+            Ok(Ok(_)) => metrics::counter!(
                 "plugin_on_init",
                 "ref" => self.plugin_reference(), "result" => "ok"
-            ),
-            Ok(Err(_)) | Err(_) => metrics::increment_counter!(
+            )
+            .increment(1),
+            Ok(Err(_)) | Err(_) => metrics::counter!(
                 "plugin_on_init",
                 "ref" => self.plugin_reference(), "result" => "error"
-            ),
+            )
+            .increment(1),
         }
 
         // Initialization doesn't return anything unless there's an error
@@ -483,14 +485,16 @@ impl PluginInstance {
             )
             .await;
         match result {
-            Ok(Ok(_)) => metrics::increment_counter!(
+            Ok(Ok(_)) => metrics::counter!(
                 "plugin_on_request",
                 "ref" => self.plugin_reference(), "result" => "ok"
-            ),
-            Ok(Err(_)) | Err(_) => metrics::increment_counter!(
+            )
+            .increment(1),
+            Ok(Err(_)) | Err(_) => metrics::counter!(
                 "plugin_on_request",
                 "ref" => self.plugin_reference(), "result" => "error"
-            ),
+            )
+            .increment(1),
         }
         let labels: HashMap<String, String> = result??.into_iter().collect();
 
@@ -528,14 +532,16 @@ impl PluginInstance {
             )
             .await;
         match result {
-            Ok(Ok(_)) => metrics::increment_counter!(
+            Ok(Ok(_)) => metrics::counter!(
                 "plugin_on_request_decision",
                 "ref" => self.plugin_reference(), "result" => "ok"
-            ),
-            Ok(Err(_)) | Err(_) => metrics::increment_counter!(
+            )
+            .increment(1),
+            Ok(Err(_)) | Err(_) => metrics::counter!(
                 "plugin_on_request_decision",
                 "ref" => self.plugin_reference(), "result" => "error"
-            ),
+            )
+            .increment(1),
         }
 
         Ok(result??.into())
@@ -594,14 +600,16 @@ impl PluginInstance {
             )
             .await;
         match result {
-            Ok(Ok(_)) => metrics::increment_counter!(
+            Ok(Ok(_)) => metrics::counter!(
                 "plugin_on_request_body_decision",
                 "ref" => self.plugin_reference(), "result" => "ok"
-            ),
-            Ok(Err(_)) | Err(_) => metrics::increment_counter!(
+            )
+            .increment(1),
+            Ok(Err(_)) | Err(_) => metrics::counter!(
                 "plugin_on_request_body_decision",
                 "ref" => self.plugin_reference(), "result" => "error"
-            ),
+            )
+            .increment(1),
         }
 
         Ok(result??.into())
@@ -661,14 +669,16 @@ impl PluginInstance {
             )
             .await;
         match result {
-            Ok(Ok(_)) => metrics::increment_counter!(
+            Ok(Ok(_)) => metrics::counter!(
                 "plugin_on_decision_feedback",
                 "ref" => self.plugin_reference(), "result" => "ok"
-            ),
-            Ok(Err(_)) | Err(_) => metrics::increment_counter!(
+            )
+            .increment(1),
+            Ok(Err(_)) | Err(_) => metrics::counter!(
                 "plugin_on_decision_feedback",
                 "ref" => self.plugin_reference(), "result" => "error"
-            ),
+            )
+            .increment(1),
         }
 
         // Decision feedback doesn't return anything unless there's an error

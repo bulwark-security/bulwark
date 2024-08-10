@@ -34,8 +34,8 @@ clap = { version = "4.4.3", features = ["derive"] }
 clap_complete = "4.5.2"
 color-eyre = "0.6.2"
 hyper = { version = "1.2.0", features = ["server"] }
-metrics-exporter-prometheus = "0.15.0"
-metrics-exporter-statsd = "0.6.0"
+metrics-exporter-prometheus = "0.15.3"
+metrics-exporter-statsd = "0.8.0"
 quoted-string = "0.6.1"
 tower = { version = "0.4.13", features = ["tokio", "tracing"] }
 tower-http = { version = "0.5.0", features = [
@@ -119,7 +119,7 @@ futures = "0.3"
 hex = "0.4.3"
 http = "1.0"
 matchit = "0.8.2"
-metrics = "0.21.1"
+metrics = "0.23.0"
 owo-colors = "3.5.0"
 redis = { version = "0.25", features = [
     "tokio-comp",
