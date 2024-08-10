@@ -20,8 +20,8 @@ pub enum MetricsError {
     Prometheus(#[from] metrics_exporter_prometheus::BuildError),
     #[error("failed to install StatsD metrics exporter: {0}")]
     Statsd(#[from] metrics_exporter_statsd::StatsdError),
-    #[error("failed to install metrics exporter: {0}")]
-    Install(#[from] metrics::SetRecorderError),
+    #[error("failed to install StatsD metrics exporter: {0}")]
+    SetStatsd(#[from] metrics::SetRecorderError<metrics_exporter_statsd::StatsdRecorder>),
 }
 
 #[derive(thiserror::Error, Debug)]

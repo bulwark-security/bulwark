@@ -183,7 +183,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .build(prefix)
                 .map_err(MetricsError::from)?;
 
-                metrics::set_boxed_recorder(Box::new(recorder)).map_err(MetricsError::from)?;
+                metrics::set_global_recorder(recorder).map_err(MetricsError::from)?;
             } else {
                 let thresholds = config_root.thresholds;
                 prometheus_handle = Some(
