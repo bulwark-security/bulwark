@@ -6,6 +6,7 @@ allowedAuthors:
     # GitHub username
     - "sporkmonger"
     - "dependabot"
+    - "dependabot[bot]"
 notificationList:
   # GitHub username or team name
   - "@sporkmonger"
