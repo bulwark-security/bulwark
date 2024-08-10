@@ -3,6 +3,7 @@ use super::*;
 use http::{HeaderMap, HeaderValue};
 pub(super) use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use std::fmt;
+use tracing::warn;
 
 /// Axum state for the admin service.
 pub(super) struct AdminState {
@@ -97,6 +98,9 @@ pub(super) async fn metrics_handler(
         let metrics = prometheus_handle.render();
         // TODO: Add gzip compression support.
         body = metrics.into();
+        if body.is_empty() {
+            warn!("exporting empty prometheus metrics");
+        }
     } else {
         body = vec![];
     }
