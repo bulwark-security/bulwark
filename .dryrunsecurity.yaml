@@ -1,10 +1,12 @@
 sensitiveCodepaths:
   # Files only allowed authors can modify
-  - '.github/**/*'
+  - ".github/**/*"
 allowedAuthors:
   usernames:
     # GitHub username
-    - 'sporkmonger'
+    - "sporkmonger"
+    - "dependabot"
+    - "dependabot[bot]"
 notificationList:
   # GitHub username or team name
-  - '@sporkmonger'
+  - "@sporkmonger"
