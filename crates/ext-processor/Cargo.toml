@@ -40,7 +40,7 @@ sfv = "0.9.2"
 redis-test = { workspace = true }
 
 [build-dependencies]
-tonic-build = "0.9.2"
+tonic-build = "0.12.2"
 
 [lib]
 # Disable doctests for this crate because we can't easily disable them only for generated files.
