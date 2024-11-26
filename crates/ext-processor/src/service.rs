@@ -537,20 +537,17 @@ impl ProcessorContext {
             };
             // No current access to HTTP version information via Envoy external processor
             request = request.method(method).uri(request_uri);
-            match &header_msg.headers {
-                Some(headers) => {
-                    for header in &headers.headers {
-                        // must not pass through Envoy pseudo headers here, http module treats them as invalid
-                        if !header.key.starts_with(':') {
-                            if !header.raw_value.is_empty() {
-                                request = request.header(&header.key, header.raw_value.as_slice());
-                            } else {
-                                request = request.header(&header.key, header.value.as_str());
-                            }
+            if let Some(headers) = &header_msg.headers {
+                for header in &headers.headers {
+                    // must not pass through Envoy pseudo headers here, http module treats them as invalid
+                    if !header.key.starts_with(':') {
+                        if !header.raw_value.is_empty() {
+                            request = request.header(&header.key, header.raw_value.as_slice());
+                        } else {
+                            request = request.header(&header.key, header.value.as_str());
                         }
                     }
                 }
-                None => {}
             }
 
             // TODO: remote IP should probably be received via an external attribute, but that doesn't seem to be currently supported by envoy?
@@ -596,21 +593,17 @@ impl ProcessorContext {
                 bytes::Bytes::new()
             };
             response = response.status(status).version(self.request.version());
-            match &header_msg.headers {
-                Some(headers) => {
-                    for header in &headers.headers {
-                        // must not pass through Envoy pseudo headers here, http module treats them as invalid
-                        if !header.key.starts_with(':') {
-                            if !header.raw_value.is_empty() {
-                                response =
-                                    response.header(&header.key, header.raw_value.as_slice());
-                            } else {
-                                response = response.header(&header.key, header.value.as_str());
-                            }
+            if let Some(headers) = &header_msg.headers {
+                for header in &headers.headers {
+                    // must not pass through Envoy pseudo headers here, http module treats them as invalid
+                    if !header.key.starts_with(':') {
+                        if !header.raw_value.is_empty() {
+                            response = response.header(&header.key, header.raw_value.as_slice());
+                        } else {
+                            response = response.header(&header.key, header.value.as_str());
                         }
                     }
                 }
-                None => {}
             }
             return Ok(response.body(response_chunk)?);
         }

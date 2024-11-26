@@ -145,7 +145,7 @@ toml = { version = "0.8.6", features = ["preserve_order"] }
 tonic = "^0.9"
 tracing = "0.1.40"
 url = "2.5.0"
-validator = { version = "0.16", features = ["derive"] }
+validator = { version = "0.19", features = ["derive"] }
 
 [profile.test]
 opt-level = 2
