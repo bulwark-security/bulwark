@@ -240,7 +240,7 @@ impl Default for Metrics {
 #[derive(Debug, Validate, Clone, Default)]
 pub struct Secret {
     /// The secret reference key. Should be limited to ASCII lowercase a-z plus underscores. Maximum 96 characters.
-    #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
+    #[validate(length(min = 1, max = 96), regex(path = *RE_VALID_REFERENCE))]
     pub reference: String,
     /// The location where the secret can be loaded from.
     pub location: SecretLocation,
@@ -335,7 +335,7 @@ impl Default for PluginVerification {
 #[derive(Debug, Validate, Clone, Default)]
 pub struct Plugin {
     /// The plugin reference key. Should be limited to ASCII lowercase a-z plus underscores. Maximum 96 characters.
-    #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
+    #[validate(length(min = 1, max = 96), regex(path = *RE_VALID_REFERENCE))]
     pub reference: String,
     /// The location where the plugin WASM can be loaded from.
     pub location: PluginLocation,
@@ -383,7 +383,7 @@ pub struct Permissions {
 #[derive(Debug, Validate, Clone)]
 pub struct Preset {
     /// The preset reference key. Should be limited to ASCII lowercase a-z plus underscores. Maximum 96 characters.
-    #[validate(length(min = 1, max = 96), regex(path = "RE_VALID_REFERENCE"))]
+    #[validate(length(min = 1, max = 96), regex(path = *RE_VALID_REFERENCE))]
     pub reference: String,
     /// The list of references to plugins and other presets contained within this preset.
     #[validate(length(min = 1))]
