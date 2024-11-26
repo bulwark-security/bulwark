@@ -13,7 +13,6 @@ skip-tree = [
     "redis:=0.25.4",
 ]
 skip = [
-    "metrics:=0.21.1",
     "wasm-encoder:=0.209.1",
     "wasm-metadata:=0.209.1",
     "wasmparser:=0.209.1",
