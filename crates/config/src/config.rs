@@ -402,7 +402,7 @@ impl Preset {
     pub fn resolve_plugins<'a>(
         &'a self,
         config: &'a Config,
-    ) -> Result<Vec<&Plugin>, ResolutionError> {
+    ) -> Result<Vec<&'a Plugin>, ResolutionError> {
         let mut resolved_presets = HashSet::new();
         self.resolve_plugins_recursive(config, &mut resolved_presets)
     }
@@ -412,7 +412,7 @@ impl Preset {
         &'a self,
         config: &'a Config,
         resolved_presets: &mut HashSet<String>,
-    ) -> Result<Vec<&Plugin>, ResolutionError> {
+    ) -> Result<Vec<&'a Plugin>, ResolutionError> {
         let mut plugins: HashMap<String, &Plugin> = HashMap::with_capacity(self.plugins.len());
         for reference in &self.plugins {
             match reference {
@@ -509,7 +509,7 @@ impl Resource {
     pub fn resolve_plugins<'a>(
         &'a self,
         config: &'a Config,
-    ) -> Result<Vec<&Plugin>, ResolutionError> {
+    ) -> Result<Vec<&'a Plugin>, ResolutionError> {
         let mut plugins: Vec<&Plugin> = Vec::with_capacity(self.plugins.len());
         for reference in &self.plugins {
             match reference {
