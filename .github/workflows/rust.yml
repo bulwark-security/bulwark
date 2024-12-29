@@ -150,14 +150,14 @@ jobs:
         run: |
           #!/bin/bash
           set -euo pipefail
-          
+
           PLUGINS=(
             "multi-phase-plugin-a"
             "multi-phase-plugin-b"
             "redis-plugin"
             "smoke-test"
           )
-          
+
           for plugin in "${PLUGINS[@]}"; do
             echo "Updating plugin: $plugin"
             (
