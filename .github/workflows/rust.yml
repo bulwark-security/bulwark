@@ -147,7 +147,27 @@ jobs:
         run: /usr/bin/docker kill envoy
 
       - name: Ensure test plugins are up-to-date
-        run: cd tests/plugins/multi-phase-plugin-a && cargo update && cd - && cd tests/plugins/multi-phase-plugin-b && cargo update && cd - && cd tests/plugins/redis-plugin && cargo update && cd - && cd tests/plugins/smoke-test && cargo update && cd -
+        run: |
+          #!/bin/bash
+          set -euo pipefail
+          
+          PLUGINS=(
+            "multi-phase-plugin-a"
+            "multi-phase-plugin-b"
+            "redis-plugin"
+            "smoke-test"
+          )
+          
+          for plugin in "${PLUGINS[@]}"; do
+            echo "Updating plugin: $plugin"
+            (
+              cd "tests/plugins/$plugin"
+              if ! cargo update; then
+                echo "::error::Failed to update $plugin"
+                exit 1
+              fi
+            )
+          done
 
       - name: Ensure non-dirty repo
         run: git diff --exit-code
