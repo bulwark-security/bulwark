@@ -146,5 +146,8 @@ jobs:
       - name: Kill Envoy service
         run: /usr/bin/docker kill envoy
 
+      - name: Ensure test plugins are up-to-date
+        run: cd tests/plugins/multi-phase-plugin-a && cargo update && cd - && cd tests/plugins/multi-phase-plugin-b && cargo update && cd - && cd tests/plugins/redis-plugin && cargo update && cd - && cd tests/plugins/smoke-test && cargo update && cd -
+
       - name: Ensure non-dirty repo
         run: git diff --exit-code
