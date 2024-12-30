@@ -152,16 +152,18 @@ jobs:
           set -euo pipefail
 
           PLUGINS=(
-            "multi-phase-plugin-a"
-            "multi-phase-plugin-b"
-            "redis-plugin"
-            "smoke-test"
+            "tests/plugins/multi-phase-plugin-a"
+            "tests/plugins/multi-phase-plugin-b"
+            "tests/plugins/redis-plugin"
+            "tests/plugins/smoke-test"
+            "crates/sdk/examples/evil-bit"
+            "crates/sdk/examples/blank-slate"
           )
 
           for plugin in "${PLUGINS[@]}"; do
             echo "Updating plugin: $plugin"
             (
-              cd "tests/plugins/$plugin"
+              cd $plugin
               if ! cargo update; then
                 echo "::error::Failed to update $plugin"
                 exit 1
