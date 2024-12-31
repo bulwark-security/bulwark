@@ -40,7 +40,7 @@ jobs:
         for plugin in "${PLUGINS[@]}"; do
           echo "Updating plugin: $plugin"
           (
-            cd $plugin
+            cd "$plugin"
             if ! cargo update; then
               echo "::error::Failed to update $plugin"
               exit 1
