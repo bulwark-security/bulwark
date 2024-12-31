@@ -3,8 +3,10 @@ name: Rust
 on:
   push:
     branches: [main]
+    paths: ['**/*.rs', '**/Cargo.*', '.github/**/*', 'crates/ext-processor/protobuf/**/*']
   pull_request:
     branches: [main]
+    paths: ['**/*.rs', '**/Cargo.*', '.github/**/*', 'crates/ext-processor/protobuf/**/*']
 
 jobs:
   fmt:
