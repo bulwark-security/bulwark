@@ -41,7 +41,7 @@ detections rapidly, without making changes to the underlying application.
 - **Supported.** Bulwark is actively developed and supported by
     [Bob Aman](https://github.com/sporkmonger). There is a freely available
     [community ruleset](https://github.com/bulwark-security/bulwark-community-ruleset) which anyone is welcome
-    to contribute to.
+    to contribute to. Support is provided through GitHub issues and discussions.
 
 ## 🕵️ Use Cases
 
