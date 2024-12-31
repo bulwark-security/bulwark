@@ -38,12 +38,10 @@ detections rapidly, without making changes to the underlying application.
 - **Sandboxed.** Every detection runs inside a secure [WebAssembly](https://webassembly.org/) sandbox, isolating
     detection logic, and ensuring that access never exceeds its permissions grants.
 - **Safe.** Deploy in observe-only mode and build confidence in the system before enabling request blocking.
-- **Commercially Supported.** Bulwark is actively developed and supported by
-    [Bulwark Security PBC](https://bulwark.security/). We intend to offer a freely available
-    [community ruleset](https://github.com/bulwark-security/bulwark-community-ruleset), an
-    advanced commercial ruleset, paid support, and professional services, in addition to a Bulwark cloud admin
-    application. Contact us ([hello@bulwark.security](mailto:hello@bulwark.security)) if you are interested in
-    discounted early access on a design partner basis for any of these commercial offerings.
+- **Supported.** Bulwark is actively developed and supported by
+    [Bob Aman](https://github.com/sporkmonger). There is a freely available
+    [community ruleset](https://github.com/bulwark-security/bulwark-community-ruleset) which anyone is welcome
+    to contribute to.
 
 ## 🕵️ Use Cases
 
