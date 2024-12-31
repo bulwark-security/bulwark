@@ -146,30 +146,5 @@ jobs:
       - name: Kill Envoy service
         run: /usr/bin/docker kill envoy
 
-      - name: Ensure test plugins are up-to-date
-        run: |
-          #!/bin/bash
-          set -euo pipefail
-
-          PLUGINS=(
-            "tests/plugins/multi-phase-plugin-a"
-            "tests/plugins/multi-phase-plugin-b"
-            "tests/plugins/redis-plugin"
-            "tests/plugins/smoke-test"
-            "crates/sdk/examples/evil-bit"
-            "crates/sdk/examples/blank-slate"
-          )
-
-          for plugin in "${PLUGINS[@]}"; do
-            echo "Updating plugin: $plugin"
-            (
-              cd $plugin
-              if ! cargo update; then
-                echo "::error::Failed to update $plugin"
-                exit 1
-              fi
-            )
-          done
-
       - name: Ensure non-dirty repo
         run: git diff --exit-code
