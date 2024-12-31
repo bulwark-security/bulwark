@@ -20,6 +20,9 @@ jobs:
     name: Up-to-date plugins
     runs-on: ubuntu-latest
     steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
     - name: Ensure plugins are up-to-date
       run: |
         #!/bin/bash
