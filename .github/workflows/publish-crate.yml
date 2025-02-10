@@ -25,7 +25,7 @@ jobs:
         target: wasm32-wasi
 
     - name: Ensure generated files are available
-      uses: clechasseur/rs-cargo@8435b10f6e71c2e3d4d3b7573003a8ce4bfc6386 # v2.0.2
+      uses: clechasseur/rs-cargo@59004c128d1499289e95e1f6800941a2b3d4a32e # v2.0.2
       with:
         command: test
         args: -p bulwark-config -p bulwark-sdk
