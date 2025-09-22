@@ -40,7 +40,7 @@ jobs:
         run: /usr/bin/sudo /usr/bin/apt install -y protobuf-compiler
 
       - name: Rust cache
-        uses: swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 # v2.7.7
+        uses: swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
 
       - name: Run clippy
         run: cargo clippy --no-deps --workspace --all-targets -- --deny warnings
@@ -66,7 +66,7 @@ jobs:
         run: /usr/bin/sudo /usr/bin/apt install -y protobuf-compiler
 
       - name: Rust cache
-        uses: swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 # v2.7.7
+        uses: swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
 
       - name: Build Documentation
         run: cargo doc --all --no-deps
@@ -129,7 +129,7 @@ jobs:
         run: /usr/bin/sudo /usr/bin/apt install -y protobuf-compiler
 
       - name: Rust cache
-        uses: swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 # v2.7.7
+        uses: swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
 
       - name: List Docker services
         run: /usr/bin/docker ps
